@@ -1,0 +1,19 @@
+
+# Garbage
+.DS_Store
+/legacy_code
+
+# Runtime
+/pipes
+/parsers
+
+#Don't add Build Files
+/build
+/app
+/bin
+*.gch
+*.o
+
+
+# XCode project, and archives
+/xcode_proj

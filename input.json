@@ -1,0 +1,9 @@
+{
+    "arguments": {
+        "verbose": 1
+    },
+    "pipes": {
+        "example_app1": "rw",
+        "example_app2": "rw",
+    }
+}

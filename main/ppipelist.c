@@ -39,15 +39,17 @@
 #include <sys/poll.h>
 
 
-int ppipelist_init(const char* basepath) {
-///@todo do what's necessary to alloc ppipelist data
+static ppipe_t  pplist;
 
-    return ppipe_init(basepath);
+
+
+
+int ppipelist_init(const char* basepath) {
+    return ppipe_init(&pplist, basepath);
 }
 
 void ppipelist_deinit(void) {
-///@todo do what's necessary to alloc ppipelist data
-    return ppipe_deinit();
+    return ppipe_deinit(&pplist);
 }
 
 
@@ -56,9 +58,9 @@ int sub_addpipe(const char* prefix, const char* name, const char* fmode) {
     ppipe_t*        ppipe;
     ppipe_fifo_t*   newfifo;
     
-    rc = ppipe_new(prefix, name, fmode);
+    rc = ppipe_new(&pplist, prefix, name, fmode);
     if (rc == 0) {
-        ppipe = ppipe_ref();
+        ppipe = ppipe_ref(&pplist);
         if (ppipe != NULL) {
             newfifo = &ppipe->fifo[ppipe->num-1];
             
@@ -76,9 +78,9 @@ int ppipelist_new(const char* prefix, const char* name, const char* fmode) {
     ppipe_t*        ppipe;
     ppipe_fifo_t*   newfifo;
     
-    rc = ppipe_new(prefix, name, fmode);
+    rc = ppipe_new(&pplist, prefix, name, fmode);
     if (rc == 0) {
-        ppipe = ppipe_ref();
+        ppipe = ppipe_ref(&pplist);
         if (ppipe != NULL) {
             newfifo = &ppipe->fifo[ppipe->num-1];
             
@@ -93,7 +95,7 @@ int ppipelist_new(const char* prefix, const char* name, const char* fmode) {
 int ppipelist_search(ppipe_fifo_t** dst, const char* prefix, const char* name) {
 /// Linear search of ppipe array.  This will need to be replaced with an
 /// indexed search at some point.
-    ppipe_t*    base = ppipe_ref();
+    ppipe_t*    base = ppipe_ref(&pplist);
     int         ppd;
     
     ppd = (int)base->num - 1;
@@ -125,13 +127,43 @@ int ppipelist_del(const char* prefix, const char* name) {
     ppd = ppipelist_search(&delfifo, prefix, name);
     
     if (ppd >= 0) {
-        ppipe_del(ppd);
+        ppipe_del(&pplist, ppd);
         
         ///@todo remove from ppipelist
     }
     
     return ppd;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -165,12 +197,12 @@ int sub_put(const char* prefix, const char* name, uint8_t* hdr, uint8_t* src, si
 }
 
 
+
 int ppipelist_putbinary(const char* prefix, const char* name, uint8_t* src, size_t size) {
     uint8_t hdr[3];
     hdr[0]  = 0;
     hdr[1]  = (size >> 8) & 0xFF;
     hdr[2]  = (size >> 0) & 0xFF;
-    
     return sub_put(prefix, name, hdr, src, size);
 }
 
@@ -186,9 +218,10 @@ uint8_t* sub_gethex(uint8_t* dst, uint8_t input) {
     static const char convert[] = "0123456789ABCDEF";
     dst[0]  = convert[input >> 4];
     dst[1]  = convert[input & 0x0f];
-    
     return dst;
 }
+
+
 
 int ppipelist_puthex(const char* prefix, const char* name, char* src, size_t size) {
 /// This is a variant of sub_put()
@@ -216,6 +249,21 @@ int ppipelist_puthex(const char* prefix, const char* name, char* src, size_t siz
     
     return -1;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -307,7 +355,7 @@ int pipe_getbinary(struct pollfd *pubfd, uint8_t* dst, size_t max) {
 
 
 
-int pipe_gethex(pktlist_t* plist, struct pollfd *pubfd, uint8_t* dst, size_t max) {
+int ppipelist_gethex(pktlist_t* plist, uint8_t* dst, size_t max) {
 /// Returns when any one of the fd's supplied yields data or error.
     int pollcode;
     uint8_t* start;
@@ -319,10 +367,14 @@ int pipe_gethex(pktlist_t* plist, struct pollfd *pubfd, uint8_t* dst, size_t max
     end = dst + max;
     
     pollcode = poll(pubfd, 1, 100);
+    
+    // Poll yields an error, do nothing but return error
     if (pollcode <= 0) {
         goto pipe_gethex_SCRAP;
     }
     else {
+    
+    
         if (pubfd[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
         goto pipe_gethex_SCRAP;
     }
@@ -390,6 +442,11 @@ int ppipelist_getbinary(uint8_t* dst, size_t* size, size_t max);
 
 int ppipelist_gethex(uint8_t* dst, size_t* size, size_t max);
 int ppipelist_gettext(char* dst, size_t* size, size_t max);
+
+
+
+
+
 
 
 

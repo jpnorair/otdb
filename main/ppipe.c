@@ -35,11 +35,11 @@
 #define PPIPE_BASEPATH      "./pipes/"
 
 
-static ppipe_t ppipe = {
-    .basepath   = { 0 },
-    .fifo       = NULL,
-    .num        = 0
-};
+//static ppipe_t ppipe = {
+//    .basepath   = { 0 },
+//    .fifo       = NULL,
+//    .num        = 0
+//};
 
 
 
@@ -89,170 +89,206 @@ int sub_assure_path(char* assure_path, mode_t mode) {
 
 
 
-int ppipe_init(const char* basepath) {
+int ppipe_init(ppipe_t* pipes, const char* basepath) {
+/// pipes input parameter must be allocated by caller.
+    const char* def_basepath = PPIPE_BASEPATH;
     size_t alloc_size;
 
-    if (ppipe.num != 0) {
-        ///@todo see if this should have true parameter.
-        ppipe_deinit(false);
-    }
-
-    /// Set basepath
-    if (basepath == NULL) {
-        strcpy(ppipe.basepath, PPIPE_BASEPATH);
-        return 0;
-    }
-    if (strlen(basepath) > 255) {
+    if (pipes == NULL) {
         return -1;
     }
-    strcpy(ppipe.basepath, basepath);
-    
-    /// Malloc the first group of pipe files
-    alloc_size  = PPIPE_GROUP_SIZE * sizeof(ppipe_fifo_t);
-    ppipe.fifo  = malloc(alloc_size);
-    if (ppipe.fifo == NULL) {
+    if (strlen(basepath) > 255) {
         return -2;
     }
-    memset(ppipe.fifo, 0, alloc_size);
+    
+    pipes->basepath[0]  = 0;
+    pipes->fifo         = NULL;
+    pipes->num          = 0;
+
+    /// Set basepath, either to default or supplied path.
+    if (basepath == NULL) {
+        basepath = def_basepath;
+    }
+    strcpy(pipes->basepath, basepath);
+
+    /// Malloc the first group of pipe files
+    alloc_size  = PPIPE_GROUP_SIZE * sizeof(ppipe_fifo_t);
+    pipes->fifo = malloc(alloc_size);
+    if (pipes->fifo == NULL) {
+        return -3;
+    }
+    memset(pipes->fifo, 0, alloc_size);
     
     return 0;
 }
 
 
 
-void ppipe_deinit(bool remove_file) {
-/// Go through all pipes, close, delete, free data, and set data to defaults.
-    
-    for (int i=0; i<ppipe.num; i++) {
-        ppipe_del(i);
+void ppipe_deinit(ppipe_t* pipes) {
+/// Go through all pipes, close, delete, free data
+
+    if (pipes != NULL) {
+        for (int i=0; i<pipes->num; i++) {
+            ppipe_del(pipes, i);
+        }
+        
+        pipes->basepath[0]  = 0;
+        pipes->num          = 0;
+        if (pipes->fifo != NULL) {
+            free(pipes->fifo);
+        }
     }
-    
-    ppipe.basepath[0]   = 0;
-    ppipe.fifo          = NULL;
-    ppipe.num           = 0;
 }
 
 
 
-int ppipe_new(const char* prefix, const char* name, const char* fmode) {
+int ppipe_new(ppipe_t* pipes, const char* prefix, const char* name, const char* fmode) {
     ppipe_fifo_t*   fifo;
     int             ppd;
     size_t          alloc_size;
     int             test_fd;
-    int             rc;
     struct stat     st;
     const char*     null_prefix = "";
     size_t          prefix_len;
     int             group;
+    int             open_mode, file_test;  
+    char*           file_path;
     
+    if ((pipes == NULL) || (name == NULL) || (fmode == NULL)) {
+        return -1;
+    }
+
+    // Derive file modes based on fmode input.
+    // The fmode input must be "r", "r+", "w", or "w+", just like posix standards.
+    prefix_len  = strlen(fmode);
+    if ((prefix_len < 1) || (prefix_len > 2)) {
+        return -4;
+    }
+    if (prefix_len == 1) {
+        if (fmode[0] == 'r') {
+            open_mode   = O_RDONLY;
+        }
+        else if (fmode[0] == 'w') {
+            open_mode   = O_WRONLY;
+        }
+        else {
+            return -4;
+        }
+    }
+    else if (fmode[1] == '+') {
+        open_mode   = O_RDWR;
+    }
+    else {
+        return -4;
+    }
+
+    // ------------------------------------------------------------------------
+    // Done with basic input parameter checks, now check if the file is usable
+    // ------------------------------------------------------------------------
+
+    // Derive File Path from inputs
+    // The "+2" is for the intermediate '/' and the null terminator
     if (prefix == NULL) {
         prefix = null_prefix;
     }
-
-    group = ppipe.num & (PPIPE_GROUP_SIZE-1);
-    
-    if ((ppipe.num != 0) && (group == 0)) {
-        size_t elem = (ppipe.num / PPIPE_GROUP_SIZE) + 1;
-        alloc_size  = PPIPE_GROUP_SIZE * sizeof(ppipe_fifo_t);
-        ppipe.fifo  = realloc(ppipe.fifo, elem*alloc_size);
-        memset(&ppipe.fifo[ppipe.num], 0, alloc_size);
-    }
-    if (ppipe.fifo == NULL) {
-        ppd = -1;
-        goto ppipe_new_EXIT;
-    }
-    
-    ppd = (int)ppipe.num;
-    ppipe.num++;
-    fifo = &ppipe.fifo[ppd];
-    if (fifo->fpath != NULL) {
-        ppipe_del(ppd);
-    }
-
-    // The "+2" is for the intermediate '/' and the null terminator
     prefix_len  = strlen(prefix);
-    alloc_size  = strlen(ppipe.basepath) + prefix_len + strlen(name) + 2;
-    fifo->fpath = malloc(alloc_size);
-    if (fifo->fpath == NULL) {
-        ppd = -2;
-        goto ppipe_new_EXIT;
-    }
-    
-    memset(fifo->fpath, 0, alloc_size);
-    strcpy(fifo->fpath, ppipe.basepath); 
+    alloc_size  = strlen(pipes->basepath) + prefix_len + strlen(name) + 2;
+    file_path   = malloc(alloc_size);
+    memset(file_path, 0, alloc_size);
+    strcpy(file_path, pipes->basepath); 
     if (prefix_len != 0) {
-        strcat(fifo->fpath, prefix); 
-        strcat(fifo->fpath, "/");
+        strcat(file_path, prefix); 
+        strcat(file_path, "/");
     }
-    strcat(fifo->fpath, name);
+    strcat(file_path, name);
     
-    /// See if FIFO already exists, in which case just open it.  Else, make it.
-    rc = access( fifo->fpath, F_OK );
-    
-    if (rc != -1) {
-        test_fd = open(fifo->fpath, O_RDONLY | O_NONBLOCK);
-        rc      = fstat(test_fd, &st);
+    // Determine if file already exists.  
+    // If already exists, then make sure the open modes are compatible.
+    // If already exists and compatible, then we are done
+    // If not already exists, then create it (and open).
+    file_test = access(file_path, F_OK);
+    if (file_test != -1) {
+        test_fd     = open(file_path, open_mode | O_NONBLOCK);
+        file_test   = fstat(test_fd, &st);
         close(test_fd);
         
-        if ((rc == 0) && S_ISFIFO(st.st_mode) && ((st.st_mode&0777)==0666)) {
-            // File exists and is fifo
+        if ((file_test == 0) && S_ISFIFO(st.st_mode) && ((st.st_mode&0777)==0666)) {
             //printf("File already exists, is fifo, and has proper mode: continuing.\n");
         }
-        
         else {
-            // File exists, but is not fifo, or some other error
             //printf("File already exists, is not FIFO and has improper mode: exiting.\n");
-            ppd = -3;
+            goto ppipe_new_FIFOERR;
+        }
+    }
+    else {
+        // FIFO does not exist, so create it.
+        // We create with Read and Write, because always one side writes, one side reads.
+        umask(0);
+        file_test = sub_assure_path(file_path, 0755);
+        if (file_test == 0) {
+            file_test = mkfifo(file_path, 0666);
+        }
+        if (file_test != 0) {
             goto ppipe_new_FIFOERR;
         }
     }
     
-    else { 
-        // FIFO does not exist, make it the way we need to.
-        umask(0);
-        rc = sub_assure_path(fifo->fpath, 0755);
-        
-        if (rc == 0) {
-            rc = mkfifo(fifo->fpath, 0666);
-        }
-        if (rc != 0) {
-            ppd = -4;
-            goto ppipe_new_FIFOERR;
-        }
-
-        return ppd;
+    // ----------------------------------------------------------
+    // Done with File checks, now add FIFO to array of pipes
+    // ----------------------------------------------------------
+    
+    // This code block is for re-allocating the fifo array if it is 
+    // too small to fit another pipe.
+    group = pipes->num & (PPIPE_GROUP_SIZE-1);
+    
+    if ((pipes->num != 0) && (group == 0)) {
+        size_t elem = (pipes->num / PPIPE_GROUP_SIZE) + 1;
+        alloc_size  = PPIPE_GROUP_SIZE * sizeof(ppipe_fifo_t);
+        pipes->fifo = realloc(pipes->fifo, elem*alloc_size);
+        memset(&pipes->fifo[pipes->num], 0, alloc_size);
     }
+    if (pipes->fifo == NULL) {
+        ppd = -6;   // Error: cannot add to allocation array.
+    }
+    else {
+        ppd = (int)pipes->num;
+        pipes->num++;
+        fifo = &pipes->fifo[ppd];
+        if (fifo->fpath != NULL) {
+            ppipe_del(pipes, ppd);  // Delete leftover data if exists
+        }
+        fifo->fpath = file_path;
+        fifo->fd    = 0;
+        fifo->fmode = open_mode;
+    }
+
+    return ppd;
     
     ppipe_new_FIFOERR:
-    if (ppd < 0) {
-        fprintf(stderr, "Could not make FIFO \"%s\": code=%d\n", fifo->fpath, ppd);
-        free(fifo->fpath);
-        fifo->fpath = NULL;
-    }
-
-    ppipe_new_EXIT:
-    return ppd;
+    fprintf(stderr, "Could not make FIFO \"%s\": code=%d\n", file_path, -5);
+    free(file_path);
+    return -5;
 }
 
 
 
 
-int ppipe_del(int ppd) {
+int ppipe_del(ppipe_t* pipes, int ppd) {
     ppipe_fifo_t* fifo;
     size_t i = (size_t)ppd;
     
-    if (i >= ppipe.num) {
+    if (i >= pipes->num) {
         return -1;
     }
-    if (i == (ppipe.num-1)) {
-        ppipe.num--;
-    }
-    
-    fifo = &ppipe.fifo[i];
+    fifo = &pipes->fifo[i];
     if (fifo == NULL) {
         return -2;
     }
-
+    
+    if (i == (pipes->num-1)) {
+        pipes->num--;
+    }
+    
     if (fifo->fpath != NULL) {
         int rc;
         rc = remove(fifo->fpath);
@@ -262,6 +298,7 @@ int ppipe_del(int ppd) {
         
         free(fifo->fpath);
         fifo->fpath = NULL;
+        fifo->fmode = 0;
     }
     
     return 0;
@@ -269,40 +306,47 @@ int ppipe_del(int ppd) {
 
 
 
-FILE* ppipe_getfile(int ppd) {
+int 
+
+
+
+FILE* ppipe_getfile(ppipe_t* pipes, int ppd) {
+/// Not currently implemented.
+/// I might delete this function, because we are working with file descriptors.
     size_t i = (size_t)ppd;
 
-    if (i <= ppipe.num) {
+    if (i <= pipes->num) {
         return NULL;
     }
     
     return NULL;
-    //return ppipe.fifo[i].file;
+    //return pipes->fifo[i].file;
 }
 
 
 
-const char* ppipe_getpath(int ppd) {
+const char* ppipe_getpath(ppipe_t* pipes, int ppd) {
     size_t i = (size_t)ppd;
     
-    if (i <= ppipe.num) {
+    if (i <= pipes->num) {
         return NULL;
     }
-    return ppipe.fifo[i].fpath;
+    return pipes->fifo[i].fpath;
 }
 
 
-ppipe_t* ppipe_ref(void) {
-    return &ppipe;
+ppipe_t* ppipe_ref(ppipe_t* pipes) {
+/// Deprecated Function
+    return pipes;
 }
 
 
-void ppipe_print(void) {
-    printf("ppipe size=%zu, basepath=%s\n", ppipe.num, ppipe.basepath);
+void ppipe_print(ppipe_t* pipes) {
+    printf("ppipe size=%zu, basepath=%s\n", pipes->num, pipes->basepath);
 
-    for (int i=0; i<ppipe.num; i++) {
-        printf("fifo[%d].fd     = %d\n", i, ppipe.fifo[i].fd);
-        printf("fifo[%d].fpath  = %s\n", i, ppipe.fifo[i].fpath);
+    for (int i=0; i<pipes->num; i++) {
+        printf("fifo[%d].fd     = %d\n", i, pipes->fifo[i].fd);
+        printf("fifo[%d].fpath  = %s\n", i, pipes->fifo[i].fpath);
     }
 }
 

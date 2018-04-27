@@ -24,6 +24,7 @@ typedef struct {
     char*   fpath;
     FILE*   file;
     int     fd;
+    int     fmode;
 } ppipe_fifo_t;
 
 typedef struct {
@@ -34,21 +35,37 @@ typedef struct {
 
 
 
-int ppipe_init(const char* basepath);
+int ppipe_init(ppipe_t* pipes, const char* basepath);
 
-void ppipe_deinit(void);
+void ppipe_deinit(ppipe_t* pipes);
 
-int ppipe_new(const char* prefix, const char* name, const char* fmode);
+int ppipe_new(ppipe_t* pipes, const char* prefix, const char* name, const char* fmode);
 
-int ppipe_del(int ppd);
+int ppipe_del(ppipe_t* pipes, int ppd);
 
-FILE* ppipe_getfile(int ppd);
+const char* ppipe_getpath(ppipe_t* pipes, int ppd);
 
-const char* ppipe_getpath(int ppd);
 
-ppipe_t* ppipe_ref(void);
 
-void ppipe_print(void);
+
+/// Debugging
+void ppipe_print(ppipe_t* pipes);
+
+
+
+
+/// Possibly Deprecated
+FILE* ppipe_getfile(ppipe_t* pipes, int ppd);
+
+
+
+
+
+/// Deprecated
+ppipe_t* ppipe_ref(ppipe_t* pipes);
+
+
+
 
 
 #endif /* ppipe_h */

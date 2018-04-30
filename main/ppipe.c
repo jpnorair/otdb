@@ -306,8 +306,65 @@ int ppipe_del(ppipe_t* pipes, int ppd) {
 
 
 
-int 
+int ppipe_searchmode(ppipe_t* pipes, ppipe_fifo_t** dst, size_t listmax, int fmode) {
+/// Build list of ppd's based on the file mode.
+/// Presently this is a linear search, which is probably the best impl as long
+/// as the pipe list is not indexed on file mode.  Considering that this search
+/// is done rarely (ideally just once, with ppio_listen()), this is fine.
+///
+    int         list_sz;
+    int         ppd;
+    
+    if ((pipes == NULL) || (dst == NULL)) {
+        return -1;
+    }
+    
+    list_sz = 0;
+    ppd     = 0;
+    
+    while ((ppd < pipes->num) && (list_sz < listmax)) {
+        ppipe_fifo_t* fifo = &pipes->fifo[ppd];
+        
+        if ((fifo->fmode & fmode) == fmode) {
+            list_sz++;
+            dst[ppd] = fifo;
+        }
 
+        ppd++;
+    }
+    
+    return list_sz;
+}
+
+
+
+int ppipe_searchname(ppipe_t* pipes, ppipe_fifo_t** dst, const char* prefix, const char* name) {
+/// Linear search of ppipe array.  This will need to be replaced with an
+/// indexed search at some point.
+    int ppd;
+    
+    if (pipes == NULL) {
+        return -1;
+    }
+    
+    ppd = (int)pipes->num - 1;
+    
+    while (ppd >= 0) {
+        ppipe_fifo_t* fifo = &pipes->fifo[ppd];
+        int prefix_size = (int)strlen(prefix);
+    
+        if (strncmp(fifo->fpath, prefix, prefix_size) == 0) {
+            if (strcmp(&fifo->fpath[prefix_size+1], name) == 0) {
+                *dst = fifo;
+                return ppd;
+            }
+        }
+        ppd--;
+    }
+    
+    *dst = NULL;
+    return 0;
+}
 
 
 FILE* ppipe_getfile(ppipe_t* pipes, int ppd) {

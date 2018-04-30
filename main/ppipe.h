@@ -45,7 +45,9 @@ int ppipe_del(ppipe_t* pipes, int ppd);
 
 const char* ppipe_getpath(ppipe_t* pipes, int ppd);
 
+int ppipe_searchmode(ppipe_t* pipes, ppipe_fifo_t** dst, size_t listmax, int fmode);
 
+int ppipe_searchname(ppipe_t* pipes, ppipe_fifo_t** dst, const char* prefix, const char* name);
 
 
 /// Debugging

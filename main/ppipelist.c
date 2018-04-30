@@ -93,31 +93,39 @@ int ppipelist_new(const char* prefix, const char* name, const char* fmode) {
 
 
 int ppipelist_search(ppipe_fifo_t** dst, const char* prefix, const char* name) {
-/// Linear search of ppipe array.  This will need to be replaced with an
-/// indexed search at some point.
-    ppipe_t*    base = ppipe_ref(&pplist);
-    int         ppd;
-    
-    ppd = (int)base->num - 1;
-    
-    while (ppd >= 0) {
-        ppipe_fifo_t* fifo = &base->fifo[ppd];
-        int prefix_size = (int)strlen(prefix);
-    
-        if (strncmp(fifo->fpath, prefix, prefix_size) == 0) {
-            if (strcmp(&fifo->fpath[prefix_size+1], name) == 0) {
-                *dst = fifo;
-                return ppd;
-            }
-        }
-        ppd--;
-    }
-    
-    *dst = NULL;
-    return ppd;
+    return ppipe_searchname(&pplist, dst, prefix, name);
 }
 
-
+int ppipelist_pollfds(struct pollfd** pollfd_list) {
+    int list_sz;
+    ppipe_fifo_t** fifolist;
+    
+    if (pollfd_list == NULL) {
+        return -1;
+    }
+    if (pplist.num == 0) {
+        return 0;
+    }
+    
+    fifolist = malloc(pplist.num * sizeof(ppipe_fifo_t));
+    list_sz = ppipe_searchmode(&pplist, fifolist, pplist.num, O_RDONLY);
+    if (list_sz < 0) {
+        list_sz -= 10;
+    }
+    else if (list_sz > 0) {
+        // Client must free pollfd_list!
+        *pollfd_list = malloc(list_sz * sizeof(struct pollfd));
+        for (int i=0; i<list_sz; i++) {
+            (*poll_list)[i].events = ;
+            (*poll_list)[i].revents = ;
+            
+        }
+    }
+    
+    ppipelist_EXIT:
+    free(fifolist);
+    return list_sz;
+}
 
 
 int ppipelist_del(const char* prefix, const char* name) {

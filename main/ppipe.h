@@ -49,6 +49,7 @@ int ppipe_searchmode(ppipe_t* pipes, ppipe_fifo_t** dst, size_t listmax, int fmo
 
 int ppipe_searchname(ppipe_t* pipes, ppipe_fifo_t** dst, const char* prefix, const char* name);
 
+int ppipe_pollfds(ppipe_t* pipes, struct pollfd** pollfd_list, int poll_events);
 
 /// Debugging
 void ppipe_print(ppipe_t* pipes);

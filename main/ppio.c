@@ -19,130 +19,110 @@
 #include <sys/poll.h>
 
 
+typedef struct {
+    pktlist_t*      pktlist;
+    struct pollfd*  fdlist;
+    int             num_fds;
+} thread_listen_args_t;
 
-void* ppio_listen(pktlist_t* pktlist, ppipe_t* pipes) {
+
+
+void* thread_listen(void* args) {
+    int test;
+    thread_listen_args_t* largs = (thread_listen_args_t*)args;
+    
+    // This will defer thread cancellation to waits on poll().
+    // It is important to prevent messing up the packet list, this way.
+    // See man pages for more info on pthread_setcanceltype()
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &test);
+    
+    
+    
+    
+    
+    return NULL;
+}
+
+
+
+void ppio_listen_stop(ppio_listen_t* listen) {
+    int rc;
+    thread_listen_args_t* largs;
+    
+    if (listen != NULL) {
+        rc = pthread_cancel(listen->thread);
+        if (rc == 0) {
+            pthread_join(listen->thread, NULL);
+            
+            largs = (thread_listen_args_t*)listen->args;
+            if (largs != NULL) {
+                for (int i=0; i<largs->num_fds; i++) {
+                    if (largs->fdlist[i].fd >= 0) {
+                        close(largs->fdlist[i].fd);
+                    }
+                }
+                if (largs->fdlist != NULL) {
+                    free(largs->fdlist);
+                }
+                largs->num_fds = 0;
+            
+                free(largs);
+            }
+        }
+    }
+}
+
+//void ppio_listen_block(ppio_listen_t* listen) {
+//}
+
+int ppio_listen(ppio_listen_t* listen, pktlist_t* pktlist, ppipe_t* pipes) {
 /// Thread that listens to all pipes in the list which are opened for reading.
-///
-    //pthread_t*  pubthread;
-    int i;
-    int fds;
-    int pollcode;
+/// 
+    int rc;
+    thread_listen_args_t* largs;
     
-    sub_t** pubtable;
-    struct pollfd *listen_fd;
-    uint8_t* dbuf;
-    
-    if ((pktlist == NULL) || (pipes == NULL)) {
-        goto ppio_listen_END;
+    if ((listen == NULL) || (pktlist == NULL) || (pipes == NULL)) {
+        return -1;
+    }
+
+    listen->args = (void*)malloc( sizeof(thread_listen_args_t) );
+    if (listen->args == NULL) {
+        return -2;
     }
 
     // -------------------------------------------------------------
     // Done with Input Parameter Checks.  Now get the list of fds
     // -------------------------------------------------------------
     
-    // Find pipes in pipelist that are for reading.
+    // largs = shortcut to (listen->args)
+    largs = listen->args;
     
-    
-    // Malloc an array of fds. These fds go into the poll() call.
-    listen_fd = malloc(sizeof(struct pollfd) * pub_args->topiclist->size);
-    if (listen_fd == NULL) {
+    // Get list of open fds for reading, from list of pipes
+    // If there is negative output, this is an error.
+    // If output is zero, simply there are no pipes to poll.
+    largs->num_fds = ppipe_pollfds(pipes, &(largs->fdlist), (POLLIN | POLLNVAL | POLLHUP));
+    if (largs->num_fds <= 0) {
+        rc = -3;
         goto ppio_listen_END;
     }
     
+    // -------------------------------------------------------------
+    // Done with getting fds of open fifos. Start listening thread.
+    // -------------------------------------------------------------
     
-    pubtable = malloc(sizeof(sub_t*) * pub_args->topiclist->size);
-    if (pubtable == NULL) {
-        free(pubfd);
-        goto ppio_listen_END;
-    }
-    dbuf = malloc(pub_args->arglist->max);
-    if (dbuf == NULL) {
-        free(pubfd);
-        free(pubtable);
-        goto ppio_listen_END;
-    }
-
-    pub = pub_args->topiclist->front;
-    for (i=0, fds=0; i<pub_args->topiclist->size; i++) {
-
-        if (pub == NULL) {
-            break;
-        }
-        pub->ppd = ppipe_new("pub", (const char*)pub->topic, "rb");
-        if (pub->ppd < 0) {
-            fprintf(stderr, "Error: pub pipe could not be created for topic %s.  (Code %d)\n",
-                    pub->topic, pub->ppd);
-        }
-        else {
-            pubtable[fds]     = pub;
-            pubfd[fds].fd     = open(ppipe_getpath(pub->ppd), O_RDONLY|O_NONBLOCK);
-            pubfd[fds].events = (POLLIN | POLLNVAL | POLLHUP);
-            fds++;
-        }
-        
-        pub = pub->next;
-    }
-
-    while (publoop_on) {
-        pollcode = poll(pubfd, fds, 1000);
-        
-        /// 0 = timeout, -1 = error of some kind, positive = data ready.
-        if (pollcode == 0) {
-            continue;
-        }
-     
-        for (i=0; i<fds; i++) {
-            if (pubfd[i].fd >= 0) {
-                if (pubfd[i].revents & POLLNVAL) {
-                    pubfd[i].fd = -1;
-                }
-                else if (pubfd[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                    close(pubfd[i].fd); 
-                    pubfd[i].fd = -1;
-                }
-                else if (pubfd[i].revents & POLLIN) {
-                    uint8_t charbuf;
-                    int     bufbytes;
-                    
-#                   if 0
-                    read(pubfd[i].fd, &charbuf, 1);
-                    if (charbuf == 0) {
-                        bufbytes = pipe_getbinary(&pubfd[i], dbuf, pub_args->arglist->max);
-                    }
-                    else {
-                        dbuf[0] = charbuf;
-                        bufbytes = pipe_gettext(&pubfd[i], &dbuf[1], pub_args->arglist->max-1);
-                    }
-#                   else
-                    bufbytes = pipe_gethex(&pubfd[i], dbuf, pub_args->arglist->max);
-                    
-#                   endif
-                    if (bufbytes > 0) {
-                        paho_pubonce(pubtable[i], dbuf, (size_t)bufbytes); 
-                    }
-                    else {
-                        // close pipe on error or timeout
-                        close(pubfd[i].fd); 
-                        pubfd[i].fd = -1;
-                    }
-                }
-            }
-        }
-    }
+    rc = pthread_create(&(listen->thread), NULL, &thread_listen, largs);
     
-    // Close remaining pipes
-    for (i=0; i<fds; i++) {
-        if (pubfd[i].fd >= 0) {
-            close(pubfd[i].fd);
-        }
-    }
-
-    free(pubfd);
-    free(pubtable);
-    free(dbuf);
-
-    /// This occurs on thread death
     ppio_listen_END:
-    return NULL;
+    if (rc != 0) {
+        // Free allocated memory on error
+        if ((largs->fdlist != NULL) && (largs->num_fds != 0)) {
+            free(largs->fdlist);
+            largs->num_fds = 0;
+        }
+        
+        free(largs);
+    }
+    
+    return rc;
 }
 

@@ -21,12 +21,15 @@
 #include <stdlib.h>
 
 #include <sys/types.h>
+#include <sys/poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
+
+
 
 // Must be a power of two
 #define PPIPE_GROUP_SIZE    16
@@ -258,7 +261,7 @@ int ppipe_new(ppipe_t* pipes, const char* prefix, const char* name, const char* 
             ppipe_del(pipes, ppd);  // Delete leftover data if exists
         }
         fifo->fpath = file_path;
-        fifo->fd    = 0;
+        fifo->fd    = -1;
         fifo->fmode = open_mode;
     }
 
@@ -364,6 +367,78 @@ int ppipe_searchname(ppipe_t* pipes, ppipe_fifo_t** dst, const char* prefix, con
     
     *dst = NULL;
     return 0;
+}
+
+
+int ppipe_pollfds(ppipe_t* pipes, struct pollfd** pollfd_list, int poll_events) {
+/// Client must free *pollfd_list!
+
+    int burned_fds;
+    int list_sz;
+    ppipe_fifo_t** fifolist;
+    
+    if ((pollfd_list == NULL) || (pipes == NULL)) {
+        return -1;
+    }
+    if (pipes->num == 0) {
+        return 0;
+    }
+    
+    fifolist = malloc(pipes->num * sizeof(ppipe_fifo_t*));
+    if (fifolist == NULL) {
+        return -2;
+    }
+    
+    //-------------------------------------------------------------
+    // Done with input checks.
+    // fifolist will be freed at end of function.
+    //-------------------------------------------------------------
+    
+    /// 1. Search for pipes that are meant for reading.
+    ///    ppipe_searchmode() returns an array of fifo pointers into fifolist.
+    ///    On error, return large negative value.
+    list_sz = ppipe_searchmode(pipes, fifolist, pplist.num, O_RDONLY);
+    if (list_sz < 0) {
+        list_sz -= 10;
+    }
+    
+    /// 2. Go through list of read-fifos and open any fifos that aren't already open.
+    ///    Build a list of poll structs containing the relevant fd information.
+    else if (list_sz > 0) {
+        // try to open all the files for reading. Files already open are not re-opened.
+        // Files that won't open get ignored.
+        burned_fds = 0;
+        for (int i=0; i<list_sz; i++) {
+            if (fifolist[i]->fd < 0) {
+                fifolist[i]->fd = open(fifolist[i]->fpath, O_RDONLY|O_NONBLOCK);
+                if (fifolist[i]->fd < 0) {
+                    burned_fds++;
+                }
+            }
+        }
+        
+        // The output list size is adjusted to account for files that wouldn't open.
+        // Now build the output list.  The client must free this list!!!
+        list_sz -= burned_fds;
+        if (list_sz > 0) {
+            *pollfd_list = malloc(list_sz * sizeof(struct pollfd));
+            if (*pollfd_list == NULL) {
+                list_sz = -3;
+            }
+            else {
+                for (int i=0, j=0; i<list_sz; j++) {
+                    if (fifolist[j]->fd >= 0) {
+                        (*pollfd_list)[i].fd        = fifolist[j]->fd;
+                        (*pollfd_list)[i].events    = poll_events;
+                        i++;
+                    }
+                }
+            }
+        }
+    }
+    
+    free(fifolist);
+    return list_sz;
 }
 
 

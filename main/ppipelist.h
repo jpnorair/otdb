@@ -38,6 +38,8 @@ int ppipelist_del(const char* prefix, const char* name);
 
 int ppipelist_search(ppipe_fifo_t** dst, const char* prefix, const char* name);
 
+int ppipelist_pollfds(struct pollfd** pollfd_list, int poll_events);
+
 int ppipelist_putbinary(const char* prefix, const char* name, uint8_t* src, size_t size);
 int ppipelist_puttext(const char* prefix, const char* name, char* src, size_t size);
 int ppipelist_puthex(const char* prefix, const char* name, char* src, size_t size);

@@ -36,10 +36,13 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
-#include <sys/poll.h>
 
 
-static ppipe_t  pplist;
+static ppipe_t pplist = {
+    .basepath   = { 0 },
+    .fifo       = NULL,
+    .num        = 0
+};
 
 
 
@@ -96,36 +99,12 @@ int ppipelist_search(ppipe_fifo_t** dst, const char* prefix, const char* name) {
     return ppipe_searchname(&pplist, dst, prefix, name);
 }
 
-int ppipelist_pollfds(struct pollfd** pollfd_list) {
-    int list_sz;
-    ppipe_fifo_t** fifolist;
-    
-    if (pollfd_list == NULL) {
-        return -1;
-    }
-    if (pplist.num == 0) {
-        return 0;
-    }
-    
-    fifolist = malloc(pplist.num * sizeof(ppipe_fifo_t));
-    list_sz = ppipe_searchmode(&pplist, fifolist, pplist.num, O_RDONLY);
-    if (list_sz < 0) {
-        list_sz -= 10;
-    }
-    else if (list_sz > 0) {
-        // Client must free pollfd_list!
-        *pollfd_list = malloc(list_sz * sizeof(struct pollfd));
-        for (int i=0; i<list_sz; i++) {
-            (*poll_list)[i].events = ;
-            (*poll_list)[i].revents = ;
-            
-        }
-    }
-    
-    ppipelist_EXIT:
-    free(fifolist);
-    return list_sz;
+
+
+int ppipelist_pollfds(struct pollfd** pollfd_list, int poll_events) {
+    return ppipe_pollfds(&pplist, pollfd_list, poll_events);
 }
+
 
 
 int ppipelist_del(const char* prefix, const char* name) {

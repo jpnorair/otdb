@@ -11,4 +11,10 @@
 
 #include <stdio.h>
 
+typedef struct {
+    pthread_t   thread;
+    void*       args;
+} ppio_listen_t;
+
+
 #endif /* ppio_h */

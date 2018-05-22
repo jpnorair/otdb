@@ -397,7 +397,7 @@ int ppipe_pollfds(ppipe_t* pipes, struct pollfd** pollfd_list, int poll_events) 
     /// 1. Search for pipes that are meant for reading.
     ///    ppipe_searchmode() returns an array of fifo pointers into fifolist.
     ///    On error, return large negative value.
-    list_sz = ppipe_searchmode(pipes, fifolist, pplist.num, O_RDONLY);
+    list_sz = ppipe_searchmode(pipes, fifolist, pipes->num, O_RDONLY);
     if (list_sz < 0) {
         list_sz -= 10;
     }

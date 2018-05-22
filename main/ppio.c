@@ -170,7 +170,11 @@ int ppio_listen(ppio_listen_t* listen, pktlist_t* pktlist, ppipe_t* pipes) {
     
     // malloc the rxbuffer: 
     ///@todo the size should be dynamic
-    largs->rxbuf
+    largs->rxbuf = malloc(1024);
+    if (largs->rxbuf == NULL) {
+        rc = -3;
+        goto ppio_listen_END;
+    }
     
     // Get list of open fds for reading, from list of pipes
     // If there is negative output, this is an error.
@@ -193,6 +197,10 @@ int ppio_listen(ppio_listen_t* listen, pktlist_t* pktlist, ppipe_t* pipes) {
         if ((largs->fdlist != NULL) && (largs->num_fds != 0)) {
             free(largs->fdlist);
             largs->num_fds = 0;
+        }
+        
+        if (largs->rxbuf != NULL) {
+            free(largs->rxbuf);
         }
         
         free(largs);

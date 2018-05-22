@@ -15,19 +15,17 @@
   */
 /**
   * @file       main.c
-  * @author     JP Norair & Oleksandr Pereverzyev
+  * @author     JP Norair
   * @version    R100
-  * @date       25 July 2014
-  * @brief      Otter main() function and global data declarations
-  * @defgroup   Otter
-  * @ingroup    Otter
+  * @date       25 May 2018
+  * @brief      OTDB main() function and global data declarations
+  * @defgroup   OTDB
+  * @ingroup    OTDB
   * 
-  * Otter (OpenTag TERminal) is a threaded, POSIX-C app that provides a console
-  * and shell-like interface between a normal TTY and the OpenTag MPipe.  MPipe
-  * is a binary, packet-oriented serial interface often implemented over 
-  * TTY/RS232 or USB-CDC-ACM (aka virtual TTY).  Additionally, Otter can do
-  * deep inspection and translation of M2DEF binary payloads commonly used with
-  * MPipe and OpenTag.
+  * OTDB (OpenTag DataBase) is a threaded, POSIX-C app that provides a cache
+  * for OpenTag device filesystems.  In other words, it allows the device 
+  * filesystems to be mirrored and synchronized on a gateway device (typically
+  * a computer of some sort, running some sort of Linux).
   *
   * See http://wiki.indigresso.com for more information and documentation.
   * 

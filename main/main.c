@@ -87,57 +87,48 @@ cli_struct cli;
 
 
 
-
-
-
-
-
-
-
-
-/** main functions & signal handlers <BR>
+/** Local Functions <BR>
   * ========================================================================<BR>
-  * 
+  * otdb_main() is called by main().  The job of main() is to parse arguments
+  * and then send them to otdb_main(), which deals with program setup and
+  * management.
+  */
+  
+static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val);
+
+static void ppipelist_populate(cJSON* obj);
+
+static int otdb_main(cJSON* params); 
+
+
+
+
+
+
+/** signal handlers <BR>
+  * ========================================================================<BR>
   */
 
-void _assign_signal(int sigcode, void (*sighandler)(int)) {
+static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
     if (signal(sigcode, sighandler) != 0) {
         fprintf(stderr, "--> Error assigning signal (%d), exiting\n", sigcode);
         exit(EXIT_FAILURE);
     }
 }
 
-void sigint_handler(int sigcode) {
+static void sigint_handler(int sigcode) {
     cli.exitcode = EXIT_FAILURE;
     pthread_cond_signal(&cli.kill_cond);
 }
 
-void sigquit_handler(int sigcode) {
+static void sigquit_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
     pthread_cond_signal(&cli.kill_cond);
 }
 
 
-int otdb_main( const char* ttyfile,
-                int baudrate,
-                int enc_bits, int enc_parity, int enc_stopbits,
-                bool pipe,
-                cJSON* params
-                ); 
 
-INTF_Type sub_intf_cmp(const char* s1);
 
-void sub_json_loadargs(cJSON* json, 
-                       char* ttyfile, 
-                       int* baudrate_val, 
-                       bool* pipe_val,
-                       int* intf_val,
-                       int* enc_bits,
-                       int* enc_parity,
-                       int* enc_stop,
-                       bool* verbose_val );
-
-void ppipelist_populate(cJSON* obj);
 
 
 // NOTE Change to transparent mutex usage or not?
@@ -163,55 +154,19 @@ bool _cli_is_blocked(void) {
 
 
 
-
-// notes:
-// 0. ch_inc/ch_dec (w/ ?:) and history pointers can be replaced by integers and modulo
-// 1. command history is glitching when command takes whole history buf (not c string)
-// 2. delete and remove line do not work for multiline command
-
-static dterm_t* _dtputs_dterm;
-
-int _dtputs(char* str) {
-    return dterm_puts(_dtputs_dterm, str);
-}
-
-
-
-
-
-INTF_Type sub_intf_cmp(const char* s1) {
-    INTF_Type selected_intf;
-
-    if (strcmp(s1, "modbus") == 0) {
-        selected_intf = INTF_modbus;
-    }
-    else if (0) {
-        ///@todo add future interfaces here
-    }
-    else {
-        selected_intf = INTF_mpipe;
-    }
-    
-    return selected_intf;
-}
-
-
-
-
-
-
 int main(int argc, char* argv[]) {
     struct arg_file *config  = arg_file0("C", "config", "<file.json>",  "JSON based configuration file.");
     struct arg_lit  *verbose = arg_lit0("v","verbose",                  "use verbose mode");
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
-    struct arg_end  *end     = arg_end(20);
+    struct arg_end  *end     = arg_end(10);
     
-    void* argtable[]        = {config, verbose, debug, help, version, end};
+    void* argtable[]        = { config, verbose, debug, help, version, end };
     const char* progname    = OTDB_PARAM(NAME);
     int exitcode            = 0;
-    bool verbose_val        = true;
+    bool verbose_val        = false;
+    bool debug_val          = false;
     cJSON* json             = NULL;
     char* buffer            = NULL;
     int nerrors;
@@ -230,18 +185,16 @@ int main(int argc, char* argv[]) {
     if (help->count > 0) {
         printf("Usage: %s", progname);
         arg_print_syntax(stdout, argtable, "\n");
-        
         arg_print_glossary(stdout, argtable, "  %-25s %s\n");
-        
         exitcode = 0;
         goto main_EXIT;
     }
 
     /// special case: '--version' takes precedence error reporting 
     if (version->count > 0) {
+        ///@todo change to new info format
         printf("%s -- %s\n", OTDB_PARAM_VERSION, OTDB_PARAM_DATE);
-        printf("Designed by JP Norair, Haystack Technologies, Inc.\n");
-        
+        printf("Designed by JP Norair (jpnorair@indigresso.com)\n");
         exitcode = 0;
         goto main_EXIT;
     }
@@ -251,7 +204,6 @@ int main(int argc, char* argv[]) {
     if (nerrors > 0) {
         arg_print_errors(stdout,end,progname);
         printf("Try '%s --help' for more information.\n", progname);
-        
         exitcode = 1;
         goto main_EXIT;
     }
@@ -259,7 +211,6 @@ int main(int argc, char* argv[]) {
     /// special case: with no command line options induces brief help 
     if (argc==1) {
         printf("Try '%s --help' for more information.\n",progname);
-        
         exitcode = 0;
         goto main_EXIT;
     }
@@ -308,9 +259,7 @@ int main(int argc, char* argv[]) {
             goto main_EXIT;
         }
         
-        sub_json_loadargs(  json, 
-                            &verbose_val
-                            );
+        sub_json_loadargs(json, &verbose_val, &debug_val);
     }
     
     /// If no JSON file, then configuration should be through the arguments.
@@ -492,8 +441,8 @@ int otdb_main(cJSON* params) {
     /// typical in POSIX apps.  When activated, the threads are halted and
     /// Otter is shutdown.
     cli.exitcode = EXIT_SUCCESS;
-    _assign_signal(SIGINT, &sigint_handler);
-    _assign_signal(SIGQUIT, &sigquit_handler);
+    sub_assign_signal(SIGINT, &sigint_handler);
+    sub_assign_signal(SIGQUIT, &sigquit_handler);
     
     
     /// Invoke the child threads below.  All of the child threads run
@@ -597,15 +546,7 @@ int otdb_main(cJSON* params) {
 
 
 
-void sub_json_loadargs(cJSON* json, 
-                       char* ttyfile, 
-                       int* baudrate_val, 
-                       bool* pipe_val,
-                       int* intf_val,
-                       int* enc_bits,
-                       int* enc_parity,
-                       int* enc_stop,
-                       bool* verbose_val ) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -661,18 +602,7 @@ void sub_json_loadargs(cJSON* json,
     }
     
     /// 2. Systematically get all of the individual arguments
-    GET_STRING_ARG(ttyfile, 256, "tty");
-
-    GET_INT_ARG(baudrate_val, "baudrate");
-
-    GET_BOOL_ARG(pipe_val, "pipe");
-    
-    GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
-    
-    GET_INT_ARG(enc_bits, "tty_bits");
-    GET_CHAR_ARG(enc_parity, "tty_parity");
-    GET_INT_ARG(enc_stop, "tty_stopbits");
-
+    GET_BOOL_ARG(debug_val, "debug");
     GET_BOOL_ARG(verbose_val, "verbose");
 }
 

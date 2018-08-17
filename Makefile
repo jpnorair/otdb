@@ -47,7 +47,7 @@ all: directories $(TARGET)
 debug: directories $(TARGET).debug
 obj: $(SUBMODULES) $(LIBMODULES) 
 remake: cleaner all
-
+pkg: all install
 
 install: 
 	@mkdir -p $(SYSDIR)/bin

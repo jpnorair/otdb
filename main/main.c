@@ -36,8 +36,8 @@
 #include "otdb_cfg.h"
 
 // Application Headers
-#include "ppipe.h"
-#include "ppipelist.h"
+#include "pktlist.h"
+#include "ppio.h"
 #include "cmdsearch.h"
 #include "cmdhistory.h"
 #include "cliopt.h"
@@ -94,11 +94,9 @@ cli_struct cli;
   * management.
   */
   
-static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val);
+static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* xpath);
 
-static void ppipelist_populate(cJSON* obj);
-
-static int otdb_main(cJSON* params); 
+static int otdb_main(INTF_Type intf_val, const char* xpath, cJSON* params); 
 
 
 
@@ -152,30 +150,65 @@ bool _cli_is_blocked(void) {
 
 
 
+// notes:
+// 0. ch_inc/ch_dec (w/ ?:) and history pointers can be replaced by integers and modulo
+// 1. command history is glitching when command takes whole history buf (not c string)
+// 2. delete and remove line do not work for multiline command
+
+static dterm_t* _dtputs_dterm;
+
+int _dtputs(char* str) {
+    return dterm_puts(_dtputs_dterm, str);
+}
+
+
+static INTF_Type sub_intf_cmp(const char* s1) {
+    INTF_Type selected_intf;
+
+    if (strcmp(s1, "pipe") == 0) {
+        selected_intf = INTF_pipe;
+    }
+    else if (strcmp(s1, "socket") == 0) {
+        selected_intf = INTF_socket;
+    }
+    else {
+        selected_intf = INTF_interactive;
+    }
+    
+    return selected_intf;
+}
+
 
 
 int main(int argc, char* argv[]) {
     struct arg_file *config  = arg_file0("C", "config", "<file.json>",  "JSON based configuration file.");
     struct arg_lit  *verbose = arg_lit0("v","verbose",                  "use verbose mode");
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
+    struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
+    struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",     "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
     struct arg_end  *end     = arg_end(10);
     
-    void* argtable[]        = { config, verbose, debug, help, version, end };
+    void* argtable[]        = { config, verbose, debug, intf, xpath, help, version, end };
     const char* progname    = OTDB_PARAM(NAME);
     int exitcode            = 0;
     bool verbose_val        = false;
     bool debug_val          = false;
     cJSON* json             = NULL;
     char* buffer            = NULL;
+    INTF_Type intf_val      = INTF_interactive;
+    char xpath_val[256]     = "";
+    
     int nerrors;
+    bool bailout = false;
 
     if (arg_nullcheck(argtable) != 0) {
         /// NULL entries were detected, some allocations must have failed 
         fprintf(stderr, "%s: insufficient memory\n", progname);
-        exitcode=1;
-        goto main_EXIT;
+        exitcode = 1;
+        bailout = true;
+        goto main_FINISH;
     }
 
     /* Parse the command line as defined by argtable[] */
@@ -187,7 +220,8 @@ int main(int argc, char* argv[]) {
         arg_print_syntax(stdout, argtable, "\n");
         arg_print_glossary(stdout, argtable, "  %-25s %s\n");
         exitcode = 0;
-        goto main_EXIT;
+        bailout = true;
+        goto main_FINISH;
     }
 
     /// special case: '--version' takes precedence error reporting 
@@ -196,7 +230,8 @@ int main(int argc, char* argv[]) {
         printf("%s -- %s\n", OTDB_PARAM_VERSION, OTDB_PARAM_DATE);
         printf("Designed by JP Norair (jpnorair@indigresso.com)\n");
         exitcode = 0;
-        goto main_EXIT;
+        bailout = true;
+        goto main_FINISH;
     }
 
     /// If the parser returned any errors then display them and exit
@@ -205,14 +240,16 @@ int main(int argc, char* argv[]) {
         arg_print_errors(stdout,end,progname);
         printf("Try '%s --help' for more information.\n", progname);
         exitcode = 1;
-        goto main_EXIT;
+        bailout = true;
+        goto main_FINISH;
     }
 
     /// special case: with no command line options induces brief help 
     if (argc==1) {
         printf("Try '%s --help' for more information.\n",progname);
         exitcode = 0;
-        goto main_EXIT;
+        bailout = true;
+        goto main_FINISH;
     }
 
     /// Do some final checking of input values
@@ -228,7 +265,8 @@ int main(int argc, char* argv[]) {
         fp = fopen(config->filename[0], "r");
         if (fp == NULL) {
             exitcode = (int)'f';
-            goto main_EXIT;
+            bailout = true;
+            goto main_FINISH;
         }
 
         fseek(fp, 0L, SEEK_END);
@@ -238,7 +276,8 @@ int main(int argc, char* argv[]) {
         buffer = calloc(1, lSize+1);
         if (buffer == NULL) {
             exitcode = (int)'m';
-            goto main_EXIT;
+            bailout = true;
+            goto main_FINISH;
         }
 
         if(fread(buffer, lSize, 1, fp) == 1) {
@@ -249,48 +288,64 @@ int main(int argc, char* argv[]) {
             fclose(fp);
             fprintf(stderr, "read to %s fails\n", config->filename[0]);
             exitcode = (int)'r';
-            goto main_EXIT;
+            bailout = true;
+            goto main_FINISH;
         }
 
         /// At this point the file is closed and the json is parsed into the
         /// "json" variable.  
         if (json == NULL) {
             fprintf(stderr, "JSON parsing failed.  Exiting.\n");
-            goto main_EXIT;
+            bailout = true;
+            goto main_FINISH;
         }
-        
-        sub_json_loadargs(json, &verbose_val, &debug_val);
+        {   int tmp_intf;
+            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, xpath_val);
+            intf_val = tmp_intf;
+        }
     }
     
     /// If no JSON file, then configuration should be through the arguments.
     /// If both exist, then the arguments will override JSON.
+    if (intf->count != 0) {
+        intf_val = sub_intf_cmp(intf->sval[0]);
+    }
+    if (xpath->count != 0) {
+        strncpy(xpath_val, xpath->filename[0], 256);
+    }
     if (verbose->count != 0) {
         verbose_val = true;
     }
     
     /// Client Options.  These are read-only from internal modules
     cliopts.format      = FORMAT_Dynamic;
+    cliopts.intf        = intf_val;
     if (debug->count != 0) {
         cliopts.debug_on    = true;
         cliopts.verbose_on  = true;
     }
+    else {
+        cliopts.debug_on    = false;
+        cliopts.verbose_on  = verbose_val;
+    }
     cliopt_init(&cliopts);
+    
     
     /// All configuration is done.
     /// Send all configuration data to program main function.
-    exitcode = otdb_main(json);
+    main_FINISH:
+    arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
     
-    ///@todo some optimization could be realized by putting this ahead of the 
-    ///      call to otdb_main, although the JSON part must be kept and freed
-    ///      only after main runs.
-    main_EXIT:
+    if (bailout == false) {
+        exitcode = otdb_main(intf_val, (const char*)xpath_val, json);
+    }
+    
     if (json != NULL) {
         cJSON_Delete(json);
     }
     if (buffer != NULL) {
         free(buffer);
     }
-    arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
 
     return exitcode;
 }
@@ -300,23 +355,16 @@ int main(int argc, char* argv[]) {
 
 /// What this should do is start two threads, one for the character I/O on
 /// the dterm side, and one for the serial I/O.
-int otdb_main(cJSON* params) {    
-    
-    // MPipe Datastructs
-    mpipe_arg_t mpipe_args;
-    mpipe_ctl_t mpipe_ctl;
-    pktlist_t   mpipe_tlist;
-    pktlist_t   mpipe_rlist;
+int otdb_main(  INTF_Type intf_val,
+                const char* xpath,
+                cJSON* params   ) {    
     
     // DTerm Datastructs
     dterm_arg_t dterm_args;
     dterm_t     dterm;
     cmdhist     cmd_history;
     
-    // Child Threads (4)
-    pthread_t   thr_mpreader;
-    pthread_t   thr_mpwriter;
-    pthread_t   thr_mpparser;
+    // Child Threads (1)
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
@@ -331,59 +379,18 @@ int otdb_main(cJSON* params) {
     pthread_cond_t  pktrx_cond;
     pthread_mutex_t pktrx_mutex;
     
-    /// JSON params construct should contain the following objects
-    /// - "msgcall": { "msgname1":"call string 1", "msgname2":"call string 2" }
-    /// - TODO "msgpipe": (same as msg call, but call is open at startup and piped-to)
-    //mpipe_args.msgcall = cJSON_GetObjectItem(params, "msgcall");
-    
-
     /// Initialize command search table.  
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
-    cmd_init(NULL);
+    cmd_init(NULL, xpath);
     
-    /// Initialize Otter Environment Variables
-    ///@todo in the future, let's pull this from an initialization file or
-    ///      something dynamic as such.
-    
-    
-    
-    /// Initialize packet lists for transmitted packets and received packets
-    pktlist_init(&mpipe_rlist);
-    pktlist_init(&mpipe_tlist);
-    
-    
-    /// Initialize the ppipe system of named pipes, based on the input json
-    /// configuration file.  We have input and output pipes of several types.
-    /// @todo determine what all these types are.  They must work with the 
-    ///       relatively simple Gateway API.
-    /// @todo the "basepath" input to ppipelist_init() can be an argument 
-    ///       or some other configuration element.
-    ppipelist_init("./pipes/");
-    if (params != NULL) {
-        cJSON* obj;
-        
-        for (obj=params->child; obj!=NULL; obj=obj->next) {
-            if (strcmp(obj->string, "pipes") != 0) {
-                continue;
-            }
-            
-            /// This is the pipes object, the only one we care about here
-            for (obj=obj->child; obj!=NULL; obj=obj->next) {
-                ppipelist_populate(obj);
-            }
-            break;
-        }
-    }
     
     /// Initialize Thread Mutexes & Conds.  This is finnicky and it must be
     /// done before assignment into the argument containers, possibly due to 
     /// C-compiler foolishly optimizing.
-    
     assert( pthread_mutex_init(&dtwrite_mutex, NULL) == 0 );
     assert( pthread_mutex_init(&rlist_mutex, NULL) == 0 );
     assert( pthread_mutex_init(&tlist_mutex, NULL) == 0 );
-    
     assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
     pthread_cond_init(&cli.kill_cond, NULL);
     assert( pthread_mutex_init(&tlist_cond_mutex, NULL) == 0 );
@@ -391,27 +398,6 @@ int otdb_main(cJSON* params) {
     assert( pthread_mutex_init(&pktrx_mutex, NULL) == 0 );
     pthread_cond_init(&pktrx_cond, NULL);
 
-    
-    /// Open the mpipe TTY & Setup MPipe threads
-    /// The MPipe Filename (e.g. /dev/ttyACMx) is sent as the first argument
-    mpipe_args.mpctl            = &mpipe_ctl;
-    mpipe_args.rlist            = &mpipe_rlist;
-    mpipe_args.tlist            = &mpipe_tlist;
-    mpipe_args.puts_fn          = &_dtputs;
-    mpipe_args.dtwrite_mutex    = &dtwrite_mutex;
-    mpipe_args.rlist_mutex      = &rlist_mutex;
-    mpipe_args.tlist_mutex      = &tlist_mutex;
-    mpipe_args.tlist_cond_mutex = &tlist_cond_mutex;
-    mpipe_args.tlist_cond       = &tlist_cond;
-    mpipe_args.pktrx_mutex      = &pktrx_mutex;
-    mpipe_args.pktrx_cond       = &pktrx_cond;
-    mpipe_args.kill_mutex       = &cli.kill_mutex;
-    mpipe_args.kill_cond        = &cli.kill_cond;
-    
-    if (mpipe_open(&mpipe_ctl, ttyfile, baudrate, enc_bits, enc_parity, enc_stopbits, 0, 0, 0) < 0) {
-        cli.exitcode = -1;
-        goto otdb_main_TERM1;
-    }
     
     /// Open DTerm interface & Setup DTerm threads
     /// The dterm thread will deal with all other aspects, such as command
@@ -422,19 +408,21 @@ int otdb_main(cJSON* params) {
     dterm.fd_out                = STDOUT_FILENO;
     dterm_args.ch               = ch_init(&cmd_history);
     dterm_args.dt               = &dterm;
-    dterm_args.tlist            = &mpipe_tlist;
     dterm_args.dtwrite_mutex    = &dtwrite_mutex;
-    dterm_args.tlist_mutex      = &tlist_mutex;
-    dterm_args.tlist_cond       = &tlist_cond;
     dterm_args.kill_mutex       = &cli.kill_mutex;
     dterm_args.kill_cond        = &cli.kill_cond;
-    dterm_fn                    = (pipe == false) ? &dterm_prompter : &dterm_piper;
     
-    if (dterm_open(&dterm, pipe) < 0) {
+    ///@todo implement socket variant
+    switch(intf_val) {
+        case INTF_pipe:     dterm_fn = &dterm_piper;    break;
+        //case INTF_socket:   dterm_fn = &dterm_socket;   break;    
+        default:            dterm_fn = &dterm_prompter; break;
+    }
+    if (dterm_open(&dterm, intf_val) < 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
-
+    
     
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
@@ -450,24 +438,6 @@ int otdb_main(cJSON* params) {
     /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
     /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
     /// i.e. raise(SIGINT).
-    DEBUG_PRINTF("Creating theads\n");
-    if (OTDB_FEATURE(MODBUS) && (cliopt_getintf() == INTF_modbus)) {
-        DEBUG_PRINTF("Opening Modbus Interface\n");
-        pthread_create(&thr_mpreader, NULL, &modbus_reader, (void*)&mpipe_args);
-        pthread_create(&thr_mpwriter, NULL, &modbus_writer, (void*)&mpipe_args);
-        pthread_create(&thr_mpparser, NULL, &modbus_parser, (void*)&mpipe_args);
-    }
-    else if (OTDB_FEATURE(MPIPE) && (cliopt_getintf() == INTF_mpipe)) {
-        DEBUG_PRINTF("Opening Mpipe Interface\n");
-        pthread_create(&thr_mpreader, NULL, &mpipe_reader, (void*)&mpipe_args);
-        pthread_create(&thr_mpwriter, NULL, &mpipe_writer, (void*)&mpipe_args);
-        pthread_create(&thr_mpparser, NULL, &mpipe_parser, (void*)&mpipe_args);
-    }
-    else {
-        DEBUG_PRINTF("No active interface is available\n");
-        goto otdb_main_TERM2;
-    }
-    
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_args);
     DEBUG_PRINTF("Finished creating theads\n");
     
@@ -478,9 +448,6 @@ int otdb_main(cJSON* params) {
     pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
     
     DEBUG_PRINTF("Cancelling Theads\n");
-    pthread_cancel(thr_mpreader);
-    pthread_cancel(thr_mpwriter);
-    pthread_cancel(thr_mpparser);
     pthread_cancel(thr_dterm);
     
     otdb_main_TERM:
@@ -505,23 +472,15 @@ int otdb_main(cJSON* params) {
     
     /// Close the drivers/files and free all allocated data objects (primarily 
     /// in mpipe).
-    if (pipe == false) {
+    if (intf_val == INTF_interactive) {
         DEBUG_PRINTF("Closing DTerm\n");
         dterm_close(&dterm);
     }
     
     otdb_main_TERM2:
-    DEBUG_PRINTF("Closing MPipe\n");
-    mpipe_close(&mpipe_ctl);
     DEBUG_PRINTF("Freeing DTerm and Command History\n");
     dterm_free(&dterm);
     ch_free(&cmd_history);
-    
-    otdb_main_TERM1:
-    DEBUG_PRINTF("Freeing Mpipe Packet Lists\n");
-    mpipe_freelists(&mpipe_rlist, &mpipe_tlist);
-    DEBUG_PRINTF("Freeing PPipe lists\n");
-    ppipelist_deinit();
     
     // cli.exitcode is set to 0, unless sigint is raised.
     DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
@@ -546,7 +505,7 @@ int otdb_main(cJSON* params) {
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -601,6 +560,9 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val) {
         return;
     }
     
+    GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
+    GET_STRING_ARG(xpath, 256, "xpath");
+    
     /// 2. Systematically get all of the individual arguments
     GET_BOOL_ARG(debug_val, "debug");
     GET_BOOL_ARG(verbose_val, "verbose");
@@ -608,26 +570,6 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val) {
 
 
 
-
-
-
-void ppipelist_populate(cJSON* obj) {
-
-    if (obj != NULL) {
-        const char* prefix;
-        prefix = obj->string;
-        
-        obj = obj->child;
-        while (obj != NULL) { 
-            if (cJSON_IsString(obj) != 0) { 
-                //printf("%s, %s, %s\n", prefix, obj->string, obj->valuestring);
-                ppipelist_new(prefix, obj->string, obj->valuestring); 
-                //printf("%d\n", __LINE__);
-            }
-            obj = obj->next;
-        }
-    }
-}
 
 
  

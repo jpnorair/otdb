@@ -137,10 +137,10 @@ char *ch_prev(cmdhist *ch) {
 
 
 char *ch_inc(cmdhist *ch, char *cmdcur) {    
-	return ++cmdcur == ch->history + CMD_HISTSIZE ? ch->history : cmdcur;
+	return ((cmdcur+1) == &ch->history[CMD_HISTSIZE]) ? ch->history : cmdcur;
 }
 
 
 char *ch_dec(cmdhist *ch, char *cmdcur) {
-	return cmdcur == (ch->history) ? ch->history+CMD_HISTSIZE-1 : (cmdcur - 1);
+	return (cmdcur == ch->history) ? &ch->history[CMD_HISTSIZE-1] : (cmdcur - 1);
 }

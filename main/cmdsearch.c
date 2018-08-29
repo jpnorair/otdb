@@ -21,6 +21,7 @@
 #include "cmds.h"
 #include "cmdsearch.h"
 
+#include <bintex.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -34,82 +35,98 @@
 
 // sorted list of supported commands
 
-///@todo this will need to be dynamic and build during startup based on an 
-///      initialization file and plug-in libraries stored with the app.
-///
 typedef struct {
     const char      name[8]; 
     cmdaction_t     action; 
 } cmd_t;
 
-static const cmd_t otter_commands[] = {
+static const cmd_t otdb_commands[] = {
     { "bye",        &cmd_quit  },
-    { "null",       &app_null },
+    { "cmdls",      &cmd_cmdlist },
     { "quit",       &cmd_quit },
     { "raw",        &cmd_raw },
-    { "set",        &cmd_set },
-    { "sethome",    &cmd_sethome },
-    { "su",         &cmd_su },
-    { "whoami",     &cmd_whoami },
 };
 
 ///@todo Make this thread safe by adding a mutex here.
-///      It's not technically required yet becaus only one thread in otter uses
+///      It's not technically required yet becaus only one thread in otdb uses
 ///      cmdsearch, but we should put it in soon, just in case.
 static cmdtab_t cmdtab_default;
-static cmdtab_t* otter_cmdtab;
+static cmdtab_t* otdb_cmdtab;
 
-#if OTTER_FEATURE(HBUILDER)
-static void* hbuilder_handle;
-#endif
 
 typedef enum {
-    EXTCMD_null     = 0,
-#   if OTTER_FEATURE(HBUILDER)
-    EXTCMD_hbuilder,
-#   endif
+    EXTCMD_null = 0,
+    EXTCMD_path,
     EXTCMD_MAX
-} otter_extcmd_t;
+} otdb_extcmd_t;
 
 
 
 
-int cmd_init(cmdtab_t* init_table) {
+int cmd_init(cmdtab_t* init_table, const char* xpath) {
     
-    otter_cmdtab = (init_table == NULL) ? &cmdtab_default : init_table;
+    otdb_cmdtab = (init_table == NULL) ? &cmdtab_default : init_table;
 
-    /// Add Otter commands to the cmdtab.
-    for (int i=0; i<(sizeof(otter_commands)/sizeof(cmd_t)); i++) {
-        int rc;
-        rc = cmdtab_add(otter_cmdtab, otter_commands[i].name, (void*)otter_commands[i].action, NULL);
+    /// cmdtab_add prioritizes subsequent command adds, so the highest priority
+    /// commands should be added last.
+    
+    /// First, add commands that are available from the external command path.
+    if (xpath != NULL) {
+        size_t xpath_len = strlen(xpath);
+        char buffer[256];
+        char* cmd;
+        FILE* stream;
+        int test;
         
+        if (xpath_len > 0) { 
+            ///@todo make this find call work properly on mac and linux.
+#           if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+            snprintf(buffer, 256, "find %s -perm +111 -type f", xpath);
+            stream = popen(buffer, "r");
+#           elif defined(__linux__)
+            snprintf(buffer, 256, "find %s -perm /u=x,g=x,o=x -type f", xpath);
+            stream = popen(buffer, "r");
+#           else
+            stream = NULL;
+#           endif
+            
+            if (stream != NULL) {
+                do {
+                    test = fscanf(stream, "%s", buffer);
+                    if (test == 1) {
+                        cmd = &buffer[xpath_len];
+                        if (strlen(cmd) >= 2) {
+                            cmdtab_add(otdb_cmdtab, buffer, (void*)xpath, (void*)EXTCMD_path);
+                        }
+                    }
+                } while (test != EOF);
+                
+                pclose(stream);
+            }
+        }
+    }
+
+    /// Last, Add Otter commands to the cmdtab.
+    for (int i=0; i<(sizeof(otdb_commands)/sizeof(cmd_t)); i++) {
+        int rc;
+
+        rc = cmdtab_add(otdb_cmdtab, otdb_commands[i].name, (void*)otdb_commands[i].action, (void*)EXTCMD_null);
         if (rc != 0) {
             fprintf(stderr, "ERROR: cmdtab_add() from %s line %d returned %d.\n", __FUNCTION__, __LINE__, rc);
             return -1;
         }
         
         /// Run command with dt=NULL to initialize the command
-        ///@note This is specific to otter, it's not a requirement of cmdtab
-        otter_commands[i].action(NULL, NULL, NULL, NULL, 0);
+        ///@note This is specific to otdb, it's not a requirement of cmdtab
+        otdb_commands[i].action(NULL, NULL, NULL, NULL, 0);
     }
-    
-
-    /// If HBuilder is enabled, pass this table into the hbuilder initializer
-#   if OTTER_FEATURE(HBUILDER)
-    
-#   endif
-    
-    /// Any future command lists can be added below.
-    
-    ///@todo a path-based command finder should go here.
-    
     
     return 0;
 }
 
 
 
-int cmd_run(cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_run(const cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int output;
 
     if (cmd == NULL) {
@@ -117,19 +134,40 @@ int cmd_run(cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t
     }
     
     // handling of different command types
-    switch ((otter_extcmd_t)cmd->extcmd) {
+    switch ((otdb_extcmd_t)cmd->extcmd) {
         case EXTCMD_null:
+            //fprintf(stderr, "EXTCMD_null: inbytes=%d, src=%s\n", *inbytes, (char*)src);
             output = ((cmdaction_t)cmd->action)(dt, dst, inbytes, src, dstmax);
             break;
+
+        case EXTCMD_path: {
+            char xpath[512];
+            char* cursor;
+            FILE* stream;
+            int rsize;
+            //fprintf(stderr, "EXTCMD_path: inbytes=%d, src=%s\n", *inbytes, (char*)src);
             
-#       if OTTER_FEATURE(HBUILDER)
-        case EXTCMD_hbuilder:
-            output = cmdext_hbuilder(hbuilder_handle, (void*)cmd->action, dt, dst, inbytes, src, dstmax);
-            break;
-#       endif
+            cursor          = xpath;
+            cursor          = stpncpy(cursor, (const char*)(cmd->action), (&xpath[512] - cursor));
+            cursor          = stpncpy(cursor, (const char*)(cmd->name), (&xpath[512] - cursor));
+            cursor          = stpncpy(cursor, " ", (&xpath[512] - cursor));
+            rsize           = (int)(&xpath[512] - cursor);
+            rsize           = (*inbytes < rsize) ? *inbytes : (rsize-1);
+            cursor[rsize]   = 0;
+            memcpy(cursor, src, rsize);
+
+            stream = popen(xpath, "r");
+            if (stream == NULL) {
+                output = -1;    ///@todo make sure this is correct error code
+            }
+            else {
+                output = bintex_fs(stream, dst, (int)dstmax);
+                pclose(stream);
+            }
+        } break;
 
         default:
-            ///@todo a path-based command executor should go here.
+            //fprintf(stderr, "No Command Extension found: inbytes=%d, src=%s\n", *inbytes, (char*)src);
             output = -2;
             break;
     }
@@ -159,13 +197,13 @@ int cmd_getname(char* cmdname, char* cmdline, size_t max_cmdname) {
 
 
 const cmdtab_item_t* cmd_search(char *cmdname) {
-    return cmdtab_search(otter_cmdtab, cmdname);
+    return cmdtab_search(otdb_cmdtab, cmdname);
 }
 
 
 
 const cmdtab_item_t* cmd_subsearch(char *namepart) {
-    return cmdtab_subsearch(otter_cmdtab, namepart);
+    return cmdtab_subsearch(otdb_cmdtab, namepart);
 }
 
 

@@ -22,8 +22,9 @@
 #include <stdint.h>
 
 typedef enum {
-    INTF_mpipe  = 0,
-    INTF_modbus = 1,
+    INTF_interactive  = 0,
+    INTF_pipe = 1,
+    INTF_socket = 2,
     INTF_max
 } INTF_Type;
 

@@ -157,58 +157,57 @@ int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 }
 
 
-///@todo make separate commands for file & string based input
-// Raw Protocol Entry: This is implemented fully and it takes a Bintex
-// expression as input, with no special keywords or arguments.
-int cmd_raw(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    const char* filepath;
-    FILE*       fp;
-    int         bytesout;
-    
-    /// dt == NULL is the initialization case.
-    /// There may not be an initialization for all command groups.
-    if (dt == NULL) {
-        return 0;
-    }
-    
-    INPUT_SANITIZE();
-    
-    // Consider absolute path
-    if (src[0] == '/') {
-        filepath = (const char*)src;
-    }
-    
-    // Build path from relative path, co-opting packet buffer temporarily
-    else {
-        int bytes_left;
-        bytes_left = (HOME_PATH_MAX - home_path_len);
-        strncat((char*)home_path, (char*)src, bytes_left);
-        filepath = (const char*)home_path;
-    }
-    
-    // Try opening the file.  If it doesn't work, then assume the input is a
-    // bintex string and not a file string
-    fp = fopen(filepath, "r");
-    if (fp != NULL) {
-        bytesout = bintex_fs(fp, (unsigned char*)dst, (int)dstmax);
-        fclose(fp);
-    }
-    else {
-        bytesout = bintex_ss((unsigned char*)src, (unsigned char*)dst, (int)dstmax);
-    }
-    
-    // Undo whatever was done to the home_path
-    home_path[home_path_len] = 0;
-    
-    ///@todo convert the character number into a line and character number
-    if (bytesout < 0) {
-        dterm_printf(dt, "Bintex error on character %d.\n", -bytesout);
-    }
-    else if (cliopt_isverbose() && (bytesout > 0)) {
-        fprintf(stdout, "--> raw packetizing %d bytes (max=%zu)\n", bytesout, dstmax);
-    }
+int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
 
-    return bytesout;
+int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_restore(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_readhdr(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_readperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_writeperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+
+
+
+int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+
+
+int cmd_setid(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
 }
 
 

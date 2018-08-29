@@ -41,11 +41,24 @@ typedef struct {
 } cmd_t;
 
 static const cmd_t otdb_commands[] = {
-    { "bye",        &cmd_quit  },
     { "cmdls",      &cmd_cmdlist },
+    { "del",        &cmd_del },
+    { "open",       &cmd_open },
+    { "new",        &cmd_new },
     { "quit",       &cmd_quit },
-    { "raw",        &cmd_raw },
+    { "r",          &cmd_read },
+    { "r*",         &cmd_readall },
+    { "restore",    &cmd_restore },
+    { "rh",         &cmd_readhdr },
+    { "rp",         &cmd_readperms },
+    { "w",          &cmd_write },
+    { "wp",         &cmd_writeperms },
+    { "save",       &cmd_save },
+    { "setid",      &cmd_setid },
+    { "z",          &cmd_restore },
 };
+
+
 
 ///@todo Make this thread safe by adding a mutex here.
 ///      It's not technically required yet becaus only one thread in otdb uses

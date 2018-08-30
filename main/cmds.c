@@ -94,26 +94,11 @@ uint8_t* goto_eol(uint8_t* src) {
 
 #define INPUT_SANITIZE() do { \
     if ((src == NULL) || (dst == NULL)) {   \
-        *inbytes = 0;                                       \
-        return -1;                                          \
-    }                                                       \
-    {   uint8_t* eol    = goto_eol(src);                    \
-        *inbytes        = (int)(eol-src);                   \
-        *eol   = 0;                                         \
-    }                                                       \
+        *inbytes = 0;                       \
+        return -1;                          \
+    }                                       \
 } while(0)
 
-#define INPUT_SANITIZE_FLAG_EOS(IS_EOS) do { \
-    if ((src == NULL) || (dst == NULL)) {   \
-        *inbytes = 0;                                       \
-        return -1;                                          \
-    }                                                       \
-    {   uint8_t* eol    = goto_eol(src);                    \
-        *inbytes        = (int)(eol-src);                   \
-        IS_EOS          = (bool)(*eol == 0);                \
-        *eol   = 0;                                         \
-    }                                                       \
-} while(0)
 
 
 
@@ -128,7 +113,6 @@ int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
     if (dt == NULL) {
         return 0;
     }
-    
     INPUT_SANITIZE();
     
     raise(SIGINT);
@@ -138,38 +122,74 @@ int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 
 extern cmdtab_t* otdb_cmdtab;
 int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int bytes_out;
-    char cmdprint[1024];
 
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
     if (dt == NULL) {
         return 0;
     }
-    
     INPUT_SANITIZE();
     
-    bytes_out = cmdtab_list(otdb_cmdtab, cmdprint, 1024);
-    dterm_puts(dt, "Commands available:\n");
-    dterm_puts(dt, cmdprint);
+    return cmdtab_list(otdb_cmdtab, (char*)dst, dstmax);
+}
+
+
+
+int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    /// dt == NULL is the initialization case.
+    /// There may not be an initialization for all command groups.
+    if (dt == NULL) {
+        return 0;
+    }
+    INPUT_SANITIZE();
+    
+    
     
     return 0;
 }
 
+int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    return 0;
+}
+
+
+
 
 int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+    //int otfs_del(void* handle, const otfs_t* fs, bool unload);
+    
     return 0;
 }
 
 int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+    /// 1. Load FS template and defaults (JSON).  
+    /// 2. Generate the binary from the JSON.
+    /// 3. Create a new filesystem instance with this binary.
+    
+    /// If no files are provided, use libotfs defaults
+    //int otfs_load_defaults(void* handle, otfs_t* fs, size_t maxalloc);
+    
+    //int otfs_new(void* handle, const otfs_t* fs);
     return 0;
 }
 
 int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    /// Set FS if one is provided
+    //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+    
+    /// Read Data out from the file as needed (using veelite routines, copy from alp_filedata.c or utilize it).
+
     return 0;
 }
 
 int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    /// Set FS if one is provided
+    //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+    
+    /// Read Data out from the file as needed (using veelite routines, copy from alp_filedata.c or utilize it).
+    
     return 0;
 }
 
@@ -206,7 +226,8 @@ int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 
 
 
-int cmd_setid(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_setfs(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
     return 0;
 }
 

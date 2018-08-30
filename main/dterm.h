@@ -22,7 +22,7 @@
 
 // Application Headers
 #include "cmdhistory.h"
-#include "ppio.h"
+
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -95,6 +95,7 @@ typedef struct {
 typedef struct {
     dterm_t*            dt;
     cmdhist*            ch;
+    void*               handle;
     
     pthread_mutex_t*    dtwrite_mutex;
     pthread_mutex_t*    kill_mutex;

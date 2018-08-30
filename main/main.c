@@ -36,8 +36,6 @@
 #include "otdb_cfg.h"
 
 // Application Headers
-#include "pktlist.h"
-#include "ppio.h"
 #include "cmdsearch.h"
 #include "cmdhistory.h"
 #include "cliopt.h"
@@ -46,7 +44,8 @@
 // HBuilder Package Libraries
 #include <argtable3.h>
 #include <cJSON.h>
-#include <cmdtab.h>     // Maybe
+#include <cmdtab.h>
+#include <otfs.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -365,6 +364,7 @@ int otdb_main(  INTF_Type intf_val,
     cmdhist     cmd_history;
     
     // Child Threads (1)
+    void*       otfs_handle;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
@@ -384,6 +384,13 @@ int otdb_main(  INTF_Type intf_val,
     ///      something dynamic as such.
     cmd_init(NULL, xpath);
     
+    
+    /// Initialize OTFS
+    if (otfs_init(&otfs_handle) < 0) {
+        cli.exitcode = -1;
+        goto otdb_main_TERM1;
+    }
+       
     
     /// Initialize Thread Mutexes & Conds.  This is finnicky and it must be
     /// done before assignment into the argument containers, possibly due to 
@@ -406,6 +413,7 @@ int otdb_main(  INTF_Type intf_val,
     _dtputs_dterm               = &dterm;
     dterm.fd_in                 = STDIN_FILENO;
     dterm.fd_out                = STDOUT_FILENO;
+    dterm_args.handle           = otfs_handle;
     dterm_args.ch               = ch_init(&cmd_history);
     dterm_args.dt               = &dterm;
     dterm_args.dtwrite_mutex    = &dtwrite_mutex;
@@ -478,6 +486,10 @@ int otdb_main(  INTF_Type intf_val,
     }
     
     otdb_main_TERM2:
+    DEBUG_PRINTF("Freeing OTFS\n");
+    otfs_deinit(otfs_handle);
+    
+    otdb_main_TERM1:
     DEBUG_PRINTF("Freeing DTerm and Command History\n");
     dterm_free(&dterm);
     ch_free(&cmd_history);

@@ -164,6 +164,27 @@ int dterm_close(dterm_t* dt) {
   * reads stdin pipe as an atomic line read.  Prompter requires character by
   * character input and analysis, and it enables shell-like features.
   */
+static void sub_str_sanitize(char* str, size_t max) {
+    while ((*str != 0) && (max != 0)) {
+        if (*str == '\r') {
+            *str = '\n';
+        }
+        str++;
+        max--;
+    }
+}
+
+static size_t sub_str_mark(char* str, size_t max) {
+    char* s1 = str;
+    while ((*str!=0) && (*str!='\n') && (max!=0)) {
+        max--;
+        str++;
+    }
+    if (*str=='\n') *str = 0;
+    
+    return (str - s1);
+}
+
 
 void* dterm_piper(void* args) {
 /// Thread that:
@@ -171,11 +192,11 @@ void* dterm_piper(void* args) {
 /// <LI> Processes each LINE and takes action accordingly. </LI>
 /// 
     
-    uint8_t     protocol_buf[1024];
-    char        cmdname[256];
-    dterm_t*    dt          = ((dterm_arg_t*)args)->dt;
-    int         linelen     = 0;
-    char*       linebuf     = dt->linebuf;
+    uint8_t             protocol_buf[1024];
+    char                cmdname[32];
+    dterm_t*            dt          = ((dterm_arg_t*)args)->dt;
+    int                 loadlen     = 0;
+    char*               loadbuf     = dt->linebuf;
     
     
     // Initial state = off
@@ -184,20 +205,28 @@ void* dterm_piper(void* args) {
     /// Get each line from the pipe.
     while (1) {
         int cmdlen;
+        int linelen;
         const cmdtab_item_t* cmdptr;
     
-        if (linelen <= 0) {
+        if (loadlen <= 0) {
             dterm_reset(dt);
-            linelen = (int)read(dt->fd_in, dt->linebuf, 1024);
-            linebuf = dt->linebuf;
+            loadlen = (int)read(dt->fd_in, dt->linebuf, 1024);
+            loadbuf = dt->linebuf;
+            sub_str_sanitize(loadbuf, (size_t)loadlen);
         }
         
-        // Burn whitespace ahead of command, then search/get command in list.
-        while (isspace(*linebuf)) { linebuf++; linelen--; }
-        cmdlen  = cmd_getname(cmdname, linebuf, 256);
+        // Burn whitespace ahead of command.
+        // Then determine length until newline, or null.
+        // then search/get command in list.
+        while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+        linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+        cmdlen  = cmd_getname(cmdname, loadbuf, 32);
         cmdptr  = cmd_search(cmdname);
         
-        //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", linebuf, linelen, cmdname, cmdlen, cmdptr);
+        // Test only
+        //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
+        //fflush(stderr);
+        // Test only
         
         ///@todo this is the same block of code used in prompter.  It could be
         ///      consolidated into a subroutine called by both.
@@ -207,27 +236,21 @@ void* dterm_piper(void* args) {
             if (linelen > 0) {
                 dterm_puts(dt, "--> command not found\n");
             }
-            linelen = 0;
         }
         else {
             int bytesout;
-            int bytesin = 0;
+            int bytesin = linelen;
 
-            linebuf += cmdlen;
-            linelen -= cmdlen;
-            
             ///@todo final arg is max size of protocol_buf.  It should be changed
             ///      to a non constant.
-            bytesout = cmd_run(cmdptr, dt, protocol_buf, &bytesin, (uint8_t*)linebuf, 1024);
+            //fprintf(stderr, "bytesin=%d\nloadlen=%d\n", bytesin, (char*)loadbuf);
+            //fflush(stderr);
+            bytesout = cmd_run(cmdptr, dt, protocol_buf, &bytesin, (uint8_t*)(loadbuf+cmdlen), 1024);
             
-            /// bytesin is an input that tells how many bytes have been consumed
-            /// from the line.  If bytes remain they get treated as the next
-            /// command.
-            bytesin += 1;           // eat terminator (null or \n)
-            linelen -= bytesin;
-            linebuf += bytesin;
-            
-            //fprintf(stderr, "\noutput\nlinebuf=%s\nlinelen=%d\n", linebuf, linelen);
+            // Test only
+            //fprintf(stderr, "\noutput\nloadbuf=%s\nloadlen=%d\n", loadbuf, loadlen);
+            //fflush(stderr);
+            // Test only
             
             ///@todo spruce-up the command error reporting, maybe even with
             ///      a cursor showing where the first error was found.
@@ -242,9 +265,14 @@ void* dterm_piper(void* args) {
                 // Test only
                 //test_dumpbytes(protocol_buf, bytesout, "TX Packet Add");
                 // Test only
+                
+                write(dt->fd_out, (char*)protocol_buf, bytesout);
             }
         }
-
+        
+        // +1 eats the terminator
+        loadlen -= (linelen + 1);
+        loadbuf += (linelen + 1);
     }
     
     /// This code should never occur, given the while(1) loop.

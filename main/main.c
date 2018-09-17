@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
     struct arg_lit  *verbose = arg_lit0("v","verbose",                  "use verbose mode");
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
     struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
-    struct arg_file *socket  = arg_file0("D","daemon","socket",         "Socket path/address to use for otdb daemon");
+    struct arg_file *socket  = arg_file0("S","socket","path/addr",      "Socket path/address to use for otdb daemon");
     struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",    "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");

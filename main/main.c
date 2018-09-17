@@ -93,9 +93,9 @@ cli_struct cli;
   * management.
   */
   
-static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* xpath);
+static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* socket, char* xpath);
 
-static int otdb_main(INTF_Type intf_val, const char* xpath, cJSON* params); 
+static int otdb_main(INTF_Type intf_val, const char* socket, const char* xpath, cJSON* params); 
 
 
 
@@ -180,33 +180,44 @@ static INTF_Type sub_intf_cmp(const char* s1) {
 
 
 int main(int argc, char* argv[]) {
-    struct arg_file *config  = arg_file0("C", "config", "<file.json>",  "JSON based configuration file.");
+#   define FILL_STRINGARG(ARGITEM, VAR)   do { \
+        size_t str_sz = strlen(ARGITEM->filename[0]) + 1;   \
+        if (VAR != NULL) free(VAR);                         \
+        VAR = malloc(str_sz);                               \
+        if (VAR == NULL) goto main_FINISH;                  \
+        memcpy(VAR, ARGITEM->filename[0], str_sz);          \
+    } while(0);
+
+    struct arg_file *config  = arg_file0("c", "config", "<file.json>",  "JSON based configuration file.");
     struct arg_lit  *verbose = arg_lit0("v","verbose",                  "use verbose mode");
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
     struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
-    struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",     "Path to directory of external data processor programs");
+    struct arg_file *socket  = arg_file0("D","daemon","socket",         "Socket path/address to use for otdb daemon");
+    struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",    "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
     struct arg_end  *end     = arg_end(10);
     
-    void* argtable[]        = { config, verbose, debug, intf, xpath, help, version, end };
-    const char* progname    = OTDB_PARAM(NAME);
-    int exitcode            = 0;
-    bool verbose_val        = false;
-    bool debug_val          = false;
-    cJSON* json             = NULL;
-    char* buffer            = NULL;
-    INTF_Type intf_val      = INTF_interactive;
-    char xpath_val[256]     = "";
-    
+    void* argtable[] = { config, verbose, debug, intf, socket, xpath, help, version, end };
+    const char* progname = OTDB_PARAM(NAME);
     int nerrors;
-    bool bailout = false;
+    bool bailout        = true;
+    int exitcode        = 0;
+    
+    char* xpath_val     = NULL;
+    char* socket_val    = NULL;
+    cJSON* json         = NULL;
+    char* buffer        = NULL;
+    
+    INTF_Type intf_val  = INTF_interactive;
+    bool verbose_val    = false;
+    bool debug_val      = false;
+    
 
     if (arg_nullcheck(argtable) != 0) {
         /// NULL entries were detected, some allocations must have failed 
         fprintf(stderr, "%s: insufficient memory\n", progname);
         exitcode = 1;
-        bailout = true;
         goto main_FINISH;
     }
 
@@ -219,7 +230,6 @@ int main(int argc, char* argv[]) {
         arg_print_syntax(stdout, argtable, "\n");
         arg_print_glossary(stdout, argtable, "  %-25s %s\n");
         exitcode = 0;
-        bailout = true;
         goto main_FINISH;
     }
 
@@ -229,7 +239,6 @@ int main(int argc, char* argv[]) {
         printf("%s -- %s\n", OTDB_PARAM_VERSION, OTDB_PARAM_DATE);
         printf("Designed by JP Norair (jpnorair@indigresso.com)\n");
         exitcode = 0;
-        bailout = true;
         goto main_FINISH;
     }
 
@@ -239,7 +248,6 @@ int main(int argc, char* argv[]) {
         arg_print_errors(stdout,end,progname);
         printf("Try '%s --help' for more information.\n", progname);
         exitcode = 1;
-        bailout = true;
         goto main_FINISH;
     }
 
@@ -247,7 +255,6 @@ int main(int argc, char* argv[]) {
     if (argc==1) {
         printf("Try '%s --help' for more information.\n",progname);
         exitcode = 0;
-        bailout = true;
         goto main_FINISH;
     }
 
@@ -264,7 +271,6 @@ int main(int argc, char* argv[]) {
         fp = fopen(config->filename[0], "r");
         if (fp == NULL) {
             exitcode = (int)'f';
-            bailout = true;
             goto main_FINISH;
         }
 
@@ -275,7 +281,6 @@ int main(int argc, char* argv[]) {
         buffer = calloc(1, lSize+1);
         if (buffer == NULL) {
             exitcode = (int)'m';
-            bailout = true;
             goto main_FINISH;
         }
 
@@ -287,7 +292,6 @@ int main(int argc, char* argv[]) {
             fclose(fp);
             fprintf(stderr, "read to %s fails\n", config->filename[0]);
             exitcode = (int)'r';
-            bailout = true;
             goto main_FINISH;
         }
 
@@ -295,11 +299,10 @@ int main(int argc, char* argv[]) {
         /// "json" variable.  
         if (json == NULL) {
             fprintf(stderr, "JSON parsing failed.  Exiting.\n");
-            bailout = true;
             goto main_FINISH;
         }
         {   int tmp_intf;
-            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, xpath_val);
+            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, xpath_val);
             intf_val = tmp_intf;
         }
     }
@@ -332,6 +335,8 @@ int main(int argc, char* argv[]) {
     
     /// All configuration is done.
     /// Send all configuration data to program main function.
+    bailout = false;
+    
     main_FINISH:
     arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
     
@@ -517,7 +522,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* xpath) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -528,11 +533,13 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
         }   \
     } while(0)
                        
-#   define GET_STRING_ARG(DST, LIMIT, NAME) do { \
+#   define GET_STRING_ARG(DST, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
         if (arg != NULL) {  \
             if (cJSON_IsString(arg) != 0) {    \
-                strncpy(DST, arg->valuestring, LIMIT);   \
+                size_t sz = strlen(arg->valuestring)+1; \
+                DST = malloc(sz);   \
+                if (DST != NULL) memcpy(DST, arg->valuestring, sz); \
             }   \
         }   \
     } while(0)
@@ -573,7 +580,8 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
     }
     
     GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
-    GET_STRING_ARG(xpath, 256, "xpath");
+    GET_STRING_ARG(socket, "socket");
+    GET_STRING_ARG(xpath, "xpath");
     
     /// 2. Systematically get all of the individual arguments
     GET_BOOL_ARG(debug_val, "debug");

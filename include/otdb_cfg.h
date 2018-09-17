@@ -25,22 +25,25 @@
 #endif
 
 /// Default feature configurations
-#define OTDB_FEATURE(VAL)          OTDB_FEATURE_##VAL
+#define OTDB_FEATURE(VAL)           OTDB_FEATURE_##VAL
 #ifndef OTDB_FEATURE_HBUILDER
-#   define OTDB_FEATURE_HBUILDER   defined(__HBUILDER__)
+#   define OTDB_FEATURE_HBUILDER    defined(__HBUILDER__)
+#endif
+#ifndef OTDB_FEATURE_CLIENT
+#   define OTDB_FEATURE_CLIENT      DISABLED
 #endif
 
 /// Parameter configurations
 ///@todo redefine 
-#define OTDB_PARAM(VAL)            OTDB_PARAM_##VAL
+#define OTDB_PARAM(VAL)             OTDB_PARAM_##VAL
 #ifndef OTDB_PARAM_NAME
-#   define OTDB_PARAM_NAME         "otdb"
+#   define OTDB_PARAM_NAME          "otdb"
 #endif
 #ifndef OTDB_PARAM_VERSION 
-#   define OTDB_PARAM_VERSION      "0.1.0"
+#   define OTDB_PARAM_VERSION       "0.1.0"
 #endif
 #ifndef OTDB_PARAM_DATE
-#   define OTDB_PARAM_DATE         __DATE__
+#   define OTDB_PARAM_DATE          __DATE__
 #endif
 
 

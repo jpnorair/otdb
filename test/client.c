@@ -60,15 +60,32 @@
 
 // Command Line Interface (CLI) data features.
 typedef struct {
-    int             exitcode;
-    pthread_mutex_t kill_mutex;
-    pthread_cond_t  kill_cond;
-    char*           call_path;
+    int exitcode;
+    bool run;
 } cli_struct;
 
 cli_struct cli;
 
 
+
+/** Test Commands <BR>
+  * ========================================================================<BR>
+  */
+  
+#define TEST_CMDS   10
+const char* cmd1    = "test command 1";
+const char* cmd2    = "test command 2";
+const char* cmd3    = "test command 3";
+const char* cmd4    = "test command 4";
+const char* cmd5    = "test command 5"; 
+const char* cmd6    = "test command 6";
+const char* cmd7    = "test command 7";
+const char* cmd8    = "test command 8";
+const char* cmd9    = "test command 9";
+const char* cmd10   = "test command 10";  
+
+const char* otdbcmd[TEST_CMDS] = \
+    { cmd1, cmd2, cmd3, cmd4, cmd5, cmd6, cmd7, cmd8, cmd9, cmd10 };
 
 
 
@@ -95,37 +112,16 @@ static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
 }
 
 static void sigint_handler(int sigcode) {
-    cli.exitcode = EXIT_FAILURE;
-    pthread_cond_signal(&cli.kill_cond);
+    cli.exitcode    = EXIT_FAILURE;
+    cli.run         = false;
 }
 
 static void sigquit_handler(int sigcode) {
-    cli.exitcode = EXIT_SUCCESS;
-    pthread_cond_signal(&cli.kill_cond);
+    cli.exitcode    = EXIT_SUCCESS;
+    cli.run         = false;
 }
 
 
-
-
-
-
-// NOTE Change to transparent mutex usage or not?
-/*
-void _cli_block(bool set) {
-    pthread_mutex_lock(&cli.block_mutex);
-    cli.block_in = set;
-    pthread_mutex_unlock(&cli.block_mutex);
-}
-
-bool _cli_is_blocked(void) {
-    volatile bool retval;
-    pthread_mutex_lock(&cli.block_mutex);
-    retval = cli.block_in;
-    pthread_mutex_unlock(&cli.block_mutex);
-    
-    return retval;
-}
-*/
 
 
 
@@ -251,16 +247,12 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     int sockfd
     int rc;
     
-       
-    /// Initialize Thread Mutexes & Conds.
-    assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
-    pthread_cond_init(&cli.kill_cond, NULL);
-
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
     /// typical in POSIX apps.  When activated, the threads are halted and
     /// Otter is shutdown.
-    cli.exitcode = EXIT_SUCCESS;
+    cli.run         = true;
+    cli.exitcode    = EXIT_SUCCESS;
     sub_assign_signal(SIGINT, &sigint_handler);
     sub_assign_signal(SIGQUIT, &sigquit_handler);
     
@@ -294,13 +286,13 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
         
         otdbpid = fork();
         
-        if (pid < 0) {
+        if (otdbpid < 0) {
             fprintf(stderr, "Failed to fork OTDB.\n");
             goto client_main_END;
         }
     
         /// Child Process per fork()
-        if (pid == 0) { 
+        if (otdbpid == 0) { 
             close(otdb_stdout[0]);
             dup2(otdb_stdout[1], 1);
             execl("/bin/sh", "sh", "-c", otdbcall, NULL);
@@ -319,7 +311,7 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     if (sockfd == -1) {
         perror("socket error");
         cli.exitcode = -1;
-        goto client_main_END;
+        goto client_main_TERM1;
     }
 
     memset(&sockaddr, 0, sizeof(sockaddr));
@@ -329,75 +321,58 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     if (connect(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == -1) {
         perror("connect error");
         cli.exitcode = -1;
-        goto client_main_END;
+        goto client_main_TERM2;
     }
 
-    while (1) {
+    while (cli.run == true) {
         if (i >= TEST_CMDS) {
             i = 0;
         }
         
+        // Send the command to OTDB
+        rc = send(sockfd, otdbcmd[i], 0);
+        if (rc > 0) {
+            fprintf(stdout, "Client sent %d bytes:\n%*s\n\n", rc, rc, sockbuf);
+        }
+        else {
+            fprintf(stderr, "Client socket send error %d\n", errno);
+        }
         
-        
-    
         // Receive response from OTDB
         rc = recv(sockfd, sockbuf, sizeof(sockbuf), MSG_WAITALL);
         if (rc > 0) {
-            fprintf(stdout, "OTDB sent %d bytes:\n%*s\n", rc, rc, sockbuf);
+            fprintf(stdout, "OTDB sent %d bytes:\n%*s\n\n", rc, rc, sockbuf);
+        }
+        else if (rc == 0) {
+            fprintf(stderr, "OTDB socket is closed!\n");
+            break;
         }
         else {
-            fprintf(stderr, "OTDB socket receive error %d\n", rc);
+            fprintf(stderr, "OTDB socket receive error %d\n", errno);
         }
         
         sleep(1);
         i++;
     }
 
-
-    while ( (rc=read(STDIN_FILENO, sockbuf, sizeof(sockbuf))) > 0) {
-        if (write(fd, sockbuf, rc) != rc) {
-            if (rc > 0) fprintf(stderr,"partial write");
-            else {
-                perror("write error");
-                exit(-1);
-            }
-        }
-    }
-
-
-
+    /// Close the socket
+    close(sockfd);
     
+    client_main_TERM2:
     
-    
+    /// Kill OTDB
+    client_main_TERM1:
+    kill(otdbpid, SIGQUIT);
+    sleep(1);
 
-
-    
-    /// Threads are now running.  The rest of the main() code, below, is
-    /// blocked by pthread_cond_wait() until the kill_cond is sent by one of 
-    /// the child threads.  This will cause the program to quit.
-    pthread_mutex_lock(&cli.kill_mutex);
-    pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
-    
+    /// Free memory elements
     client_main_END:
     free(otdbcall);
     
     // cli.exitcode is set to 0, unless sigint is raised.
-    DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
+    printf("Exiting cleanly and flushing output buffers\n");
     fflush(stdout);
     fflush(stderr);
-    
-    ///@todo there is a SIGILL that happens on pthread_cond_destroy(), but only
-    ///      after packets have been TX'ed.
-    ///      - Happens on two different systems
-    ///      - May need to use valgrind to figure out what is happening
-    ///      - after fixed, can move this code block upwards.
-    DEBUG_PRINTF("-- rlist_mutex & rlist_cond destroyed\n");
-    pthread_mutex_unlock(&cli.kill_mutex);
-    DEBUG_PRINTF("-- pthread_mutex_unlock(&cli.kill_mutex)\n");
-    pthread_mutex_destroy(&cli.kill_mutex);
-    DEBUG_PRINTF("-- pthread_mutex_destroy(&cli.kill_mutex)\n");
-    pthread_cond_destroy(&cli.kill_cond);
-    DEBUG_PRINTF("-- cli.kill_mutex & cli.kill_cond destroyed\n");
     
     return cli.exitcode;
 }

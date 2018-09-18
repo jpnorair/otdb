@@ -154,13 +154,6 @@ bool _cli_is_blocked(void) {
 // 1. command history is glitching when command takes whole history buf (not c string)
 // 2. delete and remove line do not work for multiline command
 
-static dterm_t* _dtputs_dterm;
-
-int _dtputs(char* str) {
-    return dterm_puts(_dtputs_dterm, str);
-}
-
-
 static INTF_Type sub_intf_cmp(const char* s1) {
     INTF_Type selected_intf;
 
@@ -312,8 +305,30 @@ int main(int argc, char* argv[]) {
     if (intf->count != 0) {
         intf_val = sub_intf_cmp(intf->sval[0]);
     }
+    if (socket->count != 0) {
+        size_t sz;
+        if (socket_val != NULL) {
+            free(socket_val);
+        }
+        sz = strlen(socket->filename[0]) + 1;
+        socket_val = malloc(sz);
+        if (socket_val) {
+            goto main_FINISH;
+        }
+        memcpy(socket_val, socket->filename[0], sz);
+        intf_val = INTF_socket;
+    }
     if (xpath->count != 0) {
-        strncpy(xpath_val, xpath->filename[0], 256);
+        size_t sz;
+        if (xpath_val != NULL) {
+            free(xpath_val);
+        }
+        sz = strlen(xpath->filename[0]) + 1;
+        xpath_val = malloc(sz);
+        if (xpath_val) {
+            goto main_FINISH;
+        }
+        memcpy(xpath_val, xpath->filename[0], sz);
     }
     if (verbose->count != 0) {
         verbose_val = true;
@@ -341,7 +356,7 @@ int main(int argc, char* argv[]) {
     arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
     
     if (bailout == false) {
-        exitcode = otdb_main(intf_val, (const char*)xpath_val, json);
+        exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)xpath_val, json);
     }
     
     if (json != NULL) {
@@ -360,82 +375,45 @@ int main(int argc, char* argv[]) {
 /// What this should do is start two threads, one for the character I/O on
 /// the dterm side, and one for the serial I/O.
 int otdb_main(  INTF_Type intf_val,
+                const char* socket,
                 const char* xpath,
                 cJSON* params   ) {    
     
     // DTerm Datastructs
-    dterm_arg_t dterm_args;
-    dterm_t     dterm;
-    cmdhist     cmd_history;
+    dterm_handle_t dterm_handle;
     
     // Child Threads (1)
     void*       otfs_handle;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
-    // Mutexes used with Child Threads
-    pthread_mutex_t dtwrite_mutex;          // For control of writeout to dterm
-    pthread_mutex_t rlist_mutex;
-    pthread_mutex_t tlist_mutex;
-    
-    // Cond/Mutex used with Child Threads
-    pthread_cond_t  tlist_cond;
-    pthread_mutex_t tlist_cond_mutex;
-    pthread_cond_t  pktrx_cond;
-    pthread_mutex_t pktrx_mutex;
+    /// Initialize Thread Mutexes & Conds.  This is finnicky.
+    assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
+    pthread_cond_init(&cli.kill_cond, NULL);
     
     /// Initialize command search table.  
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
     cmd_init(NULL, xpath);
     
-    
     /// Initialize OTFS
     if (otfs_init(&otfs_handle) < 0) {
         cli.exitcode = -1;
-        goto otdb_main_TERM1;
+        goto otdb_main_TERM3;
     }
-       
     
-    /// Initialize Thread Mutexes & Conds.  This is finnicky and it must be
-    /// done before assignment into the argument containers, possibly due to 
-    /// C-compiler foolishly optimizing.
-    assert( pthread_mutex_init(&dtwrite_mutex, NULL) == 0 );
-    assert( pthread_mutex_init(&rlist_mutex, NULL) == 0 );
-    assert( pthread_mutex_init(&tlist_mutex, NULL) == 0 );
-    assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
-    pthread_cond_init(&cli.kill_cond, NULL);
-    assert( pthread_mutex_init(&tlist_cond_mutex, NULL) == 0 );
-    pthread_cond_init(&tlist_cond, NULL);
-    assert( pthread_mutex_init(&pktrx_mutex, NULL) == 0 );
-    pthread_cond_init(&pktrx_cond, NULL);
-
-    
-    /// Open DTerm interface & Setup DTerm threads
-    /// The dterm thread will deal with all other aspects, such as command
-    /// entry and history initialization.
-    ///@todo "STDIN_FILENO" and "STDOUT_FILENO" could be made dynamic
-    _dtputs_dterm               = &dterm;
-    dterm.fd_in                 = STDIN_FILENO;
-    dterm.fd_out                = STDOUT_FILENO;
-    dterm_args.handle           = otfs_handle;
-    dterm_args.ch               = ch_init(&cmd_history);
-    dterm_args.dt               = &dterm;
-    dterm_args.dtwrite_mutex    = &dtwrite_mutex;
-    dterm_args.kill_mutex       = &cli.kill_mutex;
-    dterm_args.kill_cond        = &cli.kill_cond;
-    
-    ///@todo implement socket variant
-    switch(intf_val) {
-        case INTF_pipe:     dterm_fn = &dterm_piper;    break;
-        //case INTF_socket:   dterm_fn = &dterm_socket;   break;    
-        default:            dterm_fn = &dterm_prompter; break;
-    }
-    if (dterm_open(&dterm, intf_val) < 0) {
+    /// Initialize DTerm data objects
+    if (dterm_init(&dterm_handle, intf_val, &otfs_handle) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
-    
+
+    /// Open DTerm interface & Setup DTerm threads
+    dterm_fn = dterm_open(dterm_handle.dt);
+    if (dterm_fn == NULL) {
+        cli.exitcode = -2;
+        goto otdb_main_TERM1;
+    }
     
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
@@ -445,13 +423,12 @@ int otdb_main(  INTF_Type intf_val,
     sub_assign_signal(SIGINT, &sigint_handler);
     sub_assign_signal(SIGQUIT, &sigquit_handler);
     
-    
     /// Invoke the child threads below.  All of the child threads run
     /// indefinitely until an error occurs or until the user quits.  Quit can 
     /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
     /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
     /// i.e. raise(SIGINT).
-    pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_args);
+    pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished creating theads\n");
     
     /// Threads are now running.  The rest of the main() code, below, is
@@ -463,52 +440,14 @@ int otdb_main(  INTF_Type intf_val,
     DEBUG_PRINTF("Cancelling Theads\n");
     pthread_cancel(thr_dterm);
     
-    otdb_main_TERM:
-    DEBUG_PRINTF("Destroying thread resources\n");
-    pthread_mutex_unlock(&dtwrite_mutex);
-    pthread_mutex_destroy(&dtwrite_mutex);
-    DEBUG_PRINTF("-- dtwrite_mutex destroyed\n");
-    pthread_mutex_unlock(&rlist_mutex);
-    pthread_mutex_destroy(&rlist_mutex);
-    DEBUG_PRINTF("-- rlist_mutex destroyed\n");
-    pthread_mutex_unlock(&tlist_mutex);
-    pthread_mutex_destroy(&tlist_mutex);
-    DEBUG_PRINTF("-- tlist_mutex destroyed\n");
-    pthread_mutex_unlock(&tlist_cond_mutex);
-    pthread_mutex_destroy(&tlist_cond_mutex);
-    pthread_cond_destroy(&tlist_cond);
-    DEBUG_PRINTF("-- tlist_mutex & tlist_cond destroyed\n");
-    pthread_mutex_unlock(&pktrx_mutex);
-    pthread_mutex_destroy(&pktrx_mutex);
-    pthread_cond_destroy(&pktrx_cond);
-    
-    
-    /// Close the drivers/files and free all allocated data objects (primarily 
-    /// in mpipe).
-    if (intf_val == INTF_interactive) {
-        DEBUG_PRINTF("Closing DTerm\n");
-        dterm_close(&dterm);
-    }
+    otdb_main_TERM1:
+    dterm_deinit(&dterm_handle);
     
     otdb_main_TERM2:
     DEBUG_PRINTF("Freeing OTFS\n");
     otfs_deinit(otfs_handle);
     
-    otdb_main_TERM1:
-    DEBUG_PRINTF("Freeing DTerm and Command History\n");
-    dterm_free(&dterm);
-    ch_free(&cmd_history);
-    
-    // cli.exitcode is set to 0, unless sigint is raised.
-    DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
-    fflush(stdout);
-    fflush(stderr);
-    
-    ///@todo there is a SIGILL that happens on pthread_cond_destroy(), but only
-    ///      after packets have been TX'ed.
-    ///      - Happens on two different systems
-    ///      - May need to use valgrind to figure out what is happening
-    ///      - after fixed, can move this code block upwards.
+    otdb_main_TERM3:
     DEBUG_PRINTF("-- rlist_mutex & rlist_cond destroyed\n");
     pthread_mutex_unlock(&cli.kill_mutex);
     DEBUG_PRINTF("-- pthread_mutex_unlock(&cli.kill_mutex)\n");
@@ -516,6 +455,11 @@ int otdb_main(  INTF_Type intf_val,
     DEBUG_PRINTF("-- pthread_mutex_destroy(&cli.kill_mutex)\n");
     pthread_cond_destroy(&cli.kill_cond);
     DEBUG_PRINTF("-- cli.kill_mutex & cli.kill_cond destroyed\n");
+    
+    // cli.exitcode is set to 0, unless sigint is raised.
+    DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
+    fflush(stdout);
+    fflush(stderr);
     
     return cli.exitcode;
 }

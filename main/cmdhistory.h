@@ -31,7 +31,7 @@ typedef struct {
 
 
 // initializes command history
-cmdhist* ch_init(cmdhist* ch);
+cmdhist* ch_init(void);
 
 void ch_free(cmdhist* ch);
 

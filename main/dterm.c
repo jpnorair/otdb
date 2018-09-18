@@ -92,47 +92,139 @@ void dterm_remln(dterm_t *dt);
 
 
 
+// DTerm threads called in main.  
+// One one should be started.  
+// Piper is for usage with stdin/stdout pipes, via another process.
+// Prompter is for usage with user console I/O.
+void* dterm_piper(void* args);
+void* dterm_prompter(void* args);
+void* dterm_socketer(void* args);
+
+
+
+
 
 
 /** DTerm Control Functions <BR>
   * ========================================================================<BR>
   */
 
+int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext) {
+    int rc = 0;
 
-void dterm_free(dterm_t* dt) {
-/// So far, nothing to free
+    if (dth == NULL) {
+        return -1;
+    }
+    
+    dth->ch = NULL;
+    dth->dt = malloc(sizeof(dterm_t));
+    if (dth->dt == NULL) {
+        rc = -2;
+        goto dterm_init_TERM;
+    }
+    
+    dth->dt->intf = intf;
+    if (intf == INTF_interactive) {
+        dth->ch = ch_init();
+        if (dth->ch == NULL) {
+            rc = -3;
+            goto dterm_init_TERM;
+        }
+    }
+
+    if (pthread_mutex_init(&dth->dtwrite_mutex, NULL) != 0 ) {
+        rc = -4;
+        goto dterm_init_TERM;
+    }
+    
+    dth->ext = ext;
+    return 0;
+    
+    dterm_init_TERM:
+    if (dth->dt != NULL)    free(dth->dt);
+    if (dth->ch != NULL)    free(dth->ch);
+    return rc;
+}
+
+
+void dterm_deinit(dterm_handle_t* dth) {
+    if (dth->dt != NULL) {
+        dterm_close(dth->dt);
+        free(dth->dt);
+    }
+    if (dth->ch != NULL) {
+        ch_free(dth->ch);
+    }
+    
+    pthread_mutex_unlock(&dth->dtwrite_mutex);
+    pthread_mutex_destroy(&dth->dtwrite_mutex);
 }
 
 
 
-int dterm_open(dterm_t* dt, INTF_Type intf) {
+
+dterm_thread_t dterm_open(dterm_t* dt) {
+    dterm_thread_t dt_thread = NULL;
     int retcode;
     
-    if (intf == INTF_interactive) {
+    if (dt == NULL) {
+        return NULL;
+    }
+    
+    if (dt->intf == INTF_interactive) {
+        /// Need to modify the stdout/stdin attributes in order to work with 
+        /// the interactive terminal.  The "oldter" setting saves the original
+        /// settings.
+        
+        dt->fd_in   = STDIN_FILENO;
+        dt->fd_out  = STDOUT_FILENO;
+
         retcode = tcgetattr(dt->fd_in, &(dt->oldter));
         if (retcode < 0) {
             fprintf(stderr, "Unable to access active termios settings for fd = %d\n", dt->fd_in);
-            return retcode;
+            goto dterm_open_END;
         }
         
         retcode = tcgetattr(dt->fd_in, &(dt->curter));
         if (retcode < 0) {
             fprintf(stderr, "Unable to access application termios settings for fd = %d\n", dt->fd_in);
-            return retcode;
+            goto dterm_open_END;
         }
         
         dt->curter.c_lflag     &= ~(ICANON | ECHO);
         dt->curter.c_cc[VMIN]   = 1;
         dt->curter.c_cc[VTIME]  = 0;
         retcode                 = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->curter));
+        
+        if (retcode == 0) {
+            dt_thread = &dterm_prompter;
+        }
     }
+    
+    else if (dt->intf == INTF_pipe) {
+        /// Uses canonical stdin/stdout pipes, no manipulation necessary
+        dt->fd_in   = STDIN_FILENO;
+        dt->fd_out  = STDOUT_FILENO;
+        retcode     = 0;
+        dt_thread   = &dterm_piper;
+    }
+    
+    else if (dt->intf == INTF_socket) {
+        /// Socket mode opens a listening socket
+        
+        
+        
+        retcode     = 0;
+        dt_thread   = &dterm_socketer;
+    }
+    
     else {
-        retcode = 0;
+        retcode = -1;
     }
     
+    dterm_open_END:
     dterm_reset(dt);
-    
-    return retcode;
+    return dt_thread;
 }
 
 
@@ -140,10 +232,14 @@ int dterm_open(dterm_t* dt, INTF_Type intf) {
 int dterm_close(dterm_t* dt) {
     int retcode = 0;
     
-    ///@todo implement dterm_setcan right here
-    //if (fcntl(fd, F_GETFD) != -1) { //|| errno != EBADF;
-        retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
-    //}
+    if (dt->intf == INTF_interactive) {
+        ///@todo implement dterm_setcan right here
+        //if (fcntl(fd, F_GETFD) != -1) { //|| errno != EBADF;
+            retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
+        //}
+    }
+    
+    
     return retcode;
 }
 
@@ -186,28 +282,88 @@ static size_t sub_str_mark(char* str, size_t max) {
 }
 
 
-void* dterm_piper(void* args) {
+
+static int sub_proc_lineinput(dterm_t* dt, char* loadbuf, int linelen) {
+    uint8_t     protocol_buf[1024];
+    char        cmdname[32];
+    int         cmdlen;
+    int         bytesout = 0;
+    
+    const cmdtab_item_t* cmdptr;
+    
+    // determine length until newline, or null.
+    // then search/get command in list.
+    cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
+    cmdptr  = cmd_search(cmdname);
+    
+    // Test only
+    //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
+    //fflush(stderr);
+    // Test only
+    
+    ///@todo this is the same block of code used in prompter.  It could be
+    ///      consolidated into a subroutine called by both.
+    if (cmdptr == NULL) {
+        ///@todo build a nicer way to show where the error is,
+        ///      possibly by using pi or ci (sign reversing)
+        if (linelen > 0) {
+            dterm_puts(dt, "--> command not found\n");
+        }
+    }
+    else {
+        int bytesin = linelen;
+
+        ///@todo final arg is max size of protocol_buf.  It should be changed
+        ///      to a non constant.
+        //fprintf(stderr, "bytesin=%d\nloadlen=%d\n", bytesin, (char*)loadbuf);
+        //fflush(stderr);
+        bytesout = cmd_run(cmdptr, dt, protocol_buf, &bytesin, (uint8_t*)(loadbuf+cmdlen), 1024);
+        
+        // Test only
+        //fprintf(stderr, "\noutput\nloadbuf=%s\nloadlen=%d\n", loadbuf, loadlen);
+        //fflush(stderr);
+        // Test only
+        
+        ///@todo spruce-up the command error reporting, maybe even with
+        ///      a cursor showing where the first error was found.
+        if (bytesout < 0) {
+            dterm_puts(dt, "--> command execution error\n");
+        }
+        
+        // If there are bytes to send to MPipe, do that.
+        // If bytesout == 0, there is no error, but also nothing
+        // to send to MPipe.
+        else if (bytesout > 0) {
+            // Test only
+            //test_dumpbytes(protocol_buf, bytesout, "TX Packet Add");
+            // Test only
+            
+            write(dt->fd_out, (char*)protocol_buf, bytesout);
+        }
+    }
+    
+    return bytesout;
+}
+
+
+
+
+
+void* dterm_socketer(void* args) {
 /// Thread that:
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
-/// 
-    
-    uint8_t             protocol_buf[1024];
-    char                cmdname[32];
-    dterm_t*            dt          = ((dterm_arg_t*)args)->dt;
-    int                 loadlen     = 0;
-    char*               loadbuf     = dt->linebuf;
-    
+    dterm_t*    dt          = ((dterm_handle_t*)args)->dt;
+    int         loadlen     = 0;
+    char*       loadbuf     = dt->linebuf;
     
     // Initial state = off
     dt->state = prompt_off;
     
-    /// Get each line from the pipe.
+    /// Get a packet from the Socket
     while (1) {
-        int cmdlen;
         int linelen;
-        const cmdtab_item_t* cmdptr;
-    
+        
         if (loadlen <= 0) {
             dterm_reset(dt);
             loadlen = (int)read(dt->fd_in, dt->linebuf, 1024);
@@ -216,59 +372,55 @@ void* dterm_piper(void* args) {
         }
         
         // Burn whitespace ahead of command.
-        // Then determine length until newline, or null.
-        // then search/get command in list.
         while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
         linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
-        cmdlen  = cmd_getname(cmdname, loadbuf, 32);
-        cmdptr  = cmd_search(cmdname);
-        
-        // Test only
-        //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
-        //fflush(stderr);
-        // Test only
-        
-        ///@todo this is the same block of code used in prompter.  It could be
-        ///      consolidated into a subroutine called by both.
-        if (cmdptr == NULL) {
-            ///@todo build a nicer way to show where the error is,
-            ///      possibly by using pi or ci (sign reversing)
-            if (linelen > 0) {
-                dterm_puts(dt, "--> command not found\n");
-            }
-        }
-        else {
-            int bytesout;
-            int bytesin = linelen;
 
-            ///@todo final arg is max size of protocol_buf.  It should be changed
-            ///      to a non constant.
-            //fprintf(stderr, "bytesin=%d\nloadlen=%d\n", bytesin, (char*)loadbuf);
-            //fflush(stderr);
-            bytesout = cmd_run(cmdptr, dt, protocol_buf, &bytesin, (uint8_t*)(loadbuf+cmdlen), 1024);
-            
-            // Test only
-            //fprintf(stderr, "\noutput\nloadbuf=%s\nloadlen=%d\n", loadbuf, loadlen);
-            //fflush(stderr);
-            // Test only
-            
-            ///@todo spruce-up the command error reporting, maybe even with
-            ///      a cursor showing where the first error was found.
-            if (bytesout < 0) {
-                dterm_puts(dt, "--> command execution error\n");
-            }
-            
-            // If there are bytes to send to MPipe, do that.
-            // If bytesout == 0, there is no error, but also nothing
-            // to send to MPipe.
-            else if (bytesout > 0) {
-                // Test only
-                //test_dumpbytes(protocol_buf, bytesout, "TX Packet Add");
-                // Test only
-                
-                write(dt->fd_out, (char*)protocol_buf, bytesout);
-            }
+        // Process the line-input command
+        sub_proc_lineinput(dt, loadbuf, linelen);
+        
+        // +1 eats the terminator
+        loadlen -= (linelen + 1);
+        loadbuf += (linelen + 1);
+    }
+    
+    /// This code should never occur, given the while(1) loop.
+    /// If it does (possibly a stack fuck-up), we print this "chaotic error."
+    fprintf(stderr, "\n--> Chaotic error: dterm_piper() thread broke loop.\n");
+    raise(SIGINT);
+    return NULL;
+}
+
+
+
+
+void* dterm_piper(void* args) {
+/// Thread that:
+/// <LI> Listens to stdin via read() pipe </LI>
+/// <LI> Processes each LINE and takes action accordingly. </LI>
+    dterm_t*    dt          = ((dterm_handle_t*)args)->dt;
+    int         loadlen     = 0;
+    char*       loadbuf     = dt->linebuf;
+    
+    // Initial state = off
+    dt->state = prompt_off;
+    
+    /// Get each line from the pipe.
+    while (1) {
+        int linelen;
+        
+        if (loadlen <= 0) {
+            dterm_reset(dt);
+            loadlen = (int)read(dt->fd_in, dt->linebuf, 1024);
+            loadbuf = dt->linebuf;
+            sub_str_sanitize(loadbuf, (size_t)loadlen);
         }
+        
+        // Burn whitespace ahead of command.
+        while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+        linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+
+        // Process the line-input command
+        sub_proc_lineinput(dt, loadbuf, linelen);
         
         // +1 eats the terminator
         loadlen -= (linelen + 1);
@@ -293,7 +445,7 @@ void* dterm_prompter(void* args) {
 ///          input is entered. </LI>
 /// 
     
-    uint8_t protocol_buf[1024];
+    //uint8_t protocol_buf[1024];
     
     static const cmdtype npcodes[32] = {
         ct_ignore,          // 00: NUL
@@ -331,13 +483,23 @@ void* dterm_prompter(void* args) {
     };
     
     cmdtype             cmd;
-    char                cmdname[256];
+    char                cmdname[32];
+    cmdhist*            ch;
     char                c           = 0;
     ssize_t             keychars    = 0;
-    dterm_t*            dt          = ((dterm_arg_t*)args)->dt;
-    cmdhist*            ch          = ((dterm_arg_t*)args)->ch;
-    pthread_mutex_t*    write_mutex = ((dterm_arg_t*)args)->dtwrite_mutex;
+    dterm_t*            dt          = ((dterm_handle_t*)args)->dt;
+    pthread_mutex_t*    write_mutex = &((dterm_handle_t*)args)->dtwrite_mutex;
     
+    // Initialize command history
+    ((dterm_handle_t*)args)->ch = ch_init();
+    if (((dterm_handle_t*)args)->ch == NULL) {
+        goto dterm_prompter_TERM;
+    }
+    
+    // Initialize
+    
+    // Local pointer for command history is just for making code look nicer
+    ch = ((dterm_handle_t*)args)->ch;
     
     // Initial state = off
     dt->state = prompt_off;
@@ -439,7 +601,7 @@ void* dterm_prompter(void* args) {
             int cmdlen;
             char* cmdstr;
             const cmdtab_item_t* cmdptr;
-            cmdaction_t cmdfn;
+            //cmdaction_t cmdfn;
             
             switch (cmd) {
                 // A printable key is used
@@ -474,6 +636,8 @@ void* dterm_prompter(void* args) {
                                         ch_add(ch, dt->linebuf);
                                     }
                                     
+                                    sub_proc_lineinput(dt, (char*)dt->linebuf, 0);
+                                    /*
                                     cmdlen = cmd_getname(cmdname, dt->linebuf, 256);
                                     cmdptr = cmd_search(cmdname);
                                     if (cmdptr == NULL) {
@@ -505,14 +669,14 @@ void* dterm_prompter(void* args) {
                                             //fprintf(stderr, "packet added to tlist, size = %d bytes\n", outbytes);
                                         }
                                     }
-                                    
+                                    */
                                     dterm_reset(dt);
                                     dt->state = prompt_close;
                                     break;
                 
                 // TAB presses cause the autofill operation (a common feature)
                 // autofill will try to finish the command input
-                case ct_autofill:   cmdlen = cmd_getname((char*)cmdname, dt->linebuf, 256);
+                case ct_autofill:   cmdlen = cmd_getname((char*)cmdname, dt->linebuf, sizeof(cmdname));
                                     cmdptr = cmd_subsearch((char*)cmdname);
                                     if ((cmdptr != NULL) && (dt->linebuf[cmdlen] == 0)) {
                                         dterm_remln(dt);
@@ -569,6 +733,8 @@ void* dterm_prompter(void* args) {
         }
         
     }
+    
+    dterm_prompter_TERM:
     
     /// This code should never occur, given the while(1) loop.
     /// If it does (possibly a stack fuck-up), we print this "chaotic error."

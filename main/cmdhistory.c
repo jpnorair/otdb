@@ -19,26 +19,31 @@
 
 // Standard C Libraries
 #include <string.h>
-
+#include <stdlib.h>
 
 
 
 
 
 void ch_free(cmdhist* ch) {
-    // Right now, ch is static memory
+    if (ch != NULL) {
+        free(ch);
+    }
 }
 
 
+cmdhist* ch_init(void) {
+    cmdhist* ch;
 
+    ch = malloc(sizeof(cmdhist));
+    if (ch != NULL) {
+        ch->putcur      = ch->history;
+        ch->getstart    = ch->history;
+        ch->getend      = ch->history;
+        ch->count       = 0;
+        memset(ch->putcur, 0, CMD_HISTSIZE);
+    }
 
-cmdhist* ch_init(cmdhist *ch) {
-	ch->putcur      = ch->history;
-	ch->getstart    = ch->history;
-    ch->getend      = ch->history;
-    ch->count       = 0;
-    memset(ch->putcur, 0, CMD_HISTSIZE);
-    
     return ch;
 }
 

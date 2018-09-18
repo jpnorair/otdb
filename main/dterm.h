@@ -19,6 +19,7 @@
 
 // Configuration Header
 #include "otdb_cfg.h"
+#include "cliopt.h"
 
 // Application Headers
 #include "cmdhistory.h"
@@ -76,6 +77,8 @@ typedef enum {
 // defines state of dash terminal
 typedef struct {
     // old and current terminal settings
+    INTF_Type intf;
+    
     struct termios oldter;
     struct termios curter;
     
@@ -95,15 +98,12 @@ typedef struct {
 typedef struct {
     dterm_t*            dt;
     cmdhist*            ch;
-    void*               handle;
-    
-    pthread_mutex_t*    dtwrite_mutex;
-    pthread_mutex_t*    kill_mutex;
-    pthread_cond_t*     kill_cond;
-} dterm_arg_t;
+    void*               ext;
+    pthread_mutex_t     dtwrite_mutex;
+} dterm_handle_t;
 
 
-
+typedef void* (*dterm_thread_t)(void*);
 
 
 // describes supported command types
@@ -124,17 +124,18 @@ typedef enum {
 
 
 
-int dterm_open(dterm_t* dt, INTF_Type intf);
+
+int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext);
+void dterm_deinit(dterm_handle_t* dth);
+
+
+dterm_thread_t dterm_open(dterm_t* dt);
 int dterm_close(dterm_t* dt);
-void dterm_free(dterm_t* dt);
 
 
-// DTerm threads called in main.  
-// One one should be started.  
-// Piper is for usage with stdin/stdout pipes, via another process.
-// Prompter is for usage with user console I/O.
-void* dterm_piper(void* args);
-void* dterm_prompter(void* args);
+
+
+
 
 
 

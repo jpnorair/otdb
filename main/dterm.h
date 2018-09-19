@@ -129,7 +129,7 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext);
 void dterm_deinit(dterm_handle_t* dth);
 
 
-dterm_thread_t dterm_open(dterm_t* dt);
+dterm_thread_t dterm_open(dterm_t* dt, const char* path);
 int dterm_close(dterm_t* dt);
 
 

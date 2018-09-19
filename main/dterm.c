@@ -37,6 +37,13 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+
+
+
 #include <ctype.h>
 
 
@@ -163,7 +170,7 @@ void dterm_deinit(dterm_handle_t* dth) {
 
 
 
-dterm_thread_t dterm_open(dterm_t* dt) {
+dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
     dterm_thread_t dt_thread = NULL;
     int retcode;
     
@@ -181,12 +188,14 @@ dterm_thread_t dterm_open(dterm_t* dt) {
 
         retcode = tcgetattr(dt->fd_in, &(dt->oldter));
         if (retcode < 0) {
+            perror(NULL);
             fprintf(stderr, "Unable to access active termios settings for fd = %d\n", dt->fd_in);
             goto dterm_open_END;
         }
         
         retcode = tcgetattr(dt->fd_in, &(dt->curter));
         if (retcode < 0) {
+            perror(NULL);
             fprintf(stderr, "Unable to access application termios settings for fd = %d\n", dt->fd_in);
             goto dterm_open_END;
         }
@@ -211,8 +220,31 @@ dterm_thread_t dterm_open(dterm_t* dt) {
     
     else if (dt->intf == INTF_socket) {
         /// Socket mode opens a listening socket
+        ///@todo have listening queue size be dynamic
+        struct sockaddr_un addr;
         
+        dt->fd_in = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (dt->fd_in < 0) {
+            perror("Unable to create a server socket\n");
+            goto dterm_open_END;
+        }
         
+        ///@todo make sure this unlinking stage is OK.
+        ///      unsure how to unbind the socket when server is finished.
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, path, sizeof(addr.sun_path)-1);
+        unlink(path);
+        
+        if (bind(dt->fd_in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            perror("Unable to bind server socket");
+            goto dterm_open_END;
+        }
+        
+        if (listen(dt->fd_in, 5) == -1) {
+            perror("Unable to enter listen on server socket");
+            goto dterm_open_END;
+        }
         
         retcode     = 0;
         dt_thread   = &dterm_socketer;
@@ -361,26 +393,38 @@ void* dterm_socketer(void* args) {
     dt->state = prompt_off;
     
     /// Get a packet from the Socket
+    /// @note this implementation is single threaded.  OTDB is designed for
+    ///       maximum synchronicity of data, not high throughput.  It doesn't
+    ///       need high throughput for its target use cases.
     while (1) {
         int linelen;
         
-        if (loadlen <= 0) {
-            dterm_reset(dt);
-            loadlen = (int)read(dt->fd_in, dt->linebuf, 1024);
-            loadbuf = dt->linebuf;
-            sub_str_sanitize(loadbuf, (size_t)loadlen);
+        dt->fd_out = accept(dt->fd_in, NULL, NULL);
+        if (dt->fd_out < 0) {
+            perror("Server Socket accept() failed");
+            continue;
         }
-        
-        // Burn whitespace ahead of command.
-        while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
-        linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
 
-        // Process the line-input command
-        sub_proc_lineinput(dt, loadbuf, linelen);
+        loadlen = (int)read(dt->fd_in, dt->linebuf, LINESIZE);
+        loadbuf = dt->linebuf;
+        sub_str_sanitize(loadbuf, (size_t)loadlen);
         
-        // +1 eats the terminator
-        loadlen -= (linelen + 1);
-        loadbuf += (linelen + 1);
+        do {
+            // Burn whitespace ahead of command.
+            while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+            linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+            
+            // Process the line-input command
+            sub_proc_lineinput(dt, loadbuf, linelen);
+            
+            // +1 eats the terminator
+            loadlen -= (linelen + 1);
+            loadbuf += (linelen + 1);
+        
+        } while (loadlen > 0);
+        
+        // After servicing the client socket, it is important to close it.
+        close(dt->fd_out);
     }
     
     /// This code should never occur, given the while(1) loop.

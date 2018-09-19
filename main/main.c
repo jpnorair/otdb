@@ -409,7 +409,8 @@ int otdb_main(  INTF_Type intf_val,
     }
 
     /// Open DTerm interface & Setup DTerm threads
-    dterm_fn = dterm_open(dterm_handle.dt);
+    /// If sockets are not used, by design socket_path will be NULL.
+    dterm_fn = dterm_open(dterm_handle.dt, socket_path);
     if (dterm_fn == NULL) {
         cli.exitcode = -2;
         goto otdb_main_TERM1;

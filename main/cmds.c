@@ -24,6 +24,7 @@
 #include <bintex.h>
 #include <cmdtab.h>
 #include <argtable3.h>
+#include <hbdp/hb_cmdtools.h>
 
 // Standard C & POSIX Libraries
 #include <signal.h>
@@ -61,20 +62,47 @@ struct arg_end*     end_man;
 
 
 
+#define ARGFIELD_DEVICEID   (1<<0)
+#define ARGFIELD_DEVICEIDOPT (1<<1)
+#define ARGFIELD_ARCHIVE    (1<<2)
+#define ARGFIELD_COMPRESS   (1<<3)
+#define ARGFIELD_BLOCKID    (1<<4)
+#define ARGFIELD_FILEID     (1<<5)
+#define ARGFIELD_FILEPERMS  (1<<6)
+#define ARGFIELD_FILEALLOC  (1<<7)
+#define ARGFIELD_FILERANGE  (1<<8) 
+#define ARGFIELD_FILEDATA   (1<<9) 
+
+typedef struct {
+    unsigned int    fields;
+    const char*     archive_path;
+    uint8_t*        filedata;
+    size_t          filedata_max;
+    uint64_t        devid;
+    uint8_t         compress_flag;
+    uint8_t         block_id;
+    uint8_t         file_id;
+    uint8_t         file_perms;
+    uint16_t        file_alloc;
+    uint16_t        range_lo;
+    uint16_t        range_hi;
+} cmd_arglist_t;
+
+
 
 void cmd_init_args(void) {
     /// Initialize the argtable structs
-    devid_man       = arg_str1(NULL,NULL,"DeviceID","Device ID as HEX");
-    archive_man     = arg_file1(NULL,NULL,"file",   "Archive file or directory");
-    compress_opt    = arg_lit0("c","compress",      "Use compression on output (7z)");
-    devid_opt       = arg_str0("i","id","DeviceID", "Device ID as HEX");
-    fileblock_opt   = arg_str0("b","block","isf|iss|gf", "File Block to search in");
-    filerange_opt   = arg_str0("r","range","X:Y",   "Access File bytes between offsets X:Y");
-    fileid_man      = arg_int1(NULL,NULL,"FileID",  "File ID, 0-255.");
-    fileperms_man   = arg_int1(NULL,NULL,"Perms",   "Octal pair of User & Guest perms");
-    fileperms_man   = arg_int1(NULL,NULL,"Alloc",   "Allocation bytes for file");
-    filedata_man    = arg_str1(NULL,NULL,"Bintex",  "File data supplied as Bintex");
-    help_man        = arg_lit0("h","help",          "Print this help and exit");
+    devid_man       = arg_str1(NULL,NULL,"DeviceID",    "Device ID as HEX");
+    archive_man     = arg_file1(NULL,NULL,"file",       "Archive file or directory");
+    compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
+    devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
+    fileblock_opt   = arg_str0("b","block","isf|iss|gfb", "File Block to search in");
+    filerange_opt   = arg_str0("r","range","X:Y",       "Access File bytes between offsets X:Y");
+    fileid_man      = arg_int1(NULL,NULL,"FileID",      "File ID, 0-255.");
+    fileperms_man   = arg_int1(NULL,NULL,"Perms",       "Octal pair of User & Guest perms");
+    fileperms_man   = arg_int1(NULL,NULL,"Alloc",       "Allocation bytes for file");
+    filedata_man    = arg_str1(NULL,NULL,"Bintex",      "File data supplied as Bintex");
+    help_man        = arg_lit0("h","help",              "Print this help and exit");
     end_man         = arg_end(10);
 }
 
@@ -82,49 +110,6 @@ void cmd_init_args(void) {
 
 
 
-
-
-
-
-
-
-uint8_t* sub_markstring(uint8_t** psrc, int* search_limit, int string_limit) {
-    size_t      code_len;
-    size_t      code_max;
-    uint8_t*    cursor;
-    uint8_t*    front;
-    
-    /// 1. Set search limit on the string to mark within the source string
-    code_max    = (*search_limit < string_limit) ? *search_limit : string_limit; 
-    front       = *psrc;
-    
-    /// 2. Go past whitespace in the front of the source string if there is any.
-    ///    This updates the position of the source string itself, so the caller
-    ///    must save the position of the source string if it wishes to go back.
-    while (isspace(**psrc)) { 
-        (*psrc)++; 
-    }
-    
-    /// 3. Put a Null Terminator where whitespace is found after the marked
-    ///    string.
-    for (code_len=0, cursor=*psrc; (code_len < code_max); code_len++, cursor++) {
-        if (isspace(*cursor)) {
-            *cursor = 0;
-            cursor++;
-            break;
-        }
-    }
-    
-    /// 4. Go past any whitespace after the cursor position, and update cursor.
-    while (isspace(*cursor)) { 
-        cursor++; 
-    }
-    
-    /// 5. reduce the message limit counter given the bytes we've gone past.
-    *search_limit -= (cursor - front);
-    
-    return cursor;
-}
 
 
 
@@ -154,18 +139,15 @@ uint8_t* goto_eol(uint8_t* src) {
 
 
 
-static void sub_extract_args(void* args, const char* cmdname, const char* src, int* src_bytes) {
+static void sub_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const char* src, int* src_bytes) {
     int     out_val;
     int     argc;
     char**  argv;
+    int     nerrors;
     
-    int nerrors;
-    
-    int block_id;
 
-/// 3. First, create an argument vector from the input string.
-    ///    hb_tools_parsestring will treat all bintex containers as whitespace-safe.
-
+    /// First, create an argument vector from the input string.
+    /// hb_tools_parsestring will treat all bintex containers as whitespace-safe.
     argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);
     if (argc <= 1) {
         out_val = -2;
@@ -173,7 +155,7 @@ static void sub_extract_args(void* args, const char* cmdname, const char* src, i
     }
     nerrors = arg_parse(argc, argv, args);
     
-    /// 4. Print command specific help
+    /// Print command specific help
     /// @todo this is currently just generic help
     if (help_man->count > 0) {
         fprintf(stderr, "Usage: %s [cmd]", cmdname);
@@ -192,128 +174,91 @@ static void sub_extract_args(void* args, const char* cmdname, const char* src, i
         goto sub_extract_args_END;
     }
     
-    /// Check for block flag (-b, --block), which specifies fs block
-    /// Default is isf.
-    block_id = 3 << 4;      // default: isf
-    if (fileblock_opt->count > 0) {
-        DEBUGPRINT("Block flag encountered: %s\n", fileblock_opt->sval[0]);
-        if (strncmp(fileblock_opt->sval[0], "isf", 3) == 0) {
-            block_id = 3 << 4;
-        }
-        else if (strncmp(fileblock_opt->sval[0], "iss", 3) == 0) {
-            block_id = 2 << 4;
-        }
-        else if (strncmp(fileblock_opt->sval[0], "gfb", 3) == 0) {
-            block_id = 1 << 4;
+    /// Device ID convert to uint64
+    if (data->fields & ARGFIELD_DEVICEID) {
+        if (devid_man->count > 0) {
+            data->devid = strtoll( devid_man->sval[0], , 10);
         }
         else {
-            out_val = -6;
+            out_val = -4;
             goto sub_extract_args_END;
         }
     }
     
-    /// File ID must exist if "prot" flag is not used
-    /// We want to sanitize the input IDs to make sure they fit inside the rules.
-    /// The write command (7) only accepts a single ID
-    if (fileid_man->count > 0) {
-        DEBUGPRINT("ID arg encountered: %d\n", fileid_man->ival[0]);
-        file_id = fileid_man->ival[0];
+    /// Archive Path
+    if (data->fields & ARGFIELD_ARCHIVE) {
+        if (archive_man->count > 0) {
+            data->archive_path = archive_man->filename[0];
+        }
+        else {
+            out_val = -4;
+            goto sub_extract_args_END;
+        }
     }
-    else {
-        out_val = -7;
-        goto sub_extract_args_END;
+    
+    /// Compression Flag
+    if (data->fields & ARGFIELD_COMPRESS) {
+        data->compress_flag = (compress_opt->count > 0);
+    }
+    
+    
+    
+    
+    
+    /// Check for block flag (-b, --block), which specifies fs block
+    /// Default is isf.
+    if (data->fields & ARGFIELD_BLOCKID) {
+        data->block_id = 3 << 4;      // default: isf
+        if (fileblock_opt->count > 0) {
+            DEBUGPRINT("Block flag encountered: %s\n", fileblock_opt->sval[0]);
+            if (strncmp(fileblock_opt->sval[0], "isf", 3) == 0) {
+                data->block_id = 3 << 4;
+            }
+            else if (strncmp(fileblock_opt->sval[0], "iss", 3) == 0) {
+                data->block_id = 2 << 4;
+            }
+            else if (strncmp(fileblock_opt->sval[0], "gfb", 3) == 0) {
+                data->block_id = 1 << 4;
+            }
+            else {
+                out_val = -6;
+                goto sub_extract_args_END;
+            }
+        }
     }
     
     /// Range is optional.  Default is maximum file range (0:)
-    r_start = 0;
-    r_end   = 65535;
-    if (RANGE_ELEMENT(args)->count > 0) {
-        char *start, *end, *ctx;
-        DEBUGPRINT("Range flag encountered: %s\n", RANGE_ELEMENT(args)->sval[0]);
-        start   = strtok_r((char*)RANGE_ELEMENT(args)->sval[0], ":", &ctx);
-        end     = strtok_r(NULL, ":", &ctx);
-
-        if (start != NULL) {
-            r_start = (uint16_t)atoi(start);
-        }
-        if (end != NULL) {
-            r_end = (uint16_t)atoi(end);
+    if (data->fields & ARGFIELD_FILERANGE) {
+        data->range_lo  = 0;
+        data->range_hi  = 65535;
+        if (filerange_opt->count > 0) {
+            char *start, *end, *ctx;
+            DEBUGPRINT("Range flag encountered: %s\n", filerange_opt->sval[0]);
+            start   = strtok_r((char*)filerange_opt->sval[0], ":", &ctx);
+            end     = strtok_r(NULL, ":", &ctx);
+            if (start != NULL) {
+                data->range_lo = (uint16_t)atoi(start);
+            }
+            if (end != NULL) {
+                data->range_hi = (uint16_t)atoi(end);
+            }
         }
     }
-
-    /// Load CLI inputs into appropriate output offsets of binary protocol.
-    /// Some commands take additional loose data inputs, which get placed into
-    /// the binary protocol output after this stage
-    for (int i=0; i<id_list_size; i++) {
-        if (fdp->bundle.argbytes == 5) {
-            dst[4] = (uint8_t)(r_end & 255);
-            dst[3] = (uint8_t)(r_end >> 8);
-            dst[2] = (uint8_t)(r_start & 255);
-            dst[1] = (uint8_t)(r_start >> 8);
-        }
-        dst[0]  = (uint8_t)id_list[i];
-        dst    += fdp->bundle.argbytes;
-        dstmax -= fdp->bundle.argbytes;
-    }
-   
-    /// Commands with b11 in the low 2 bits require an additional data parameter
-    /// 3 - write perms
-    /// 7 - write data          : Special, has an additional data payload
-    /// 11 - create empty file
-    if ((fdp->bundle.index & 3) == 3) {
-        uint8_t datbuffer[256];
-        int     datbytes = 0;
-        
-        if (DATA_ELEMENT(args)->count > 0) {
-            DEBUGPRINT("Data: %s\n", DATA_ELEMENT(args)->sval[0]);
-            datbytes = sub_bintex_proc( (bool)(FILE_ELEMENT(args)->count > 0), 
-                                        DATA_ELEMENT(args)->sval[0], 
-                                        (char*)datbuffer, 250 );
-        }
-        if (datbytes <= 0) {
-            out_val = -8;
-            goto sub_extract_args_END;
-        }
-        
-        if (fdp->bundle.index == 7) {
-            void* dst0;
-            
-            if (RANGE_ELEMENT(args)->count > 0) {
-                if ((r_end - r_start) < datbytes) {
-                    datbytes = (r_end - r_start);
-                }
-            }
-            if (datbytes > dstmax) {
-                datbytes = (int)dstmax;
-            }
-            
-            r_end       = r_start + (uint16_t)datbytes;
-            dst[-1]     = (uint8_t)(r_end & 255);
-            dst[-2]     = (uint8_t)(r_end >> 8);
-            dstmax     -= datbytes;
-            dst0        = (void*)dst;
-            dst        += datbytes;
-            
-            memcpy(dst0, datbuffer, datbytes);
+    
+    /// File ID is simply copied from the args
+    if (data->fields & ARGFIELD_FILEID) {
+        if (fileid_man->count > 0) {
+            DEBUGPRINT("ID arg encountered: %d\n", fileid_man->ival[0]);
+            data->file_id = (uint8_t)(fileid_man->ival[0] & 255);
         }
         else {
-            uint8_t* p;
-            int i, j;
-            
-            for (i=0, j=0, p=payload; i<id_list_size; ) {
-                // payload[0] is always location of file-id, already loaded
-                p[1] = datbuffer[j++];
-                if (fdp->bundle.index == 11) {
-                    p[2] = 0;
-                    p[3] = 0;
-                    p[4] = datbuffer[j++];
-                    p[5] = datbuffer[j++];
-                }
-                p += fdp->bundle.argbytes;
-            }
+            out_val = -7;
+            goto sub_extract_args_END;
         }
     }
 
+
+    
 
 }
 
@@ -364,7 +309,10 @@ int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 
 
 int cmd_devnew(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_man, archive_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_ARCHIVE,
+    };
+    void* args[] = {help_man, archive_man, end_man};
     
     
     return 0;
@@ -372,21 +320,30 @@ int cmd_devnew(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dst
 
 
 int cmd_devdel(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID,
+    };
+    void* args[] = {help_man, devid_man, end_man};
     
     return 0;
 }
 
 
 int cmd_devset(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_man, archive_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID,
+    };
+    void* args[] = {help_man, devid_man, end_man};
     
     //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
     return 0;
 }
 
 int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {archive_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
+    };
+    void* args[] = {help_man, archive_man, end_man};
 
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
@@ -401,7 +358,10 @@ int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 }
 
 int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {compress_opt, archive_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
+    };
+    void* args[] = {help_man, compress_opt, archive_man, end_man};
     
     return 0;
 }
@@ -419,7 +379,10 @@ int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 
 
 int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
     
     
     //int otfs_del(void* handle, const otfs_t* fs, bool unload);
@@ -428,7 +391,10 @@ int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
 }
 
 int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, fileid_man, fileperms_man, filealloc_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, filealloc_man, end_man};
     
     /// 1. Load FS template and defaults (JSON).  
     /// 2. Generate the binary from the JSON.
@@ -442,7 +408,10 @@ int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
 }
 
 int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
 
     /// Set FS if one is provided
     //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
@@ -453,7 +422,10 @@ int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 }
 
 int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     
     /// Set FS if one is provided
     //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
@@ -464,31 +436,46 @@ int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 }
 
 int cmd_restore(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
     
     return 0;
 }
 
 int cmd_readhdr(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
     
     return 0;
 }
 
 int cmd_readperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     
     return 0;
 }
 
 int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
     
     return 0;
 }
 
 int cmd_writeperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    void* args[] = {devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
+    };
+    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
     
     return 0;
 }

@@ -34,6 +34,153 @@
 typedef int (*cmdaction_t)(dterm_t*, uint8_t*, int*, uint8_t*, size_t);
 
 
+
+void cmd_init_args(void);
+
+
+
+
+/** OTDB Internal Commands
+  * -------------------------------------------------------------------------
+  */
+
+/** @brief Prints a list of commands supported by this command interface
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * cmdlist takes no further input.
+  */
+int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Quits OTDB
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * quit takes no further input.  It returns nothing, and the pipe or socket
+  * used for interfacing with OTDB will go down.
+  */
+int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+
+
+/** OTDB DB Manipulation Commands
+  * -------------------------------------------------------------------------
+  */
+
+/** @brief Creates a new device FS in the database
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * Protocol usage: text input
+  * dev-new ID infile
+  *
+  * ID:         Bintex formatted Device ID of new device to add to OTDB.
+  * 
+  * infile:     Input file.  This is either a directory or a compressed archive
+  *             of the directory.
+  */
+int cmd_devnew(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Deletes a device FS from the database
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * Protocol usage: text input
+  * dev-del ID
+  *
+  * ID:         Bintex formatted Device ID.  This device FS will be deleted.
+  */
+int cmd_devdel(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Sets the active device ID
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * @note if multiple users requesting data from OTDB, the Active ID cannot be
+  * relied-on to have the same value across communication sessions.  Therefore,
+  * the best practice is to use dev-set at the start of a communication, or not 
+  * at all -- all commands can take an optional Device ID input.
+  *
+  * Protocol usage: text input
+  * dev-set ID
+  * 
+  * ID is a bintex expression.
+  */
+int cmd_devset(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Opens a database file and loads into memory
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * Protocol usage: text input
+  * open infile
+  *
+  * infile:     Input file.  This is either a directory or a compressed archive
+  *             depending on the way it is saved (-c option or not).
+  */
+int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Saves the active database to file
+  * @param dt       (dterm_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  *
+  * Protocol usage: text input
+  * save [-c] outfile
+  *
+  * -c:         Optional argument to compress output.  Compression is 7z type.
+  *
+  * outfile:    File name of the saved output.
+  *             If compression is not used, the output will be a directory with
+  *             this name, with an internal structure of subdirectories and 
+  *             JSON files.
+  * 
+  * ID is a bintex expression.
+  */
+int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+
+
+
+/** OTDB Filesystem Commands
+  * -------------------------------------------------------------------------
+  */
+
+
 /** @brief Delete a file on a device
   * @param dt       (dterm_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
@@ -50,6 +197,7 @@ typedef int (*cmdaction_t)(dterm_t*, uint8_t*, int*, uint8_t*, size_t);
 int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
 
 
+
 /** @brief Create a file on a device
   * @param dt       (dterm_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
@@ -58,7 +206,7 @@ int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * new [-i ID] [-b block] file_id alloc perms
+  * new [-i ID] [-b block] file_id perms alloc
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -69,6 +217,7 @@ int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
 int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
 
 
+
 /** @brief Read a file from a device
   * @param dt       (dterm_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
@@ -77,7 +226,7 @@ int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * r [-i ID] [-b block] file_id [range]
+  * r [-i ID] [-b block] [-r range] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -97,7 +246,7 @@ int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * r* [-i ID] [-b block] file_id [range]
+  * r* [-i ID] [-b block] [-r range] file_id 
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -172,18 +321,20 @@ int cmd_readperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t 
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * w [-i ID] [-b block] file_id range writedata
+  * w [-i ID] [-b block] [-r range] file_id writedata
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
   *
-  * Range is mandatory.  If the writedata goes beyond the range, it will be 
+  * If range is supplied and if the writedata goes beyond the range, it will be 
   * clipped to fit within the range.
+  *
+  * If range is not supplied, range will start at 0 and be derived from the 
+  * length of the supplied writedata.
   * 
   * writedata is sent as BINTEX
   */
 int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
 
 
 
@@ -203,45 +354,6 @@ int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstm
   * Perms are an octal string of two digits, as with other permissions
   */
 int cmd_writeperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
-
-int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
-
-
-int cmd_setid(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
-
-/** @brief Prints a list of commands supported by this command interface
-  * @param dt       (dterm_t*) Controlling interface handle
-  * @param dst      (uint8_t*) Protocol output buffer
-  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
-  * @param src      (uint8_t*) Protocol input buffer
-  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
-  *
-  * cmdlist takes no further input.
-  */
-int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
-
-/** @brief Quits OTDB
-  * @param dt       (dterm_t*) Controlling interface handle
-  * @param dst      (uint8_t*) Protocol output buffer
-  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
-  * @param src      (uint8_t*) Protocol input buffer
-  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
-  *
-  * quit takes no further input.  It returns nothing, and the pipe or socket
-  * used for interfacing with OTDB will go down.
-  */
-int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
 
 
 

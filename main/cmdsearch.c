@@ -14,7 +14,7 @@
   *
   */
 
-// cmdtab library header
+// Cmdtab library header
 #include <cmdtab.h>
 
 // Local Headers
@@ -43,6 +43,9 @@ typedef struct {
 static const cmd_t otdb_commands[] = {
     { "cmdls",      &cmd_cmdlist },
     { "del",        &cmd_del },
+    { "dev-del",    &cmd_devdel },
+    { "dev-new",    &cmd_devnew },
+    { "dev-set",    &cmd_devset },
     { "open",       &cmd_open },
     { "new",        &cmd_new },
     { "quit",       &cmd_quit },
@@ -54,7 +57,6 @@ static const cmd_t otdb_commands[] = {
     { "w",          &cmd_write },
     { "wp",         &cmd_writeperms },
     { "save",       &cmd_save },
-    { "setid",      &cmd_setid },
     { "z",          &cmd_restore },
 };
 
@@ -72,6 +74,12 @@ typedef enum {
     EXTCMD_path,
     EXTCMD_MAX
 } otdb_extcmd_t;
+
+
+
+/** Argtable objects
+  * -------------------------------------------------------------------------
+  */
 
 
 
@@ -119,7 +127,7 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
         }
     }
 
-    /// Last, Add Otter commands to the cmdtab.
+    /// Add Otter commands to the cmdtab.
     for (int i=0; i<(sizeof(otdb_commands)/sizeof(cmd_t)); i++) {
         int rc;
 
@@ -133,6 +141,9 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
         ///@note This is specific to otdb, it's not a requirement of cmdtab
         otdb_commands[i].action(NULL, NULL, NULL, NULL, 0);
     }
+    
+    /// Initialize the arguments used by commands
+    cmd_init_args();
     
     return 0;
 }

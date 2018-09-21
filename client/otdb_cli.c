@@ -24,10 +24,31 @@
 
 
 
+
+
+static char* sub_printhex(char* dst, uint8_t* src, size_t src_bytes) {
+    static const char convert[] = "0123456789ABCDEF";
+
+    while (src_bytes-- != 0) {
+        *dst++ = convert[*src >> 4];
+        *dst++ = convert[*src & 0x0f];
+    }
+    
+    return dst;
+}
+
+
+
 static int sub_sendcmd(const char* cmd) {
     
     return 0;
 }
+
+
+
+
+
+
 
 
 
@@ -240,7 +261,7 @@ int otdb_read(otdb_filedata_t* output_data,
     ///@todo this is almost identical to readall (r*)
     
     cursor  = stpcpy(argstring, "r ");
-    limit   = sizeof(argstring) - 1 - 4;
+    limit   = sizeof(argstring) - 1 - 2;
     
     if (device_id != 0) {
         cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
@@ -290,7 +311,7 @@ int otdb_readall(otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data,
     ///@todo this is almost identical to read (r*)
     
     cursor  = stpcpy(argstring, "r* ");
-    limit   = sizeof(argstring) - 1 - 4;
+    limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
         cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
@@ -338,7 +359,7 @@ int otdb_restore(uint64_t device_id, otdb_fblock_enum block, unsigned int file_i
     ///@todo almost identical to restore, readhdr, readperms
     
     cursor  = stpcpy(argstring, "z ");
-    limit   = sizeof(argstring) - 1 - 4;
+    limit   = sizeof(argstring) - 1 - 2;
     
     if (device_id != 0) {
         cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
@@ -373,7 +394,7 @@ int otdb_readhdr(otdb_filehdr_t* output_hdr, uint64_t device_id, otdb_fblock_enu
     ///@todo almost identical to restore, readhdr, readperms
     
     cursor  = stpcpy(argstring, "rh ");
-    limit   = sizeof(argstring) - 1 - 4;
+    limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
         cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
@@ -410,7 +431,7 @@ int otdb_readperms(unsigned int* output_perms, uint64_t device_id, otdb_fblock_e
     ///@todo almost identical to restore, readhdr, readperms
     
     cursor  = stpcpy(argstring, "rp ");
-    limit   = sizeof(argstring) - 1 - 4;
+    limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
         cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
@@ -439,9 +460,51 @@ int otdb_readperms(unsigned int* output_perms, uint64_t device_id, otdb_fblock_e
 
 int otdb_writedata(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, 
         unsigned int data_offset, unsigned int data_size, uint8_t* writedata) {
+    int rc;
+    char* argstring;
+    char* cursor;
+    int cpylen;
+    int limit;
     
+    ///@todo consider storing this statically to minimize reallocation.
+    limit       = 48 + (2 * data_size);
+    argstring = calloc(limit, sizeof(char));
+    if (argstring == NULL) {
+        return -2;
+    }
     
-        
+    cursor  = stpcpy(argstring, "w ");
+    limit   = limit - 1 - 2;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "-r %u:%u ", data_offset, data_offset+data_size);
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%u ", file_id);
+    cursor += cpylen;
+    limit  -= cpylen; 
+
+    *cursor++   = '[';
+    cursor      = sub_printhex(cursor, writedata, data_size);
+    *cursor++   = ']';
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    free(argstring);
+    
+    return rc;
 }
 
 

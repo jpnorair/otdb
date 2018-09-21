@@ -49,6 +49,11 @@ typedef struct {
 
 
 
+///@todo otdb start client and get socket handle
+
+
+
+
 /** @brief Loads new device FS in the database
   * @param device_id    (uint64_t) Device ID for new device
   * @param tmpl_path    (const char*) Path to saved device FS template file

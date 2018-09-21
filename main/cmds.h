@@ -85,7 +85,7 @@ int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * dev-new infile
+  * dev-new [-i ID] infile
   *
   * infile:     Input file.  This is either a directory or a compressed archive
   *             of the directory.

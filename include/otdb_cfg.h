@@ -32,6 +32,9 @@
 #ifndef OTDB_FEATURE_CLIENT
 #   define OTDB_FEATURE_CLIENT      DISABLED
 #endif
+#ifndef OTDB_FEATURE_DEBUG
+#   define OTDB_FEATURE_DEBUG       DISABLED
+#endif
 
 /// Parameter configurations
 ///@todo redefine 

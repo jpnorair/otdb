@@ -14,212 +14,473 @@
   *
   */
 
-// cmdtab library header
-#include <cmdtab.h>
-
 // Local Headers
-#include "cmds.h"
-#include "cmdsearch.h"
-
-#include <bintex.h>
+#include "otdb_cli.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
 
 
 
-
-
-/// Binary Search Table for Commands
-
-// sorted list of supported commands
-
-typedef struct {
-    const char      name[8]; 
-    cmdaction_t     action; 
-} cmd_t;
-
-static const cmd_t otdb_commands[] = {
-    { "cmdls",      &cmd_cmdlist },
-    { "del",        &cmd_del },
-    { "open",       &cmd_open },
-    { "new",        &cmd_new },
-    { "quit",       &cmd_quit },
-    { "r",          &cmd_read },
-    { "r*",         &cmd_readall },
-    { "restore",    &cmd_restore },
-    { "rh",         &cmd_readhdr },
-    { "rp",         &cmd_readperms },
-    { "w",          &cmd_write },
-    { "wp",         &cmd_writeperms },
-    { "save",       &cmd_save },
-    { "setid",      &cmd_setid },
-    { "z",          &cmd_restore },
-};
-
-
-
-///@todo Make this thread safe by adding a mutex here.
-///      It's not technically required yet becaus only one thread in otdb uses
-///      cmdsearch, but we should put it in soon, just in case.
-static cmdtab_t cmdtab_default;
-static cmdtab_t* otdb_cmdtab;
-
-
-typedef enum {
-    EXTCMD_null = 0,
-    EXTCMD_path,
-    EXTCMD_MAX
-} otdb_extcmd_t;
-
-
-
-
-int cmd_init(cmdtab_t* init_table, const char* xpath) {
-    
-    otdb_cmdtab = (init_table == NULL) ? &cmdtab_default : init_table;
-
-    /// cmdtab_add prioritizes subsequent command adds, so the highest priority
-    /// commands should be added last.
-    
-    /// First, add commands that are available from the external command path.
-    if (xpath != NULL) {
-        size_t xpath_len = strlen(xpath);
-        char buffer[256];
-        char* cmd;
-        FILE* stream;
-        int test;
-        
-        if (xpath_len > 0) { 
-            ///@todo make this find call work properly on mac and linux.
-#           if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-            snprintf(buffer, 256, "find %s -perm +111 -type f", xpath);
-            stream = popen(buffer, "r");
-#           elif defined(__linux__)
-            snprintf(buffer, 256, "find %s -perm /u=x,g=x,o=x -type f", xpath);
-            stream = popen(buffer, "r");
-#           else
-            stream = NULL;
-#           endif
-            
-            if (stream != NULL) {
-                do {
-                    test = fscanf(stream, "%s", buffer);
-                    if (test == 1) {
-                        cmd = &buffer[xpath_len];
-                        if (strlen(cmd) >= 2) {
-                            cmdtab_add(otdb_cmdtab, buffer, (void*)xpath, (void*)EXTCMD_path);
-                        }
-                    }
-                } while (test != EOF);
-                
-                pclose(stream);
-            }
-        }
-    }
-
-    /// Last, Add Otter commands to the cmdtab.
-    for (int i=0; i<(sizeof(otdb_commands)/sizeof(cmd_t)); i++) {
-        int rc;
-
-        rc = cmdtab_add(otdb_cmdtab, otdb_commands[i].name, (void*)otdb_commands[i].action, (void*)EXTCMD_null);
-        if (rc != 0) {
-            fprintf(stderr, "ERROR: cmdtab_add() from %s line %d returned %d.\n", __FUNCTION__, __LINE__, rc);
-            return -1;
-        }
-        
-        /// Run command with dt=NULL to initialize the command
-        ///@note This is specific to otdb, it's not a requirement of cmdtab
-        otdb_commands[i].action(NULL, NULL, NULL, NULL, 0);
-    }
+static int sub_sendcmd(const char* cmd) {
     
     return 0;
 }
 
 
 
-int cmd_run(const cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int output;
-
-    if (cmd == NULL) {
-        return -1;
+int otdb_newdevice(uint64_t device_id, const char* tmpl_path) {
+    int rc;
+    char argstring[256];
+    char* cursor;
+    int limit;
+    int path_len;
+    
+    cursor  = stpcpy(argstring, "dev-new ");
+    limit   = sizeof(argstring) - 1 - (int)(cursor - argstring);
+    
+    if (device_id != 0) {
+        int printsz;
+        printsz = snprintf(cursor, 3+16+2, "-i %16llX ", device_id);
+        limit  -= printsz;
+        cursor += printsz;
     }
     
-    // handling of different command types
-    switch ((otdb_extcmd_t)cmd->extcmd) {
-        case EXTCMD_null:
-            //fprintf(stderr, "EXTCMD_null: inbytes=%d, src=%s\n", *inbytes, (char*)src);
-            output = ((cmdaction_t)cmd->action)(dt, dst, inbytes, src, dstmax);
-            break;
-
-        case EXTCMD_path: {
-            char xpath[512];
-            char* cursor;
-            FILE* stream;
-            int rsize;
-            //fprintf(stderr, "EXTCMD_path: inbytes=%d, src=%s\n", *inbytes, (char*)src);
-            
-            cursor          = xpath;
-            cursor          = stpncpy(cursor, (const char*)(cmd->action), (&xpath[512] - cursor));
-            cursor          = stpncpy(cursor, (const char*)(cmd->name), (&xpath[512] - cursor));
-            cursor          = stpncpy(cursor, " ", (&xpath[512] - cursor));
-            rsize           = (int)(&xpath[512] - cursor);
-            rsize           = (*inbytes < rsize) ? *inbytes : (rsize-1);
-            cursor[rsize]   = 0;
-            memcpy(cursor, src, rsize);
-
-            stream = popen(xpath, "r");
-            if (stream == NULL) {
-                output = -1;    ///@todo make sure this is correct error code
-            }
-            else {
-                output = bintex_fs(stream, dst, (int)dstmax);
-                pclose(stream);
-            }
-        } break;
-
-        default:
-            //fprintf(stderr, "No Command Extension found: inbytes=%d, src=%s\n", *inbytes, (char*)src);
-            output = -2;
-            break;
-    }
-
-    return output;
-}
-
-
-
-int cmd_getname(char* cmdname, char* cmdline, size_t max_cmdname) {
-	size_t diff = max_cmdname;
+    path_len    = (int)strlen(tmpl_path);
+    limit      -= path_len;
     
-    // Copy command into cmdname, stopping when whitespace is detected, or
-    // the command line (string) is ended.
-    while ((diff != 0) && (*cmdline != 0) && !isspace(*cmdline)) {
-        diff--;
-        *cmdname++ = *cmdline++;
+    if (limit > 0) {
+        cursor[path_len] = 0;
+        memcpy(cursor, tmpl_path, path_len);
+        rc = sub_sendcmd((const char*)argstring);
+    }
+    else {
+        rc = -1;
     }
     
-    // Add command string terminator & determine command string length (diff)
-    *cmdname    = 0;
-    diff        = max_cmdname - diff;
-    return (int)diff;    
+    return rc;
+}
+
+
+int otdb_deldevice(uint64_t device_id) {
+    int rc;
+    char argstring[32];
+    char* cursor;
+    int cpylen;
+    
+    cursor  = stpcpy(argstring, "dev-del ");
+    cpylen  = snprintf(cursor, 16+2, "%16llX", device_id);
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
+}
+
+
+int otdb_setdevice(uint64_t device_id) {
+    int rc;
+    char argstring[32];
+    char* cursor;
+    int cpylen;
+    
+    cursor  = stpcpy(argstring, "dev-set ");
+    cpylen  = snprintf(cursor, 16+2, "%16llX", device_id);
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
+}
+
+
+int otdb_opendb(const char* input_path) {
+    int rc;
+    char argstring[256];
+    char* cursor;
+    int limit;
+    int cpylen;
+    
+    cursor  = stpcpy(argstring, "open ");
+    limit   = sizeof(argstring) - 1 - (int)(cursor - argstring);
+    cpylen  = (int)strlen(input_path);
+    limit  -= cpylen;
+    
+    if (limit > 0) {
+        cursor[cpylen] = 0;
+        memcpy(cursor, input_path, cpylen);
+        rc = sub_sendcmd((const char*)argstring);
+    }
+    else {
+        rc = -1;
+    }
+    
+    return rc;
+}
+
+
+int otdb_savedb(bool use_compression, const char* output_path) {
+    int rc;
+    char argstring[256];
+    char* cursor;
+    int limit;
+    int cpylen;
+    
+    cursor = stpcpy(argstring, "save ");
+    if (use_compression) {
+        cursor  = stpcpy(cursor, "-c ");
+    }
+    
+    limit   = sizeof(argstring) - 1 - (int)(cursor - argstring);
+    cpylen  = (int)strlen(output_path);
+    limit  -= cpylen;
+    
+    if (limit > 0) {
+        cursor[cpylen] = 0;
+        memcpy(cursor, output_path, cpylen);
+        rc = sub_sendcmd((const char*)argstring);
+    }
+    else {
+        rc = -1;
+    }
+    
+    return rc;
 }
 
 
 
 
-const cmdtab_item_t* cmd_search(char *cmdname) {
-    return cmdtab_search(otdb_cmdtab, cmdname);
+
+/** OTDB Filesystem Commands
+  * -------------------------------------------------------------------------
+  */
+
+
+int otdb_delfile(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    cursor  = stpcpy(argstring, "del ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+    
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
 }
 
 
 
-const cmdtab_item_t* cmd_subsearch(char *namepart) {
-    return cmdtab_subsearch(otdb_cmdtab, namepart);
+int otdb_newfile(   uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
+                    unsigned int file_perms, unsigned int file_alloc) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    cursor  = stpcpy(argstring, "new ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u ", file_id);
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%o ", (file_perms & 63));
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_alloc);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+    
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
 }
 
 
+int otdb_read(otdb_filedata_t* output_data, 
+        uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
+        unsigned int read_offset, int read_size) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    ///@todo this is almost identical to readall (r*)
+    
+    cursor  = stpcpy(argstring, "r ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (read_size <= 0) {
+        read_size = 65535;
+    }
+    else {
+        read_size += read_offset;
+    }
+    
+    cpylen  = snprintf(cursor, limit, "-r %u:%u ", read_offset, read_size);
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%u ", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    ///@todo write-out header and data
+    
+    return rc;
+}
+
+
+
+int otdb_readall(otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data, 
+        uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
+        unsigned int read_offset, int read_size) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    ///@todo this is almost identical to read (r*)
+    
+    cursor  = stpcpy(argstring, "r* ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (read_size <= 0) {
+        read_size = 65535;
+    }
+    else {
+        read_size += read_offset;
+    }
+    
+    cpylen  = snprintf(cursor, limit, "-r %u:%u ", read_offset, read_size);
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    ///@todo write-out header and data
+    
+    return rc;
+}
+
+
+
+int otdb_restore(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    ///@todo almost identical to restore, readhdr, readperms
+    
+    cursor  = stpcpy(argstring, "z ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
+}
+
+
+
+int otdb_readhdr(otdb_filehdr_t* output_hdr, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    ///@todo almost identical to restore, readhdr, readperms
+    
+    cursor  = stpcpy(argstring, "rh ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    ///@todo write-out header
+    
+    return rc;
+}
+
+
+
+int otdb_readperms(unsigned int* output_perms, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    ///@todo almost identical to restore, readhdr, readperms
+    
+    cursor  = stpcpy(argstring, "rp ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u", file_id);
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    ///@todo write-out perms
+    
+    return rc;
+}
+
+
+
+int otdb_writedata(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, 
+        unsigned int data_offset, unsigned int data_size, uint8_t* writedata) {
+    
+    
+        
+}
+
+
+
+
+int otdb_writeperms(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, unsigned int file_perms) {
+    int rc;
+    char argstring[48];
+    char* cursor;
+    int cpylen;
+    int limit;
+    
+    cursor  = stpcpy(argstring, "new ");
+    limit   = sizeof(argstring) - 1 - 4;
+    
+    if (device_id != 0) {
+        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    if (block != BLOCK_isf) {
+        cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
+        cursor += cpylen;
+        limit  -= cpylen; 
+    }
+    
+    cpylen  = snprintf(cursor, limit, "%u ", file_id);
+    cursor += cpylen;
+    limit  -= cpylen; 
+    
+    cpylen  = snprintf(cursor, limit, "%o", (file_perms & 63));
+    //cursor += cpylen;
+    //limit  -= cpylen; 
+    
+    rc      = sub_sendcmd((const char*)argstring);
+    
+    return rc;
+}
 
 
 

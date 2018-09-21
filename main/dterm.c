@@ -393,9 +393,9 @@ void* dterm_socketer(void* args) {
     dt->state = prompt_off;
     
     /// Get a packet from the Socket
-    /// @note this implementation is single threaded.  OTDB is designed for
-    ///       maximum synchronicity of data, not high throughput.  It doesn't
-    ///       need high throughput for its target use cases.
+    /// @todo multi-thread this in order to allow socket to remain open on the
+    ///       client, but add mutex in the sub-thread in order to prevent 
+    ///       concurrent access to the underlying filesystem.
     while (1) {
         int linelen;
         

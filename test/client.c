@@ -241,6 +241,7 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     int     otdb_stdout_fd;
     pid_t   otdbpid;
     char*   otdbcall;
+    void*   otdb;
     
     struct sockaddr_un sockaddr;
     char sockbuf[100];
@@ -306,23 +307,15 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
         sleep(1);
     }
     
-    /// Connect to OTDB socket
-    sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        perror("socket error");
-        cli.exitcode = -1;
-        goto client_main_TERM1;
-    }
-
-    memset(&sockaddr, 0, sizeof(sockaddr));
-    sockaddr.sun_family = AF_UNIX;
-    strncpy(sockaddr.sun_path, otdbpath, sizeof(sockaddr.sun_path)-1);
-
-    if (connect(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == -1) {
-        perror("connect error");
-        cli.exitcode = -1;
+    /// Initialize OTDB Client (socket)
+    otdb = otdb_init(AF_UNIX, otdbpath);
+    if (otdb == NULL) {
+        ///@todo error message
         goto client_main_TERM2;
     }
+    
+    /// Connect to OTDB socket
+    
 
     while (cli.run == true) {
         if (i >= TEST_CMDS) {
@@ -356,9 +349,10 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     }
 
     /// Close the socket
-    close(sockfd);
+    otdb_disconnect(otdb);
     
     client_main_TERM2:
+    otdb_deinit(otdb);
     
     /// Kill OTDB
     client_main_TERM1:

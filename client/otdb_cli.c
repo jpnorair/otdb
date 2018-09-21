@@ -22,6 +22,21 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+
+typedef struct {
+    int     sockfd;
+    struct  sockaddr_un sockaddr;
+    int     connected;
+    uint8_t* rxbuf;
+    size_t  rxbuf_size;
+} otdb_handle_t;
+
 
 
 
@@ -38,10 +53,182 @@ static char* sub_printhex(char* dst, uint8_t* src, size_t src_bytes) {
 }
 
 
+static int sub_readhex(uint8_t* dst, char* src, size_t src_bytes) {
+        static const uint8_t hexlut0[128] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 16, 32, 48, 64, 80, 96,112,128,144, 0, 0, 0, 0, 0, 0, 
+        0,160,176,192,208,224,240,  0,  0,  0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,160,176,192,208,224,240,  0,  0,  0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
 
-static int sub_sendcmd(const char* cmd) {
+    static const uint8_t hexlut1[128] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 
+        0,10,11,12,13,14,15, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,10,11,12,13,14,15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
     
-    return 0;
+    uint8_t* start = dst;
+
+    while (src_bytes > 1) {
+        uint8_t byte;
+        byte    = hexlut0[ *src++ & 0x7f];
+        byte   += hexlut1[ *src++ & 0x7f];
+        *dst++  = byte;
+    }
+
+    return (int)(dst - start);
+}
+
+
+
+
+
+
+static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
+    int rc;
+    ssize_t bytes_out;
+    ssize_t bytes_in;
+    otdb_handle_t* otdb = handle;
+    
+    if (otdb == NULL) {
+        return -1;
+    }
+    
+    rc = otdb_connect(otdb);
+    if (rc >= 0) {
+        
+        // Send the command to OTDB, and go immediately into receive mode to 
+        // get the response
+        bytes_out   = send(otdb->sockfd, cmd, cmdsize, 0);
+        bytes_in    = recv(otdb->sockfd, otdb->rxbuf, otdb->rxbuf_size, MSG_WAITALL);
+        
+#       if OTDB_FEATURE(DEBUG)
+        if (bytes_out > 0) {
+            fprintf(stdout, "Client sent %d bytes:\n%*s\n\n", bytes_out, bytes_out, sockbuf);
+        }
+        else {
+            fprintf(stderr, "Client socket send error %d\n", errno);
+        }
+        if (bytes_in > 0) {
+            fprintf(stdout, "OTDB received %d bytes:\n%*s\n\n", bytes_in, bytes_in, sockbuf);
+        }
+        else if (bytes_in == 0) {
+            fprintf(stderr, "OTDB socket is closed, can't receive.\n");
+            break;
+        }
+        else {
+            fprintf(stderr, "OTDB socket receive error %d\n", errno);
+        }
+#       endif
+        
+        rc = (int)bytes_in;
+        
+        otdb_disconnect(handle);
+    }
+    
+    return rc;
+}
+
+
+
+
+
+
+
+
+void* otdb_init(sa_family_t socktype, const char* sockpath, size_t rxbuf_size) {
+    otdb_handle_t*  handle;
+
+    handle = malloc(sizeof(otdb_handle_t));
+    if (handle == NULL) {
+        perror("Unable to create OTDB Client Instance.");
+        goto otdb_init_END;
+    }
+    
+    handle->rxbuf = malloc(rxbuf_size);
+    if (handle->rxbuf == NULL) {
+        perror("Unable to create OTDB Client RX Buffer.");
+        goto otdb_init_TERM1;
+    }
+    
+    handle->sockfd  = socket(socktype, SOCK_STREAM, 0);
+    if (handle->sockfd < 0) {
+        perror("Unable to create OTDB Client Socket.");
+        goto otdb_init_TERM2;
+    }
+    
+    memset(&handle->sockaddr, 0, sizeof(struct sockaddr_un));
+    handle->sockaddr.sun_family = socktype;
+    strncpy(handle->sockaddr.sun_path, sockpath, sizeof(handle->sockaddr.sun_path)-1);
+    
+    otdb_init_END:
+    handle->connected = -1;
+    return (void*)handle;
+    
+    otdb_init_TERM2:
+    free(handle->rxbuf);
+    
+    otdb_init_TERM1:
+    free(handle);
+    return NULL;
+}
+
+
+void otdb_deinit(void* handle) {
+    if (handle != NULL) {
+        otdb_disconnect(handle);
+        
+        if (((otdb_handle_t*)handle)->rxbuf != NULL) {
+            free(((otdb_handle_t*)handle)->rxbuf);
+        }
+        free(handle);
+    }
+}
+
+
+int otdb_connect(void* handle) {
+    int rc = -1;
+    otdb_handle_t* otdb = handle;
+    
+    if (otdb != NULL) {
+        if (otdb->connected < 0) {
+            rc = connect(otdb->sockfd, (struct sockaddr*)&otdb->sockaddr, sizeof(struct sockaddr_un));
+            otdb->connected = rc;
+        }
+        else {
+            rc = 0;
+        }
+    }
+    return rc;
+}
+
+
+int otdb_disconnect(void* handle) {
+    int rc = -1;
+    otdb_handle_t* otdb = handle;
+    
+    if (otdb != NULL) {
+        if (otdb->connected < 0) {
+            rc = 0;
+        }
+        else if (otdb->sockfd >= 0) {
+            rc = close(otdb->sockfd);
+            if (rc == 0) {
+                otdb->connected = -1;
+            }
+        }
+    }
+    
+    return rc;
 }
 
 
@@ -52,12 +239,15 @@ static int sub_sendcmd(const char* cmd) {
 
 
 
-int otdb_newdevice(uint64_t device_id, const char* tmpl_path) {
+
+
+
+int otdb_newdevice(void* handle, uint64_t device_id, const char* tmpl_path) {
     int rc;
     char argstring[256];
     char* cursor;
     int limit;
-    int path_len;
+    int cpylen;
     
     cursor  = stpcpy(argstring, "dev-new ");
     limit   = sizeof(argstring) - 1 - (int)(cursor - argstring);
@@ -69,13 +259,16 @@ int otdb_newdevice(uint64_t device_id, const char* tmpl_path) {
         cursor += printsz;
     }
     
-    path_len    = (int)strlen(tmpl_path);
-    limit      -= path_len;
+    cpylen  = (int)strlen(tmpl_path);
+    limit  -= cpylen;
     
     if (limit > 0) {
-        cursor[path_len] = 0;
-        memcpy(cursor, tmpl_path, path_len);
-        rc = sub_sendcmd((const char*)argstring);
+        memcpy(cursor, tmpl_path, cpylen);
+        cursor     += cpylen;
+        *cursor++   = 0;
+        rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+        
+        ///@todo read-out error code
     }
     else {
         rc = -1;
@@ -85,35 +278,43 @@ int otdb_newdevice(uint64_t device_id, const char* tmpl_path) {
 }
 
 
-int otdb_deldevice(uint64_t device_id) {
+int otdb_deldevice(void* handle, uint64_t device_id) {
     int rc;
     char argstring[32];
     char* cursor;
     int cpylen;
     
-    cursor  = stpcpy(argstring, "dev-del ");
-    cpylen  = snprintf(cursor, 16+2, "%16llX", device_id);
-    rc      = sub_sendcmd((const char*)argstring);
+    cursor      = stpcpy(argstring, "dev-del ");
+    cpylen      = snprintf(cursor, 16+2, "%16llX", device_id);
+    cursor     += cpylen;
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }
 
 
-int otdb_setdevice(uint64_t device_id) {
+int otdb_setdevice(void* handle, uint64_t device_id) {
     int rc;
     char argstring[32];
     char* cursor;
     int cpylen;
     
-    cursor  = stpcpy(argstring, "dev-set ");
-    cpylen  = snprintf(cursor, 16+2, "%16llX", device_id);
-    rc      = sub_sendcmd((const char*)argstring);
+    cursor      = stpcpy(argstring, "dev-set ");
+    cpylen      = snprintf(cursor, 16+2, "%16llX", device_id);
+    cursor     += cpylen;
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }
 
 
-int otdb_opendb(const char* input_path) {
+int otdb_opendb(void* handle, const char* input_path) {
     int rc;
     char argstring[256];
     char* cursor;
@@ -126,9 +327,12 @@ int otdb_opendb(const char* input_path) {
     limit  -= cpylen;
     
     if (limit > 0) {
-        cursor[cpylen] = 0;
         memcpy(cursor, input_path, cpylen);
-        rc = sub_sendcmd((const char*)argstring);
+        cursor     += cpylen;
+        *cursor++   = 0;
+        rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+        
+        ///@todo read-out error code
     }
     else {
         rc = -1;
@@ -138,7 +342,7 @@ int otdb_opendb(const char* input_path) {
 }
 
 
-int otdb_savedb(bool use_compression, const char* output_path) {
+int otdb_savedb(void* handle, bool use_compression, const char* output_path) {
     int rc;
     char argstring[256];
     char* cursor;
@@ -155,9 +359,12 @@ int otdb_savedb(bool use_compression, const char* output_path) {
     limit  -= cpylen;
     
     if (limit > 0) {
-        cursor[cpylen] = 0;
         memcpy(cursor, output_path, cpylen);
-        rc = sub_sendcmd((const char*)argstring);
+        cursor     += cpylen;
+        *cursor++   = 0;
+        rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+        
+        ///@todo read-out error code
     }
     else {
         rc = -1;
@@ -175,7 +382,7 @@ int otdb_savedb(bool use_compression, const char* output_path) {
   */
 
 
-int otdb_delfile(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+int otdb_delfile(void* handle, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
     int rc;
     char argstring[48];
     char* cursor;
@@ -198,17 +405,20 @@ int otdb_delfile(uint64_t device_id, otdb_fblock_enum block, unsigned int file_i
     }
     
     cpylen  = snprintf(cursor, limit, "%u", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
     
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }
 
 
 
-int otdb_newfile(   uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
+int otdb_newfile(   void* handle, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
                     unsigned int file_perms, unsigned int file_alloc) {
     int rc;
     char argstring[48];
@@ -240,16 +450,19 @@ int otdb_newfile(   uint64_t device_id, otdb_fblock_enum block, unsigned int fil
     limit  -= cpylen; 
     
     cpylen  = snprintf(cursor, limit, "%u", file_alloc);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
     
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }
 
 
-int otdb_read(otdb_filedata_t* output_data, 
+int otdb_read(void* handle, otdb_filedata_t* output_data, 
         uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
         unsigned int read_offset, int read_size) {
     int rc;
@@ -272,7 +485,7 @@ int otdb_read(otdb_filedata_t* output_data,
     if (block != BLOCK_isf) {
         cpylen  = snprintf(cursor, limit, "-b %u ", (int)block);
         cursor += cpylen;
-        limit  -= cpylen; 
+        limit  -= cpylen;
     }
     
     if (read_size <= 0) {
@@ -287,19 +500,31 @@ int otdb_read(otdb_filedata_t* output_data,
     limit  -= cpylen; 
     
     cpylen  = snprintf(cursor, limit, "%u ", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo write-out header and data
+    ///@todo read-out error code
+    
+    if ((rc > 0) && (output_data != NULL)) {
+        otdb_handle_t* otdb = handle;
+    
+        // Data from otdb will be received as hex, convert to binary inplace
+        output_data->ptr    = otdb->rxbuf;
+        output_data->block  = block;
+        output_data->fileid = file_id;
+        output_data->offset = read_offset;
+        output_data->length = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+    }
     
     return rc;
 }
 
 
 
-int otdb_readall(otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data, 
+int otdb_readall(void* handle, otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data, 
         uint64_t device_id, otdb_fblock_enum block, unsigned int file_id,
         unsigned int read_offset, int read_size) {
     int rc;
@@ -337,19 +562,52 @@ int otdb_readall(otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data,
     limit  -= cpylen; 
     
     cpylen  = snprintf(cursor, limit, "%u", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo write-out header and data
+    ///@todo read-out error code
+    
+    if (rc > 0) {
+        int totalsize;
+        otdb_handle_t* otdb = handle;
+        
+        // Received Header is 10 bytes
+        totalsize   = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+
+        if (output_hdr != NULL) {
+            memset(output_hdr, 0, sizeof(otdb_filehdr_t));
+            if (totalsize >= 10) {
+                output_hdr->id      = otdb->rxbuf[0];
+                output_hdr->perms   = otdb->rxbuf[1];
+                memcpy(&output_hdr->length, &otdb->rxbuf[2], 2);
+                memcpy(&output_hdr->alloc, &otdb->rxbuf[4], 2);
+                memcpy(&output_hdr->timestamp, &otdb->rxbuf[6], 4);
+            }
+        }
+        
+        if (output_data != NULL) {
+            memset(output_data, 0, sizeof(otdb_filedata_t));
+            
+            totalsize -= 10;
+            if (totalsize > 0) {
+                output_data->ptr    = &otdb->rxbuf[10];
+                output_data->block  = block;
+                output_data->fileid = file_id;
+                output_data->offset = read_offset;
+                output_data->length = totalsize;
+            }
+        }
+    }
     
     return rc;
 }
 
 
 
-int otdb_restore(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+int otdb_restore(void* handle, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
     int rc;
     char argstring[48];
     char* cursor;
@@ -374,17 +632,20 @@ int otdb_restore(uint64_t device_id, otdb_fblock_enum block, unsigned int file_i
     }
     
     cpylen  = snprintf(cursor, limit, "%u", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }
 
 
 
-int otdb_readhdr(otdb_filehdr_t* output_hdr, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+int otdb_readhdr(void* handle, otdb_filehdr_t* output_hdr, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
     int rc;
     char argstring[48];
     char* cursor;
@@ -409,19 +670,38 @@ int otdb_readhdr(otdb_filehdr_t* output_hdr, uint64_t device_id, otdb_fblock_enu
     }
     
     cpylen  = snprintf(cursor, limit, "%u", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo write-out header
+    ///@todo read-out error code
+    
+    if ((rc > 0) && (output_hdr != NULL)) {
+        int totalsize;
+        otdb_handle_t* otdb = handle;
+        
+        // Received Header is 10 bytes
+        totalsize   = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+        
+        memset(output_hdr, 0, sizeof(otdb_filehdr_t));
+        
+        if (totalsize >= 10) {
+            output_hdr->id      = otdb->rxbuf[0];
+            output_hdr->perms   = otdb->rxbuf[1];
+            memcpy(&output_hdr->length, &otdb->rxbuf[2], 2);
+            memcpy(&output_hdr->alloc, &otdb->rxbuf[4], 2);
+            memcpy(&output_hdr->timestamp, &otdb->rxbuf[6], 4);
+        }
+    }
     
     return rc;
 }
 
 
 
-int otdb_readperms(unsigned int* output_perms, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
+int otdb_readperms(void* handle, unsigned int* output_perms, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id) {
     int rc;
     char argstring[48];
     char* cursor;
@@ -446,19 +726,28 @@ int otdb_readperms(unsigned int* output_perms, uint64_t device_id, otdb_fblock_e
     }
     
     cpylen  = snprintf(cursor, limit, "%u", file_id);
-    //cursor += cpylen;
+    cursor += cpylen;
     //limit  -= cpylen; 
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo write-out perms
+    if ((rc > 0) && (output_perms != NULL)) {
+        int totalsize;
+        otdb_handle_t* otdb = handle;
+        
+        totalsize = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+        if (totalsize >= 2) {
+            *output_perms = otdb->rxbuf[0];
+        }
+    }
     
     return rc;
 }
 
 
 
-int otdb_writedata(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, 
+int otdb_writedata(void* handle, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, 
         unsigned int data_offset, unsigned int data_size, uint8_t* writedata) {
     int rc;
     char* argstring;
@@ -500,7 +789,10 @@ int otdb_writedata(uint64_t device_id, otdb_fblock_enum block, unsigned int file
     cursor      = sub_printhex(cursor, writedata, data_size);
     *cursor++   = ']';
 
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++   = 0;
+    rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     free(argstring);
     
@@ -510,7 +802,7 @@ int otdb_writedata(uint64_t device_id, otdb_fblock_enum block, unsigned int file
 
 
 
-int otdb_writeperms(uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, unsigned int file_perms) {
+int otdb_writeperms(void* handle, uint64_t device_id, otdb_fblock_enum block, unsigned int file_id, unsigned int file_perms) {
     int rc;
     char argstring[48];
     char* cursor;
@@ -537,10 +829,12 @@ int otdb_writeperms(uint64_t device_id, otdb_fblock_enum block, unsigned int fil
     limit  -= cpylen; 
     
     cpylen  = snprintf(cursor, limit, "%o", (file_perms & 63));
-    //cursor += cpylen;
-    //limit  -= cpylen; 
+    cursor += cpylen;
     
-    rc      = sub_sendcmd((const char*)argstring);
+    *cursor++ = 0;
+    rc      = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
+    
+    ///@todo read-out error code
     
     return rc;
 }

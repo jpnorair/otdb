@@ -472,7 +472,7 @@ int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 
 
 
-
+///@todo re-implement the functions from alp_filedata.c
 
 
 
@@ -487,7 +487,7 @@ int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
     /// Extract arguments into arglist struct
     rc = sub_extract_args(&arglist, args, "del", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, delete a file in the device fs
     if (rc == 0) {
         ///@todo implementation
         fprintf(stderr, "cmd_del():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
@@ -514,7 +514,7 @@ int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
     /// Extract arguments into arglist struct
     rc = sub_extract_args(&arglist, args, "new", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, create a new file in the device fs
     if (rc == 0) {
         ///@todo implementation
         fprintf(stderr, "cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 

@@ -91,7 +91,7 @@ int otdb_deldevice(void* handle, uint64_t device_id);
 
 /** @brief Sets the active device ID
   * @param handle       (void*) Handle to otdb client instance
-  * @param device_id    (uint64_t) 64 bit Device ID.  Use 0 to specify last-used Device.
+  * @param device_id    (uint64_t) 64 bit Device ID.
   * @retval             Returns 0 on success
   */
 int otdb_setdevice(void* handle, uint64_t device_id);

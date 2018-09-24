@@ -18,11 +18,14 @@
 #include "otdb_cli.h"
 #include <otdb_cfg.h>
 
+// HB Library Headers
+#include <otfs.h>           
+
+// Standard POSIX headers
+#include <ctype.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
-
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
@@ -146,17 +149,21 @@ static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
 
 
 
-static int sub_get_errcode(uint8_t* src, size_t src_bytes) {
+static int sub_get_errcode(void* handle) {
 /// Extract an error code from a file operation
+    otdb_handle_t* otdb = handle;
     int rc = 0;
 
     // Check if message is an error message.  If it's not an error message, 
     // then this can't be an error.  Return 0.
-    // Error format is: "err %d"
-    
-    // The Error Message format is an ALP command
-    
-    return 0;
+    // Error format that comes from OTDB is: "err %d"
+    if (otdb->rxbuf_size > 4) {
+        if (strncpy((char*)otdb->rxbuf, "err ", 4) == 0) {
+            rc  = (int)strtol((const char*)&otdb->rxbuf[4], NULL, 10);
+            
+        }
+    }
+    return rc;
 }
 
 
@@ -286,8 +293,9 @@ int otdb_newdevice(void* handle, uint64_t device_id, const char* tmpl_path) {
         cursor     += cpylen;
         *cursor++   = 0;
         rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
-        
-        ///@todo read-out error code
+        if (rc > 0) {
+            rc = sub_get_errcode(handle);
+        }
     }
     else {
         rc = -1;
@@ -308,9 +316,9 @@ int otdb_deldevice(void* handle, uint64_t device_id) {
     cursor     += cpylen;
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
-    
-    ///@todo read-out error code
-    
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     return rc;
 }
 
@@ -326,8 +334,9 @@ int otdb_setdevice(void* handle, uint64_t device_id) {
     cursor     += cpylen;
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
-    
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     return rc;
 }
@@ -350,8 +359,9 @@ int otdb_opendb(void* handle, const char* input_path) {
         cursor     += cpylen;
         *cursor++   = 0;
         rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
-        
-        ///@todo read-out error code
+        if (rc > 0) {
+            rc = sub_get_errcode(handle);
+        }
     }
     else {
         rc = -1;
@@ -382,8 +392,9 @@ int otdb_savedb(void* handle, bool use_compression, const char* output_path) {
         cursor     += cpylen;
         *cursor++   = 0;
         rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
-        
-        ///@todo read-out error code
+        if (rc > 0) {
+            rc = sub_get_errcode(handle);
+        }
     }
     else {
         rc = -1;
@@ -430,7 +441,9 @@ int otdb_delfile(void* handle, uint64_t device_id, otdb_fblock_enum block, unsig
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     return rc;
 }
@@ -475,7 +488,9 @@ int otdb_newfile(   void* handle, uint64_t device_id, otdb_fblock_enum block, un
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     return rc;
 }
@@ -525,17 +540,19 @@ int otdb_read(void* handle, otdb_filedata_t* output_data,
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
-    
-    if ((rc > 0) && (output_data != NULL)) {
-        otdb_handle_t* otdb = handle;
-    
-        // Data from otdb will be received as hex, convert to binary inplace
-        output_data->ptr    = otdb->rxbuf;
-        output_data->block  = block;
-        output_data->fileid = file_id;
-        output_data->offset = read_offset;
-        output_data->length = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+
+        if (output_data != NULL) {
+            otdb_handle_t* otdb = handle;
+        
+            // Data from otdb will be received as hex, convert to binary inplace
+            output_data->ptr    = otdb->rxbuf;
+            output_data->block  = block;
+            output_data->fileid = file_id;
+            output_data->offset = read_offset;
+            output_data->length = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+        }
     }
     
     return rc;
@@ -587,12 +604,12 @@ int otdb_readall(void* handle, otdb_filehdr_t* output_hdr, otdb_filedata_t* outp
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
-    
     if (rc > 0) {
         int totalsize;
         otdb_handle_t* otdb = handle;
-        
+    
+        rc = sub_get_errcode(handle);
+    
         // Received Header is 10 bytes
         totalsize   = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
 
@@ -657,7 +674,9 @@ int otdb_restore(void* handle, uint64_t device_id, otdb_fblock_enum block, unsig
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     return rc;
 }
@@ -696,22 +715,25 @@ int otdb_readhdr(void* handle, otdb_filehdr_t* output_hdr, uint64_t device_id, o
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
     ///@todo read-out error code
-    
-    if ((rc > 0) && (output_hdr != NULL)) {
-        int totalsize;
-        otdb_handle_t* otdb = handle;
-        
-        // Received Header is 10 bytes
-        totalsize   = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
-        
-        memset(output_hdr, 0, sizeof(otdb_filehdr_t));
-        
-        if (totalsize >= 10) {
-            output_hdr->id      = otdb->rxbuf[0];
-            output_hdr->perms   = otdb->rxbuf[1];
-            memcpy(&output_hdr->length, &otdb->rxbuf[2], 2);
-            memcpy(&output_hdr->alloc, &otdb->rxbuf[4], 2);
-            memcpy(&output_hdr->timestamp, &otdb->rxbuf[6], 4);
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+
+        if (output_hdr != NULL) {
+            int totalsize;
+            otdb_handle_t* otdb = handle;
+            
+            // Received Header is 10 bytes
+            totalsize   = sub_readhex(otdb->rxbuf, (char*)otdb->rxbuf, (size_t)rc);
+            
+            memset(output_hdr, 0, sizeof(otdb_filehdr_t));
+            
+            if (totalsize >= 10) {
+                output_hdr->id      = otdb->rxbuf[0];
+                output_hdr->perms   = otdb->rxbuf[1];
+                memcpy(&output_hdr->length, &otdb->rxbuf[2], 2);
+                memcpy(&output_hdr->alloc, &otdb->rxbuf[4], 2);
+                memcpy(&output_hdr->timestamp, &otdb->rxbuf[6], 4);
+            }
         }
     }
     
@@ -811,7 +833,9 @@ int otdb_writedata(void* handle, uint64_t device_id, otdb_fblock_enum block, uns
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     free(argstring);
     
@@ -853,7 +877,9 @@ int otdb_writeperms(void* handle, uint64_t device_id, otdb_fblock_enum block, un
     *cursor++ = 0;
     rc      = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
     
-    ///@todo read-out error code
+    if (rc > 0) {
+        rc = sub_get_errcode(handle);
+    }
     
     return rc;
 }

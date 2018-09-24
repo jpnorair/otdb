@@ -16,6 +16,7 @@
 
 // Local Headers
 #include "otdb_cli.h"
+#include <otdb_cfg.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -103,15 +104,20 @@ static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
         return -1;
     }
     
+    ///@todo test connection and only connect/disconnect if connection is not
+    ///      present.  Might be done by testing send() output.
     rc = otdb_connect(otdb);
+    
     if (rc >= 0) {
         
         // Send the command to OTDB, and go immediately into receive mode to 
         // get the response
         bytes_out   = send(otdb->sockfd, cmd, cmdsize, 0);
+        
+        ///@todo add a timeout to recv() somehow
         bytes_in    = recv(otdb->sockfd, otdb->rxbuf, otdb->rxbuf_size, MSG_WAITALL);
         
-#       if OTDB_FEATURE(DEBUG)
+#       if OTDB_FEATURE_DEBUG
         if (bytes_out > 0) {
             fprintf(stdout, "Client sent %d bytes:\n%*s\n\n", bytes_out, bytes_out, sockbuf);
         }
@@ -131,7 +137,7 @@ static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
 #       endif
         
         rc = (int)bytes_in;
-        
+    
         otdb_disconnect(handle);
     }
     
@@ -139,6 +145,19 @@ static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
 }
 
 
+
+static int sub_get_errcode(uint8_t* src, size_t src_bytes) {
+/// Extract an error code from a file operation
+    int rc = 0;
+
+    // Check if message is an error message.  If it's not an error message, 
+    // then this can't be an error.  Return 0.
+    // Error format is: "err %d"
+    
+    // The Error Message format is an ALP command
+    
+    return 0;
+}
 
 
 

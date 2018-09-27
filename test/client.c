@@ -311,46 +311,54 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     otdb = otdb_init(AF_UNIX, otdbpath);
     if (otdb == NULL) {
         ///@todo error message
-        goto client_main_TERM2;
+        goto client_main_TERM1;
     }
     
-    /// Connect to OTDB socket
+    // Set device ID to a certain value known ahead of time.
+    rc = otdb_setdevice(otdb, 2);
     
-
+    // Do a bunch of commands, one at a time
     while (cli.run == true) {
         if (i >= TEST_CMDS) {
             i = 0;
         }
         
-        // Send the command to OTDB
-        rc = send(sockfd, otdbcmd[i], 0);
-        if (rc > 0) {
-            fprintf(stdout, "Client sent %d bytes:\n%*s\n\n", rc, rc, sockbuf);
-        }
-        else {
-            fprintf(stderr, "Client socket send error %d\n", errno);
-        }
+        // Run different commands based on value of i
+        switch (i) {
+        case 0: rc = otdb_readall(otdb, otdb_filehdr_t* output_hdr, otdb_filedata_t* output_data, 1, BLOCK_isf, 0, 0, -1);
+                break;
+                
+        case 1: {
+                uint8_t testdata[2] = { 0xAA, 0xBB };
+                rc = otdb_writedata(otdb, 1, BLOCK_isf, 0, 2, 2, testdata);
+            } break;
+                
+        case 2: rc = otdb_read(otdb, otdb_filedata_t* output_data, 1, BLOCK_isf, 0, 2, -1);
+                break;
+                
+        case 3: rc = otdb_restore(otdb, 1, BLOCK_isf, 0);
+                break;
+                
+        case 4: rc = otdb_read(otdb, otdb_filedata_t* output_data, 1, BLOCK_isf, 0, 2, -1);
+                break;
+                
+        case 5: rc = 
+                break;
+                
+        case 6: rc = 
+                break;
+                
+        case 7:
+        case 8:
+        case 9:
         
-        // Receive response from OTDB
-        rc = recv(sockfd, sockbuf, sizeof(sockbuf), MSG_WAITALL);
-        if (rc > 0) {
-            fprintf(stdout, "OTDB sent %d bytes:\n%*s\n\n", rc, rc, sockbuf);
-        }
-        else if (rc == 0) {
-            fprintf(stderr, "OTDB socket is closed!\n");
-            break;
-        }
-        else {
-            fprintf(stderr, "OTDB socket receive error %d\n", errno);
+        default: goto client_main_TERM2;
         }
         
         sleep(1);
         i++;
     }
 
-    /// Close the socket
-    otdb_disconnect(otdb);
-    
     client_main_TERM2:
     otdb_deinit(otdb);
     

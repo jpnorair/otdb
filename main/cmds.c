@@ -328,7 +328,7 @@ int cmd_cmdlist(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
-    if (dt == NULL) {
+    if (dth == NULL) {
         return 0;
     }
     INPUT_SANITIZE();
@@ -342,7 +342,7 @@ int cmd_quit(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
-    if (dt == NULL) {
+    if (dth == NULL) {
         return 0;
     }
     INPUT_SANITIZE();
@@ -427,7 +427,13 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     if (rc == 0) {
         ///@todo implementation
         fprintf(stderr, "cmd_devset():\n  device_id=%016llX\n", arglist.devid);
-        //int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+        
+        if (arglist.devid != 0) {
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+            }
+        }
     }
 
     return rc;
@@ -443,7 +449,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
-    if (dt == NULL) {
+    if (dth == NULL) {
         return 0;
     }
     INPUT_SANITIZE();
@@ -510,12 +516,20 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
-            ///@todo otfs_setfs()
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_del_END;
+            }
         }
         
-        //int otfs_del(void* handle, const otfs_t* fs, bool unload);
+        rc = vl_delete(arglist.block_id, arglist.file_id, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+        }
     }
     
+    cmd_del_END:
     return rc;
 }
 
@@ -533,17 +547,27 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     
     /// On successful extraction, create a new file in the device fs
     if (rc == 0) {
+        vlFILE* fp = NULL;
+        
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc);
                 
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_new_END;
+            }
         }
         
-        //int otfs_del(void* handle, const otfs_t* fs, bool unload);
+        rc = vl_new(&fp, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+        }
     }
     
+    cmd_new_END:
     return rc;
 }
 
@@ -551,6 +575,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 
 int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    int span;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
@@ -561,17 +586,42 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        vaddr header;
+        void* ptr;
+        vlFILE* fp;
+        
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
-                
-        if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+        
+        span = arglist.range_hi - arglist.range_lo;
+        if (dstmax < span) {
+            rc = -5;
+            goto cmd_read_END;
         }
         
-        //int otfs_read(void* handle, const otfs_t* fs, bool unload);
+        if (arglist.devid != 0) {
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_read_END;
+            }
+        }
+        
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+            goto cmd_read_END;
+        }
+        
+        ptr = vl_memptr(fp);
+        if (ptr != NULL) {
+            rc = span;
+            memcpy(dst, ptr, span);
+        }
     }
     
+    cmd_read_END:
     return rc;
 }
 
@@ -590,46 +640,49 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        vaddr header;
+        void* ptr;
+        vlFILE* fp;
+            
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         span = arglist.range_hi - arglist.range_lo;
+        if (dstmax < (sizeof(vl_header_t) + span)) {
+            rc = -5;
+            goto cmd_readall_END;
+        }
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
-        }
-        if (rc != 0) {
-            rc = -256 + rc;
-        }
-        else if (dstmax < (sizeof(vl_header_t) + span)) {
-            rc = -5;
-        }
-        else {
-            vlFILE* fp;
-            vaddr header;
-            void* ptr;
-            
-            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
             if (rc != 0) {
-                rc = -512 - rc;
+                rc = -256 + rc;
                 goto cmd_readall_END;
             }
-            
-            ptr = vworm_get(header);
-            if (ptr == NULL) {
-                rc = -512 - 255;
-                goto cmd_readall_END;
-            }
-            
-            rc = sizeof(vl_header_t) + span;
-            memcpy(dst, ptr, sizeof(vl_header_t));
-            
-            
-            ptr = vl_memptr(fp);
         }
         
-        //int otfs_readall(void* handle, const otfs_t* fs, bool unload);
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+            goto cmd_readall_END;
+        }
+        
+        ptr = vworm_get(header);
+        if (ptr == NULL) {
+            rc = -512 - 255;
+            goto cmd_readall_END;
+        }
+            
+        rc = sizeof(vl_header_t);
+        memcpy(dst, ptr, sizeof(vl_header_t));
+        
+        ptr = vl_memptr(fp);
+        if (ptr != NULL) {
+            dst += sizeof(vl_header_t);
+            rc  += span;
+            memcpy(dst, ptr, span);
+        }
     }
     
     cmd_readall_END:
@@ -655,19 +708,20 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
-                
+        
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_restore_END;
+            }
         }
-        if (rc != 0) {
-            rc = -256 + rc;
-        }
-        else {
-            ///@todo not currently supported, always returns error.
-            rc = -1;
-        }
+        
+        ///@todo not currently supported, always returns error.
+        rc = -1;
     }
     
+    cmd_restore_END:
     return rc;
 }
 
@@ -685,39 +739,43 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        vaddr header;
+        void* ptr;
+        
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
-                
+        
+        if (dstmax < sizeof(vl_header_t)) {
+            rc = -5;
+            goto cmd_readhdr_END;
+        }
+        
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
-        }
-        if (rc != 0) {
-            rc = -256 + rc;
-        }
-        else if (dstmax < sizeof(vl_header_t)) {
-            rc = -5;
-        }
-        else {
-            vaddr header;
-            
-            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
             if (rc != 0) {
-                rc = -512 - rc;
-            }
-            else {
-                void* ptr = vworm_get(header);
-                if (ptr == NULL) {
-                    rc = -512 - 255;
-                }
-                else {
-                    rc = sizeof(vl_header_t);
-                    memcpy(dst, ptr, sizeof(vl_header_t));
-                }
+                rc = -256 + rc;
+                goto cmd_readhdr_END;
             }
         }
+
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+            goto cmd_readhdr_END;
+        }
+
+        ptr = vworm_get(header);
+        if (ptr == NULL) {
+            rc = -512 - 255;
+            goto cmd_readhdr_END;
+        }
+
+        rc = sizeof(vl_header_t);
+        memcpy(dst, ptr, sizeof(vl_header_t));
     }
     
+    cmd_readhdr_END:
     return rc;
 }
 
@@ -735,39 +793,40 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        vaddr header;
+        
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
-        }
-        if (rc != 0) {
-            rc = -256 + rc;
-        }
-        else {
-            vaddr header;
-        
-            ///
-            ///@note OTDB works entirely as the root user (NULL user_id)
-            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
             if (rc != 0) {
-                rc = -512 - rc;
-            } 
-            else {
-                rc = 1;
-                *dst = vworm_read(header + 4) >> 8;
+                rc = -256 + rc;
+                goto cmd_readperms_END;
             }
         }
+        
+        ///
+        ///@note OTDB works entirely as the root user (NULL user_id)
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+        if (rc != 0) {
+            rc = -512 - rc;
+            goto cmd_readperms_END;
+        } 
+
+        rc = 1;
+        *dst = vworm_read(header + 4) >> 8;
     }
     
+    cmd_readperms_END:
     return rc;
 }
 
 
 
 int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int rc, scale;
+    int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
     };
@@ -778,64 +837,64 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        vaddr header;
+        vlFILE*     fp;
+        uint8_t*    dptr;
+        int         span;
+    
         ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
-            scale   = (rc != 0) ? -256 : 0;
-            rc      = scale + otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
-        }
-        if (rc == 0) {
-            vaddr header;
-            
-            /// The write operation for OTDB is a direct access to RAM, once
-            /// getting the hardware address of the data element.  This works
-            /// when the data is stored in RAM, which is always the case for 
-            /// OTDB even though it is often not the case for embedded OTFS 
-            /// implementations.
-            ///
-            ///@note OTDB works entirely as the root user (NULL user_id)
-            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
             if (rc != 0) {
-                scale   = (rc != 0) ? -256 : 0;
-                rc      = scale - rc;
-            }
-            else {
-                vlFILE*     fp;
-                uint8_t*    dptr;
-                int         span;
-                
-                fp = vl_open_file(header);
-                if (fp == NULL) {
-                    rc = -512 - 255;
-                    goto cmd_write_END;
-                }
-                
-                dptr = vl_memptr(fp);
-                if (dptr == NULL) {
-                    rc = -512 - 255;
-                    goto cmd_write_END;
-                }
-                
-                if (arglist.range_lo >= fp->alloc) {
-                    rc = -512 - 7;
-                    goto cmd_write_END;
-                }
-                
-                if (arglist.range_hi > fp->alloc) {
-                    arglist.range_hi = fp->alloc;
-                }
-                
-                fp->length  = arglist.range_hi;
-                span        = arglist.range_hi - arglist.range_lo;
-                if (span > 0) {
-                    memcpy(&dptr[arglist.range_lo], src, span);
-                }
-                
-                ///@todo update the timestamp on this file, and on the device instance.
+                rc = -256 + rc;
+                goto cmd_write_END;
             }
         }
+
+        /// The write operation for OTDB is a direct access to RAM, once
+        /// getting the hardware address of the data element.  This works
+        /// when the data is stored in RAM, which is always the case for 
+        /// OTDB even though it is often not the case for embedded OTFS 
+        /// implementations.
+        ///
+        ///@note OTDB works entirely as the root user (NULL user_id)
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
+        if (rc != 0) {
+            rc = 512 - rc;
+            goto cmd_write_END;
+        }
+        
+        fp = vl_open_file(header);
+        if (fp == NULL) {
+            rc = -512 - 255;
+            goto cmd_write_END;
+        }
+            
+        dptr = vl_memptr(fp);
+        if (dptr == NULL) {
+            rc = -512 - 255;
+            goto cmd_write_END;
+        }
+            
+        if (arglist.range_lo >= fp->alloc) {
+            rc = -512 - 7;
+            goto cmd_write_END;
+        }
+            
+        if (arglist.range_hi > fp->alloc) {
+            arglist.range_hi = fp->alloc;
+        }
+            
+        fp->length  = arglist.range_hi;
+        span        = arglist.range_hi - arglist.range_lo;
+        if (span > 0) {
+            memcpy(&dptr[arglist.range_lo], src, span);
+        }
+            
+        ///@todo update the timestamp on this file, and on the device instance.
     }
     
     cmd_write_END:
@@ -845,7 +904,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
 
 
 int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int rc, scale;
+    int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
     };
@@ -867,23 +926,27 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
                     arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
                     
             if (arglist.devid != 0) {
-                scale   = (rc != 0) ? -256 : 0;
-                rc      = scale + otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+                rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+                if (rc != 0) {
+                    rc = -256 + rc;
+                    goto cmd_writeperms_END;
+                }
             }
-            if (rc == 0) {
-                /// Run the chmod and return the error code (0 is no error)
-                /// The error code from OTFS is positive.
-                ///@note OTDB works entirely as the root user (NULL user_id)
-                rc      = vl_chmod( (vlBLOCK)arglist.block_id, 
-                                    (uint8_t)arglist.file_id, 
-                                    (uint8_t)arglist.file_perms, 
-                                    NULL    );
-                scale   = (rc != 0) ? -512 : 0;
-                rc      = scale - rc;
+
+            /// Run the chmod and return the error code (0 is no error)
+            /// The error code from OTFS is positive.
+            ///@note OTDB works entirely as the root user (NULL user_id)
+            rc = vl_chmod( (vlBLOCK)arglist.block_id, 
+                            (uint8_t)arglist.file_id, 
+                            (uint8_t)arglist.file_perms, 
+                            NULL    );
+            if (rc != 0) {
+                rc = -512 - rc;
             }
         }
     }
     
+    cmd_writeperms_END:
     return rc;
 }
 

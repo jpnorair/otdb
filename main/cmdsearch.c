@@ -150,7 +150,7 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
 
 
 
-int cmd_run(const cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_run(const cmdtab_item_t* cmd, dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int output;
 
     if (cmd == NULL) {
@@ -161,7 +161,7 @@ int cmd_run(const cmdtab_item_t* cmd, dterm_t* dt, uint8_t* dst, int* inbytes, u
     switch ((otdb_extcmd_t)cmd->extcmd) {
         case EXTCMD_null:
             //fprintf(stderr, "EXTCMD_null: inbytes=%d, src=%s\n", *inbytes, (char*)src);
-            output = ((cmdaction_t)cmd->action)(dt, dst, inbytes, src, dstmax);
+            output = ((cmdaction_t)cmd->action)(dth, dst, inbytes, src, dstmax);
             break;
 
         case EXTCMD_path: {

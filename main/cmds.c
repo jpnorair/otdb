@@ -24,7 +24,8 @@
 #include <bintex.h>
 #include <cmdtab.h>
 #include <argtable3.h>
-#include <hbdp/hb_cmdtools.h>
+#include <otfs.h>
+#include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
 #include <signal.h>
@@ -318,24 +319,12 @@ static int sub_extract_args(cmd_arglist_t* data, void* args, const char* cmdname
 
 
 
-
-
-int cmd_quit(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    
-    /// dt == NULL is the initialization case.
-    /// There may not be an initialization for all command groups.
-    if (dt == NULL) {
-        return 0;
-    }
-    INPUT_SANITIZE();
-    
-    raise(SIGINT);
-    return 0;
-}
-
+/** OTDB Internal Commands
+  * -------------------------------------------------------------------------
+  */
 
 extern cmdtab_t* otdb_cmdtab;
-int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_cmdlist(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
 
     /// dt == NULL is the initialization case.
     /// There may not be an initialization for all command groups.
@@ -349,11 +338,32 @@ int cmd_cmdlist(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 
 
 
+int cmd_quit(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    
+    /// dt == NULL is the initialization case.
+    /// There may not be an initialization for all command groups.
+    if (dt == NULL) {
+        return 0;
+    }
+    INPUT_SANITIZE();
+    
+    raise(SIGINT);
+    return 0;
+}
 
 
 
 
-int cmd_devnew(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+
+
+
+
+/** OTDB DB Manipulation Commands
+  * -------------------------------------------------------------------------
+  */
+
+int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEIDOPT |ARGFIELD_ARCHIVE,
@@ -381,7 +391,8 @@ int cmd_devnew(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dst
 }
 
 
-int cmd_devdel(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID,
@@ -401,7 +412,8 @@ int cmd_devdel(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dst
 }
 
 
-int cmd_devset(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID,
@@ -422,7 +434,7 @@ int cmd_devset(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dst
 }
 
 
-int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
@@ -449,7 +461,7 @@ int cmd_open(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 }
 
 
-int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
@@ -472,12 +484,16 @@ int cmd_save(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 
 
 
-///@todo re-implement the functions from alp_filedata.c
 
 
 
 
-int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+/** OTDB Filesystem Commands
+  * -------------------------------------------------------------------------
+  * @todo re-implement the functions from alp_filedata.
+  */
+
+int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
@@ -504,7 +520,8 @@ int cmd_del(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
 }
 
 
-int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
@@ -531,7 +548,8 @@ int cmd_new(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax
 }
 
 
-int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
@@ -558,7 +576,8 @@ int cmd_read(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstma
 }
 
 
-int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
@@ -585,7 +604,8 @@ int cmd_readall(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 }
 
 
-int cmd_restore(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
@@ -612,7 +632,8 @@ int cmd_restore(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 }
 
 
-int cmd_readhdr(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
@@ -629,7 +650,7 @@ int cmd_readhdr(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
         
         //int otfs_readhdr(void* handle, const otfs_t* fs, bool unload);
@@ -639,7 +660,8 @@ int cmd_readhdr(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t ds
 }
 
 
-int cmd_readperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
@@ -651,22 +673,34 @@ int cmd_readperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t 
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
+        if (rc == 0) {
+            vaddr header;
         
-        //int otfs_readperms(void* handle, const otfs_t* fs, bool unload);
+            ///
+            ///@note OTDB works entirely as the root user (NULL user_id)
+            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+            if (rc == 0) {
+                rc = vworm_read(header + 4) >> 8;
+            }
+            else {
+                rc = -2;
+            }
+        }
     }
     
     return rc;
 }
 
 
-int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
@@ -678,42 +712,102 @@ int cmd_write(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstm
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
-        
-        //int otfs_readperms(void* handle, const otfs_t* fs, bool unload);
+        if (rc == 0) {
+            vaddr header;
+            
+            /// The write operation for OTDB is a direct access to RAM, once
+            /// getting the hardware address of the data element.  This works
+            /// when the data is stored in RAM, which is always the case for 
+            /// OTDB even though it is often not the case for embedded OTFS 
+            /// implementations.
+            ///
+            ///@note OTDB works entirely as the root user (NULL user_id)
+            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
+            if (rc == 0) {
+                vlFILE*     fp;
+                uint8_t*    dptr;
+                int         span;
+                
+                fp = vl_open_file(header);
+                if (fp == NULL) {
+                    rc = 0xFF;
+                    goto cmd_write_END;
+                }
+                
+                dptr = vl_memptr(fp);
+                if (dptr == NULL) {
+                    rc = 0xFF;
+                    goto cmd_write_END;
+                }
+                
+                if (arglist.range_lo >= fp->alloc) {
+                    rc = 7;
+                    goto cmd_write_END;
+                }
+                
+                if (arglist.range_hi > fp->alloc) {
+                    arglist.range_hi = fp->alloc;
+                }
+                
+                fp->length  = arglist.range_hi;
+                span        = arglist.range_hi - arglist.range_lo;
+                if (span > 0) {
+                    memcpy(&dptr[arglist.range_lo], src, span);
+                }
+                
+                ///@todo update the timestamp on this file, and on the device instance.
+            }
+        }
     }
     
+    cmd_write_END:
     return rc;
 }
 
 
-int cmd_writeperms(dterm_t* dt, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+
+int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
     
-    /// Extract arguments into arglist struct
-    rc = sub_extract_args(&arglist, args, "wp", (const char*)src, inbytes);
+    /// Writeperms requires an initialized OTFS handle
+    if (dth->ext == NULL) {
+        rc = -1;
+    }
+    else {
+        /// Extract arguments into arglist struct
+        rc = sub_extract_args(&arglist, args, "wp", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
-    if (rc == 0) {
-        ///@todo implementation
-        fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
-                arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
-                
-        if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+        /// On successful extraction, write permissions to the specified file,
+        /// on the specified device, within the device database.
+        if (rc == 0) {
+            ///@todo THIS LINE ONLY FOR DEBUG
+            fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
+                    arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
+                    
+            if (arglist.devid != 0) {
+                rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            }
+            if (rc == 0) {
+                /// Run the chmod and return the error code (0 is no error)
+                /// The error code from OTFS is positive.
+                ///@note OTDB works entirely as the root user (NULL user_id)
+                rc  = vl_chmod((vlBLOCK)arglist.block_id, 
+                                (uint8_t)arglist.file_id, 
+                                (uint8_t)arglist.file_perms, 
+                                NULL    );
+            }
         }
-        
-        //int otfs_writeperms(void* handle, const otfs_t* fs, bool unload);
     }
     
     return rc;

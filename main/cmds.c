@@ -533,7 +533,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     
     /// On successful extraction, create a new file in the device fs
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc);
                 
@@ -561,7 +561,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
@@ -579,6 +579,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
 int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    int span;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
@@ -589,23 +590,57 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
-                
+        
+        span = arglist.range_hi - arglist.range_lo;
+        
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+        }
+        if (rc != 0) {
+            rc = -256 + rc;
+        }
+        else if (dstmax < (sizeof(vl_header_t) + span)) {
+            rc = -5;
+        }
+        else {
+            vlFILE* fp;
+            vaddr header;
+            void* ptr;
+            
+            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+            if (rc != 0) {
+                rc = -512 - rc;
+                goto cmd_readall_END;
+            }
+            
+            ptr = vworm_get(header);
+            if (ptr == NULL) {
+                rc = -512 - 255;
+                goto cmd_readall_END;
+            }
+            
+            rc = sizeof(vl_header_t) + span;
+            memcpy(dst, ptr, sizeof(vl_header_t));
+            
+            
+            ptr = vl_memptr(fp);
         }
         
         //int otfs_readall(void* handle, const otfs_t* fs, bool unload);
     }
     
+    cmd_readall_END:
     return rc;
 }
 
 
 
 int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+///@todo not currently supported, always returns error.
+
     int rc;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
@@ -617,15 +652,20 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
-            ///@todo int otfs_setfs(void* handle, const uint8_t* eui64_bytes);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
-        
-        //int otfs_readall(void* handle, const otfs_t* fs, bool unload);
+        if (rc != 0) {
+            rc = -256 + rc;
+        }
+        else {
+            ///@todo not currently supported, always returns error.
+            rc = -1;
+        }
     }
     
     return rc;
@@ -645,15 +685,37 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
+        ///@todo THIS LINE ONLY FOR DEBUG
         fprintf(stderr, "cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
-            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
-        
-        //int otfs_readhdr(void* handle, const otfs_t* fs, bool unload);
+        if (rc != 0) {
+            rc = -256 + rc;
+        }
+        else if (dstmax < sizeof(vl_header_t)) {
+            rc = -5;
+        }
+        else {
+            vaddr header;
+            
+            rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
+            if (rc != 0) {
+                rc = -512 - rc;
+            }
+            else {
+                void* ptr = vworm_get(header);
+                if (ptr == NULL) {
+                    rc = -512 - 255;
+                }
+                else {
+                    rc = sizeof(vl_header_t);
+                    memcpy(dst, ptr, sizeof(vl_header_t));
+                }
+            }
+        }
     }
     
     return rc;
@@ -678,19 +740,23 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
-            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
-        if (rc == 0) {
+        if (rc != 0) {
+            rc = -256 + rc;
+        }
+        else {
             vaddr header;
         
             ///
             ///@note OTDB works entirely as the root user (NULL user_id)
             rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
-            if (rc == 0) {
-                rc = vworm_read(header + 4) >> 8;
-            }
+            if (rc != 0) {
+                rc = -512 - rc;
+            } 
             else {
-                rc = -2;
+                rc = 1;
+                *dst = vworm_read(header + 4) >> 8;
             }
         }
     }
@@ -701,7 +767,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
 
 
 int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int rc;
+    int rc, scale;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
     };
@@ -717,7 +783,8 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
-            rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            scale   = (rc != 0) ? -256 : 0;
+            rc      = scale + otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
         }
         if (rc == 0) {
             vaddr header;
@@ -730,25 +797,29 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             ///
             ///@note OTDB works entirely as the root user (NULL user_id)
             rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
-            if (rc == 0) {
+            if (rc != 0) {
+                scale   = (rc != 0) ? -256 : 0;
+                rc      = scale - rc;
+            }
+            else {
                 vlFILE*     fp;
                 uint8_t*    dptr;
                 int         span;
                 
                 fp = vl_open_file(header);
                 if (fp == NULL) {
-                    rc = 0xFF;
+                    rc = -512 - 255;
                     goto cmd_write_END;
                 }
                 
                 dptr = vl_memptr(fp);
                 if (dptr == NULL) {
-                    rc = 0xFF;
+                    rc = -512 - 255;
                     goto cmd_write_END;
                 }
                 
                 if (arglist.range_lo >= fp->alloc) {
-                    rc = 7;
+                    rc = -512 - 7;
                     goto cmd_write_END;
                 }
                 
@@ -774,7 +845,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
 
 
 int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
-    int rc;
+    int rc, scale;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
     };
@@ -796,16 +867,19 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
                     arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
                     
             if (arglist.devid != 0) {
-                rc = 256 * otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+                scale   = (rc != 0) ? -256 : 0;
+                rc      = scale + otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
             }
             if (rc == 0) {
                 /// Run the chmod and return the error code (0 is no error)
                 /// The error code from OTFS is positive.
                 ///@note OTDB works entirely as the root user (NULL user_id)
-                rc  = vl_chmod((vlBLOCK)arglist.block_id, 
-                                (uint8_t)arglist.file_id, 
-                                (uint8_t)arglist.file_perms, 
-                                NULL    );
+                rc      = vl_chmod( (vlBLOCK)arglist.block_id, 
+                                    (uint8_t)arglist.file_id, 
+                                    (uint8_t)arglist.file_perms, 
+                                    NULL    );
+                scale   = (rc != 0) ? -512 : 0;
+                rc      = scale - rc;
             }
         }
     }

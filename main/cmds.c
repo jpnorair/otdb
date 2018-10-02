@@ -24,6 +24,7 @@
 #include <bintex.h>
 #include <cmdtab.h>
 #include <argtable3.h>
+#include <cJSON.h>
 #include <otfs.h>
 #include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
@@ -32,7 +33,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-
+#include <dirent.h>
 
 
 /// Variables used across shell commands
@@ -49,6 +50,7 @@ struct arg_lit*     compress_opt;
 
 // used by file commands
 struct arg_str*     devid_opt;
+struct arg_str*     devidlist_opt;
 struct arg_str*     fileblock_opt;
 struct arg_str*     filerange_opt;
 struct arg_int*     fileid_man;
@@ -62,16 +64,17 @@ struct arg_end*     end_man;
 
 
 
-#define ARGFIELD_DEVICEID   (1<<0)
-#define ARGFIELD_DEVICEIDOPT (1<<1)
-#define ARGFIELD_ARCHIVE    (1<<2)
-#define ARGFIELD_COMPRESS   (1<<3)
-#define ARGFIELD_BLOCKID    (1<<4)
-#define ARGFIELD_FILEID     (1<<5)
-#define ARGFIELD_FILEPERMS  (1<<6)
-#define ARGFIELD_FILEALLOC  (1<<7)
-#define ARGFIELD_FILERANGE  (1<<8) 
-#define ARGFIELD_FILEDATA   (1<<9) 
+#define ARGFIELD_DEVICEID       (1<<0)
+#define ARGFIELD_DEVICEIDOPT    (1<<1)
+#define ARGFIELD_DEVICEIDLIST   (1<<2)
+#define ARGFIELD_ARCHIVE        (1<<3)
+#define ARGFIELD_COMPRESS       (1<<4)
+#define ARGFIELD_BLOCKID        (1<<5)
+#define ARGFIELD_FILEID         (1<<6)
+#define ARGFIELD_FILEPERMS      (1<<7)
+#define ARGFIELD_FILEALLOC      (1<<8)
+#define ARGFIELD_FILERANGE      (1<<9) 
+#define ARGFIELD_FILEDATA       (1<<10) 
 
 typedef struct {
     unsigned int    fields;
@@ -79,6 +82,8 @@ typedef struct {
     uint8_t*        filedata;
     int             filedata_size;
     uint64_t        devid;
+    const char**    devid_strlist;
+    int             devid_strlist_size;
     uint8_t         compress_flag;
     uint8_t         block_id;
     uint8_t         file_id;
@@ -95,6 +100,7 @@ void cmd_init_args(void) {
     devid_man       = arg_str1(NULL,NULL,"DeviceID",    "Device ID as HEX");
     archive_man     = arg_file1(NULL,NULL,"file",       "Archive file or directory");
     compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
+    devidlist_opt   = arg_strn(NULL,NULL,"DeviceID List", 0, 256, "Batch of up to 256 Device IDs");
     devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
     fileblock_opt   = arg_str0("b","block","isf|iss|gfb", "File Block to search in");
     filerange_opt   = arg_str0("r","range","X:Y",       "Access File bytes between offsets X:Y");
@@ -131,7 +137,7 @@ uint8_t* goto_eol(uint8_t* src) {
     }                                       \
 } while(0)
 
-#if OTDB_FEATURE(DEBUG)
+#if OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -212,6 +218,12 @@ static int sub_extract_args(cmd_arglist_t* data, void* args, const char* cmdname
     /// Compression Flag
     if (data->fields & ARGFIELD_COMPRESS) {
         data->compress_flag = (compress_opt->count > 0);
+    }
+    
+    /// List of Device IDs
+    if (data->fields & ARGFIELD_DEVICEIDLIST) {
+        data->devid_strlist_size    = devidlist_opt->count;
+        data->devid_strlist         = devidlist_opt->sval;
     }
     
     /// Check for block flag (-b, --block), which specifies fs block
@@ -375,8 +387,11 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        DEBUGPRINT("cmd_devnew():\n  archive=%s\n", arglist.archive_path);
+        
         ///@todo implementation
-        fprintf(stderr, "cmd_devnew():\n  archive=%s\n", arglist.archive_path);
+        ///
+        /// Only works with an open database
         
         /// 1. Load FS template and defaults (JSON).  
         /// 2. Generate the binary from the JSON.
@@ -404,10 +419,20 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
-        fprintf(stderr, "cmd_devdel():\n  device_id=%016llX\n", arglist.devid);
+        DEBUGPRINT("cmd_devdel():\n  device_id=%016llX\n", arglist.devid);
+        
+        if (arglist.devid != 0) {
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_devdel_END;
+            }
+        }
+        
+        
     }
 
+    cmd_devdel_END:
     return rc;
 }
 
@@ -425,8 +450,7 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
-        fprintf(stderr, "cmd_devset():\n  device_id=%016llX\n", arglist.devid);
+        DEBUGPRINT("cmd_devset():\n  device_id=%016llX\n", arglist.devid);
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
@@ -442,6 +466,19 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
 
 int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    char pathbuf[256];
+    char* cursor;
+    int len;
+    DIR *dir;
+    struct dirent *ent;
+    
+    cJSON* tmpl;
+    cJSON* data;
+    cJSON* obj;
+    
+    otfs_t tmpl_fs;
+    vlFSHEADER fshdr;
+    
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
     };
@@ -459,10 +496,333 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
+        DEBUGPRINT("cmd_open():\n  archive=%s\n", arglist.archive_path);
+        
         ///@todo implementation
-        fprintf(stderr, "cmd_open():\n  archive=%s\n", arglist.archive_path);
+        /// When opening a database, a copy of the template gets saved 
+        /// temporarily as long as the Database is open.
+        
+        /// 1. Check if input file is compressed.  If so, decompress it to 
+        ///    the local store (.activedb)
+        /// 
+        /// 1b.If input file is a directory (not compressed), copy it to the
+        ///    local store (.activedb)
+        
+        /// 2. Template is stored in "_TMPL" directory within the archive 
+        ///    folder.  Go through the _TMPL folder and create a single JSON
+        ///    model that contains all the object data from all the files.
+        ///    If any of the JSON is invalid, send an error (and say which 
+        ///    where the error was, if possible).
+        
+        /// 3. Do a check to make sure the "_meta" object for each object has
+        ///    at least "id" and "size" elements.  Optional elements are 
+        ///    "block", "type", "stock," "mod", and "time".  If these elements
+        ///    are missing, add defaults.  Default block is "isf".  Default 
+        ///    stock is "true".  Default mod is 00110100 (octal 64, decimal 52).  
+        ///    Default time is the present epoch seconds since 1.1.1970.
+        /// 3b.Create the master FS-table for this template, using the data
+        ///    from above.
+        /// 3c.Create all the master FS metadata, using the data from above.
+        
+        /// 4. Data is stored in directories that have a name corresponding to
+        ///    the DeviceID of the Device they are on.  Go through each of 
+        ///    these files and make sure that the name of the directory is a
+        ///    valid DeviceID (a number).  If there is an error, don't import
+        ///    that Device.  Else, add a new FS to the database using this ID
+        ///    and build a JSON data from an aggregate of all the JSON files
+        ///    inside the directory. 
+        /// 4b.Using the JSON data for this file, correlate it against the 
+        ///    master template and write it to each file in the new FS.
+        
+        len     = sizeof(pathbuf) - sizeof("/_TMPL/") - 16 - 32 - 1;
+        cursor  = stpncpy(pathbuf, arglist.archive_path, len);
+        cursor  = stpcpy(cursor, "/_TMPL/");
+        dir     = opendir(pathbuf);
+        if (dir == NULL) {
+            rc = -1;
+            goto cmd_open_CLOSE;
+        }
+        
+        // 2.
+        tmpl = NULL;
+        while (1) {
+            ent = readdir(dir);
+            if (ent == NULL) {
+                break;
+            }
+            if (ent->d_type == DT_REG) {
+                rc = sub_aggregate_json(tmpl, ent->d_type);
+                if (rc != 0) {
+                    rc = -256 + rc;
+                    goto cmd_open_CLOSE;
+                }
+            }
+        }
+        
+        // 3. 
+        tmpl_fs.alloc   = 0;
+        tmpl_fs.base    = NULL;
+        tmpl_fs.uid.u64 = 0;
+        memset(&fshdr, 0, sizeof(vlFSHEADER));
+        
+        if (tmpl == NULL) {
+            // No template found
+            rc = -2;
+            goto cmd_open_CLOSE;
+        }
+        
+        obj = tmpl->child;
+        while (obj != NULL) {
+            cJSON* meta;
+            cJSON* elem;
+            int filesize = 0;
+            int is_stock;
+
+            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+            if (meta != NULL) {
+                // ID: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "id");
+                if (elem == NULL) {
+                    rc = -512 - 1;
+                    goto cmd_open_FREEJSON;
+                }
+                
+                // Size: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "size");
+                if (elem == NULL) {
+                    rc = -512 - 2;
+                    goto cmd_open_FREEJSON;
+                }
+                filesize = elem->valueint;
+                
+                // Stock: optional, default=true
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "stock");
+                if (elem == NULL) {
+                    elem = cJSON_CreateBool(true);
+                    cJSON_AddItemToObject(meta, "stock", elem);
+                    is_stock = 1;
+                }
+                else {
+                    is_stock = (elem->valueint != 0);
+                }
+                
+                // Block: optional, default="isf"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "block");
+                if (elem == NULL) {
+                    fshdr.isf.alloc += filesize;
+                    fshdr.isf.used  += is_stock;
+                    fshdr.isf.files++;
+                    elem = cJSON_CreateString("isf");
+                    cJSON_AddItemToObject(meta, "block", elem);
+                }
+                else if (strcmp(elem->valuestring, "gfb") == 0) {
+                    fshdr.gfb.alloc += filesize;
+                    fshdr.gfb.used  += is_stock;
+                    fshdr.gfb.files++;
+                }
+                else if (strcmp(elem->valuestring, "iss") == 0) {
+                    fshdr.iss.alloc += filesize;
+                    fshdr.iss.used  += is_stock;
+                    fshdr.iss.files++;
+                }
+                else {
+                    fshdr.isf.alloc += filesize;
+                    fshdr.isf.used  += is_stock;
+                    fshdr.isf.files++;
+                }
+                
+                // Type: optional, default="array"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "type");
+                if (elem == NULL) {
+                    elem = cJSON_CreateString("array");
+                    cJSON_AddItemToObject(meta, "type", elem);
+                }
+                
+                // Mod: optional, default=52
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "mod");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber(52.);
+                    cJSON_AddItemToObject(meta, "mod", elem);
+                }
+                
+                // Time: optional, default=now()
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "time");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber((double)time(NULL));
+                    cJSON_AddItemToObject(meta, "time", elem);
+                }
+            }
+            obj = obj->next;
+        }
+        
+        // 3b. Add overhead section to the allocation, Malloc the fs data
+        fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
+        fshdr.res_time0     = (uint32_t)time(NULL);
+        tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
+        tmpl_fs.base        = calloc(tmpl_fs.alloc, sizeof(uint8_t));
+        if (tmpl_fs.base == NULL) {
+            rc = -3;
+            goto cmd_open_FREEJSON;
+        }
+        memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
+        
+        // 3c. Write the file headers for GFB, ISS, ISF
+        obj = tmpl->child;
+        while (obj != NULL) {
+            cJSON* meta;
+            cJSON* elem;
+            int filesize = 0;
+            int is_stock;
+
+            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+            if (meta != NULL) {
+                vl_header_t hdr;
+                uint8_t*    insertion;
+                
+                // ID: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "id");
+
+                // Size: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "size");
+
+
+                
+                // Stock: optional, default=true
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "stock");
+                if (elem == NULL) {
+                    elem = cJSON_CreateBool(true);
+                    cJSON_AddItemToObject(meta, "stock", elem);
+                    is_stock = 1;
+                }
+                else {
+                    is_stock = (elem->valueint != 0);
+                }
+                
+                // Block: optional, default="isf"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "block");
+                if (elem == NULL) {
+                    fshdr.isf.alloc += filesize;
+                    fshdr.isf.used  += is_stock;
+                    fshdr.isf.files++;
+                    elem = cJSON_CreateString("isf");
+                    cJSON_AddItemToObject(meta, "block", elem);
+                }
+                else if (strcmp(elem->valuestring, "gfb") == 0) {
+                    fshdr.gfb.alloc += filesize;
+                    fshdr.gfb.used  += is_stock;
+                    fshdr.gfb.files++;
+                }
+                else if (strcmp(elem->valuestring, "iss") == 0) {
+                    fshdr.iss.alloc += filesize;
+                    fshdr.iss.used  += is_stock;
+                    fshdr.iss.files++;
+                }
+                else {
+                    fshdr.isf.alloc += filesize;
+                    fshdr.isf.used  += is_stock;
+                    fshdr.isf.files++;
+                }
+                
+                // Type: optional, default="array"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "type");
+                if (elem == NULL) {
+                    elem = cJSON_CreateString("array");
+                    cJSON_AddItemToObject(meta, "type", elem);
+                }
+                
+                // Mod: optional, default=52
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "mod");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber(52.);
+                    cJSON_AddItemToObject(meta, "mod", elem);
+                }
+                
+                // Time: optional, default=now()
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "time");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber((double)time(NULL));
+                    cJSON_AddItemToObject(meta, "time", elem);
+                }
+            }
+            obj = obj->next;
+        }
+        
+        
+        obj = tmpl->child;
+        while (obj != NULL) {
+            cJSON* meta;
+            cJSON* elem;
+            uint8_t block;
+            vl_header_t fhdr;
+            
+
+            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+            if (meta != NULL) {
+                // ID: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "id");
+                if (elem == NULL) {
+                    rc = -512 - 1;
+                    goto cmd_open_FREEJSON;
+                }
+                
+                // Size: mandatory
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "size");
+                if (elem == NULL) {
+                    rc = -512 - 2;
+                    goto cmd_open_FREEJSON;
+                }
+                tmpl_fs.alloc += elem->valueint;
+                
+                // Block: optional, default="isf"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "block");
+                if (elem == NULL) {
+                    elem = cJSON_CreateString("isf");
+                    cJSON_AddItemToObject(meta, "block", elem);
+                }
+                
+                // Type: optional, default="array"
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "type");
+                if (elem == NULL) {
+                    elem = cJSON_CreateString("array");
+                    cJSON_AddItemToObject(meta, "type", elem);
+                }
+                
+                // Stock: optional, default=true
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "stock");
+                if (elem == NULL) {
+                    elem = cJSON_CreateBool(true);
+                    cJSON_AddItemToObject(meta, "stock", elem);
+                }
+                
+                // Mod: optional, default=52
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "mod");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber(52.);
+                    cJSON_AddItemToObject(meta, "mod", elem);
+                }
+                
+                // Time: optional, default=now()
+                elem = cJSON_GetObjectItemCaseSensitive(obj, "time");
+                if (elem == NULL) {
+                    elem = cJSON_CreateNumber((double)time(NULL));
+                    cJSON_AddItemToObject(meta, "time", elem);
+                }
+            }
+            obj = obj->next;
+        }
+        
+        
+        
+        // 5. 
+        
+        cmd_open_FREEJSON:
+        
+        
+        cmd_open_CLOSE:
+        closedir(dir);
     }
     
+    cmd_open_END:
     return rc;
 }
 
@@ -470,18 +830,50 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
+        .fields = ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
     };
-    void* args[] = {help_man, compress_opt, archive_man, end_man};
+    void* args[] = {help_man, compress_opt, archive_man, devidlist_opt, end_man};
     
     /// Extract arguments into arglist struct
     rc = sub_extract_args(&arglist, args, "save", (const char*)src, inbytes);
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo implementation
-        fprintf(stderr, "cmd_open():\n  compress=%d\n  archive=%s\n", 
+        DEBUGPRINT("cmd_open():\n  compress=%d\n  archive=%s\n", 
                 arglist.compress_flag, arglist.archive_path);
+                
+        ///@todo implementation
+        ///
+        /// Step 1: Read the FS table descriptor to determine which elements
+        /// are stored in the FS.  The table descriptor looks like this
+        /// B0:1    Allocation Bytes of Metadata
+        /// ---> File Action Fields not used in OTDB
+        /// B2:3    GFB Bytes Allocated
+        /// B4:5    GFB Bytes Used
+        /// B6:7    GFB Stock Files
+        /// B8:9    ISS Bytes Allocated
+        /// B10:11  ISS Bytes Used
+        /// B12:13  ISS Stock Files
+        /// B14:15  ISF Bytes Allocated
+        /// B16:17  ISF Bytes Used
+        /// B18:19  ISF Stock Files
+        /// B20:23  Modification Time 0
+        /// B24:27  Modification Time 1
+        ///
+        /// Step 2: Get the optional file lists
+        /// ID's for ISF files beyond the stock files are stored in ISF-7
+        /// ID's for ISS files beyond the stock files are stored in ISF-8
+        /// ID's for GFB files beyond the stock files are stored in ISF-9
+        ///
+        /// Step 3: For each file
+        /// - Get the contents as a binary byte array.
+        /// - Load the internal JSON template for this file and get the structure
+        /// - Write an output JSON file using the structure from the internal template
+        ///
+        /// Step 4: Repeat for all files in DB, or for list of Device IDs supplied
+        ///
+        /// Step 5: Compress the output directory if required
+        ///
     }
     
     return rc;
@@ -511,8 +903,8 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     
     /// On successful extraction, delete a file in the device fs
     if (rc == 0) {
-        ///@todo implementation
-        fprintf(stderr, "cmd_del():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
+    
+        DEBUGPRINT("cmd_del():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
@@ -549,10 +941,9 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     if (rc == 0) {
         vlFILE* fp = NULL;
         
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
+        DEBUGPRINT("cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc);
-                
+        
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
             if (rc != 0) {
@@ -590,8 +981,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         void* ptr;
         vlFILE* fp;
         
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUGPRINT("cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         span = arglist.range_hi - arglist.range_lo;
@@ -644,8 +1034,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         void* ptr;
         vlFILE* fp;
             
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUGPRINT("cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         span = arglist.range_hi - arglist.range_lo;
@@ -705,8 +1094,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
@@ -742,8 +1130,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         vaddr header;
         void* ptr;
         
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
+        DEBUGPRINT("cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
         
         if (dstmax < sizeof(vl_header_t)) {
@@ -795,8 +1182,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     if (rc == 0) {
         vaddr header;
         
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
@@ -842,8 +1228,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         uint8_t*    dptr;
         int         span;
     
-        ///@todo THIS LINE ONLY FOR DEBUG
-        fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
+        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
@@ -921,8 +1306,7 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
         /// On successful extraction, write permissions to the specified file,
         /// on the specified device, within the device database.
         if (rc == 0) {
-            ///@todo THIS LINE ONLY FOR DEBUG
-            fprintf(stderr, "cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
+            DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
                     arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
                     
             if (arglist.devid != 0) {

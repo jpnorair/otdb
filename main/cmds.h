@@ -45,7 +45,7 @@ void cmd_init_args(void);
   */
 
 /** @brief Prints a list of commands supported by this command interface
-  * @param dth       (dterm_handle_t*) Controlling interface handle
+  * @param dth      (dterm_handle_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
   * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
   * @param src      (uint8_t*) Protocol input buffer
@@ -58,7 +58,7 @@ int cmd_cmdlist(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 
 
 /** @brief Quits OTDB
-  * @param dth       (dterm_handle_t*) Controlling interface handle
+  * @param dth      (dterm_handle_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
   * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
   * @param src      (uint8_t*) Protocol input buffer
@@ -78,7 +78,7 @@ int cmd_quit(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   */
 
 /** @brief Creates a new device FS in the database
-  * @param dth       (dterm_handle_t*) Controlling interface handle
+  * @param dth      (dterm_handle_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
   * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
   * @param src      (uint8_t*) Protocol input buffer
@@ -148,7 +148,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
 
 
-/** @brief Saves the active database to file
+/** @brief Saves/Exports the active database to file
   * @param dth       (dterm_handle_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
   * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
@@ -156,7 +156,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * save [-c] outfile
+  * save [-c] outfile [IDlist]
   *
   * -c:         Optional argument to compress output.  Compression is 7z type.
   *

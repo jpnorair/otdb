@@ -29,6 +29,7 @@
 #include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -114,6 +115,83 @@ void cmd_init_args(void) {
 
 
 
+
+static int sub_readhex(uint8_t* dst, char* src, size_t src_bytes) {
+        static const uint8_t hexlut0[128] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 16, 32, 48, 64, 80, 96,112,128,144, 0, 0, 0, 0, 0, 0, 
+        0,160,176,192,208,224,240,  0,  0,  0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,160,176,192,208,224,240,  0,  0,  0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
+
+    static const uint8_t hexlut1[128] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 
+        0,10,11,12,13,14,15, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0,10,11,12,13,14,15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
+    
+    uint8_t* start = dst;
+
+    while (src_bytes > 1) {
+        uint8_t byte;
+        byte    = hexlut0[ *src++ & 0x7f];
+        byte   += hexlut1[ *src++ & 0x7f];
+        *dst++  = byte;
+    }
+
+    return (int)(dst - start);
+}
+
+
+static int sub_load_element(uint8_t* dst, size_t max, double pos, const char* type, void* value) {
+    int bytesout;
+    int byteoffset;
+    uint32_t bitmask;
+    
+    switch (type[0]) {
+        // bitX_t, bool
+        case 'b': {
+            int shift;
+            int dat;
+            int mask;
+            
+            if (strcmp(&type[1], "ool") == 0) {
+                dat = *(int*)value & 1;
+            }
+
+            
+            
+            shift = round( ((pos - floor(pos)) * 100) );
+            
+            
+            
+        
+        } break;
+        
+        // char
+        case 'c':
+        case 'd':
+        case 'h':
+        case 'f':
+        case 'i':
+        case 'l':
+        case 's':
+        case 'u':
+        default:
+    }
+    
+
+    return bytesout;
+}
 
 
 
@@ -478,6 +556,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     otfs_t tmpl_fs;
     vlFSHEADER fshdr;
+    //uint16_t* gfb_base;
+    //uint16_t* iss_base;
+    //uint16_t* isf_base;
+    vl_header_t *gfbhdr, *isshdr, *isfhdr;
+    
     
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
@@ -571,6 +654,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             goto cmd_open_CLOSE;
         }
         
+        // 3a. Check template metadata.  Make sure it is valid.  Optional 
+        // elements get filled with defaults if not present.
         obj = tmpl->child;
         while (obj != NULL) {
             cJSON* meta;
@@ -581,14 +666,14 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
             if (meta != NULL) {
                 // ID: mandatory
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "id");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "id");
                 if (elem == NULL) {
                     rc = -512 - 1;
                     goto cmd_open_FREEJSON;
                 }
                 
                 // Size: mandatory
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "size");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "size");
                 if (elem == NULL) {
                     rc = -512 - 2;
                     goto cmd_open_FREEJSON;
@@ -596,7 +681,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 filesize = elem->valueint;
                 
                 // Stock: optional, default=true
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "stock");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "stock");
                 if (elem == NULL) {
                     elem = cJSON_CreateBool(true);
                     cJSON_AddItemToObject(meta, "stock", elem);
@@ -607,7 +692,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 }
                 
                 // Block: optional, default="isf"
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "block");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "block");
                 if (elem == NULL) {
                     fshdr.isf.alloc += filesize;
                     fshdr.isf.used  += is_stock;
@@ -632,21 +717,21 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 }
                 
                 // Type: optional, default="array"
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "type");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "type");
                 if (elem == NULL) {
                     elem = cJSON_CreateString("array");
                     cJSON_AddItemToObject(meta, "type", elem);
                 }
                 
                 // Mod: optional, default=52
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "mod");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "mod");
                 if (elem == NULL) {
                     elem = cJSON_CreateNumber(52.);
                     cJSON_AddItemToObject(meta, "mod", elem);
                 }
                 
                 // Time: optional, default=now()
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "time");
+                elem = cJSON_GetObjectItemCaseSensitive(meta, "time");
                 if (elem == NULL) {
                     elem = cJSON_CreateNumber((double)time(NULL));
                     cJSON_AddItemToObject(meta, "time", elem);
@@ -666,86 +751,242 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
         
-        // 3c. Write the file headers for GFB, ISS, ISF
+        gfbhdr  = (fshdr.gfb.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER) : NULL;
+        isshdr  = (fshdr.iss.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+(fshdr.gfb.files*sizeof(vl_header_t)) : NULL;
+        isfhdr  = (fshdr.isf.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+((fshdr.gfb.files+fshdr.iss.files)*sizeof(vl_header_t)) : NULL;
+        
+        // 3c. Prepare the file table, except for base and length fields, which
+        //     are done in 3d and 3e respectively.
         obj = tmpl->child;
         while (obj != NULL) {
-            cJSON* meta;
-            cJSON* elem;
-            int filesize = 0;
-            int is_stock;
+            cJSON*  meta;
+            vl_header_t* hdr;
 
             meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
-            if (meta != NULL) {
-                vl_header_t hdr;
-                uint8_t*    insertion;
+            if (meta == NULL) {
+                // Skip files without meta objects
+                continue;
+            }
+            else {
+                ot_uni16    idmod;
+                cJSON*      elem;
                 
-                // ID: mandatory
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "id");
-
-                // Size: mandatory
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "size");
-
-
-                
-                // Stock: optional, default=true
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "stock");
-                if (elem == NULL) {
-                    elem = cJSON_CreateBool(true);
-                    cJSON_AddItemToObject(meta, "stock", elem);
-                    is_stock = 1;
-                }
-                else {
-                    is_stock = (elem->valueint != 0);
-                }
-                
-                // Block: optional, default="isf"
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "block");
-                if (elem == NULL) {
-                    fshdr.isf.alloc += filesize;
-                    fshdr.isf.used  += is_stock;
-                    fshdr.isf.files++;
-                    elem = cJSON_CreateString("isf");
-                    cJSON_AddItemToObject(meta, "block", elem);
-                }
-                else if (strcmp(elem->valuestring, "gfb") == 0) {
-                    fshdr.gfb.alloc += filesize;
-                    fshdr.gfb.used  += is_stock;
-                    fshdr.gfb.files++;
+                // IDMOD & Block
+                // Find the file header position based on Block and ID
+                ///@todo make this a function (used in multiple places)
+                ///@todo implement way to use non-stock files
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "id");
+                idmod.ubyte[0]  = (uint8_t)(255 & elem->valueint);
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "mod");
+                idmod.ubyte[1]  = (uint8_t)(255 & elem->valueint);
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "block");
+                if (strcmp(elem->valuestring, "gfb") == 0) {
+                    if (idmod.ubyte[0] >= fshdr.gfb.used) {
+                        continue;   
+                    }
+                    hdr = &gfbhdr[idmod.ubyte[0]];
                 }
                 else if (strcmp(elem->valuestring, "iss") == 0) {
-                    fshdr.iss.alloc += filesize;
-                    fshdr.iss.used  += is_stock;
-                    fshdr.iss.files++;
+                    if (idmod.ubyte[0] >= fshdr.iss.used) {
+                        continue;   
+                    }
+                    hdr = &isshdr[idmod.ubyte[0]];
                 }
                 else {
-                    fshdr.isf.alloc += filesize;
-                    fshdr.isf.used  += is_stock;
-                    fshdr.isf.files++;
+                    if (idmod.ubyte[0] >= fshdr.isf.used) {
+                        continue;   
+                    }
+                    hdr = &isfhdr[idmod.ubyte[0]];
                 }
                 
-                // Type: optional, default="array"
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "type");
-                if (elem == NULL) {
-                    elem = cJSON_CreateString("array");
-                    cJSON_AddItemToObject(meta, "type", elem);
-                }
+                // TIME: epoch seconds
+                elem        = cJSON_GetObjectItemCaseSensitive(meta, "time");
+                hdr->modtime= (uint32_t)elem->valueint;
                 
-                // Mod: optional, default=52
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "mod");
-                if (elem == NULL) {
-                    elem = cJSON_CreateNumber(52.);
-                    cJSON_AddItemToObject(meta, "mod", elem);
-                }
+                // MIRROR: always 0xFFFF for OTDB
+                hdr->mirror = 0xFFFF;
                 
-                // Time: optional, default=now()
-                elem = cJSON_GetObjectItemCaseSensitive(obj, "time");
-                if (elem == NULL) {
-                    elem = cJSON_CreateNumber((double)time(NULL));
-                    cJSON_AddItemToObject(meta, "time", elem);
-                }
+                // BASE: this is derived after all tmpl files are loaded
+                //hdr->base = ... ;
+                
+                // IDMOD: from already extracted value
+                hdr->idmod  = idmod.ushort;
+                
+                // ALLOC
+                elem        = cJSON_GetObjectItemCaseSensitive(meta, "size");
+                hdr->alloc  = (uint16_t)elem->valueint;
+                
+                // LENGTH: this is derived later, from file contents
+                //hdr->length  = ... ;
             }
+            
             obj = obj->next;
         }
+        
+        // 3d. Derive Base values from file allocations and write them to table
+        if (fshdr.gfb.used > 0) {
+            gfbhdr[0].base = fshdr.ftab_alloc;
+            for (int i=1; i<fshdr.gfb.used; i++) {
+                gfbhdr[i].base = gfbhdr[i-1].base + gfbhdr[i-1].alloc;
+            }
+        }
+        if (fshdr.iss.used > 0) {
+            isshdr[0].base = fshdr.ftab_alloc + fshdr.gfb.alloc;
+            for (int i=1; i<fshdr.iss.used; i++) {
+                isshdr[i].base = isshdr[i-1].base + isshdr[i-1].alloc;
+            }
+        }
+        if (fshdr.isf.used > 0) {
+            isfhdr[0].base = fshdr.ftab_alloc + fshdr.gfb.alloc + fshdr.iss.alloc;
+            for (int i=1; i<fshdr.isf.used; i++) {
+                isfhdr[i].base = isfhdr[i-1].base + isfhdr[i-1].alloc;
+            }
+        }
+        
+        // 3e. Derive Length values from template and write default values to
+        // the filesystem.
+        obj = tmpl->child;
+        while (obj != NULL) {
+            cJSON*  meta;
+            cJSON*  content;
+            vl_header_t* hdr;
+            bool    is_stock;
+            int     tmpl_type;
+            uint8_t* filedata;
+
+            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+            if (meta == NULL) {
+                // Skip files without meta objects
+                continue;
+            }
+            else {
+                ot_uni16    idmod;
+                cJSON*      elem;
+                
+                // IDMOD & Block
+                // Find the file header position based on Block and ID
+                ///@todo make this a function (used in multiple places)
+                ///@todo implement way to use non-stock files
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "id");
+                idmod.ubyte[0]  = (uint8_t)(255 & elem->valueint);
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "mod");
+                idmod.ubyte[1]  = (uint8_t)(255 & elem->valueint);
+                elem            = cJSON_GetObjectItemCaseSensitive(meta, "block");
+                if (strcmp(elem->valuestring, "gfb") == 0) {
+                    if (idmod.ubyte[0] >= fshdr.gfb.used) {
+                        continue;   
+                    }
+                    hdr = &gfbhdr[idmod.ubyte[0]];
+                }
+                else if (strcmp(elem->valuestring, "iss") == 0) {
+                    if (idmod.ubyte[0] >= fshdr.iss.used) {
+                        continue;   
+                    }
+                    hdr = &isshdr[idmod.ubyte[0]];
+                }
+                else {
+                    if (idmod.ubyte[0] >= fshdr.isf.used) {
+                        continue;   
+                    }
+                    hdr = &isfhdr[idmod.ubyte[0]];
+                }
+                
+                // Implicit params stock & type
+                elem        = cJSON_GetObjectItemCaseSensitive(meta, "stock");
+                is_stock    = (bool)(elem->valueint != 0);
+                elem        = cJSON_GetObjectItemCaseSensitive(meta, "type");
+                if (strcmp(elem->valuestring, "struct") == 0) {
+                    tmpl_type = 2;
+                }
+                else if (strcmp(elem->valuestring, "array") == 0) {
+                    tmpl_type = 1;  // array
+                }
+                else {
+                    tmpl_type = 0;  //hex string
+                }
+            }
+            
+            content     = cJSON_GetObjectItemCaseSensitive(obj, "_content");
+            hdr->length = 0;
+            filedata    = (uint8_t*)tmpl_fs.base + hdr->base;
+            if (content != NULL) {
+                // Struct type, most involved
+                if (tmpl_type == 2) {       
+                    content = content->child;
+                    while (content != NULL) {
+                        cJSON* elem;
+                        cJSON* submeta;
+                        int offset;
+                        int len;
+                        
+                        submeta = cJSON_GetObjectItemCaseSensitive(content, "_meta");
+                        if (submeta != NULL) {
+                            elem    = cJSON_GetObjectItemCaseSensitive(submeta, "pos");
+                            offset  = (elem == NULL) ? 0 : elem->valueint;
+                            elem    = cJSON_GetObjectItemCaseSensitive(submeta, "size");
+                            len     = (elem == NULL) ? 0 : elem->valueint;
+                        }
+                        else {
+                            elem    = cJSON_GetObjectItemCaseSensitive(content, "pos");
+                            offset  = (elem == NULL) ? 0 : elem->valueint;
+                            elem    = cJSON_GetObjectItemCaseSensitive(content, "type");
+                            
+                            if (
+                            
+                        }
+                        elem = cJSON_GetObjectItemCaseSensitive(obj, "pos");
+                        if (elem == NULL) {
+                            offset = 0;
+                        }
+                        else {
+                            offset = elem->valueint;
+                        }
+                        
+                        elem = cJSON_GetObjectItemCaseSensitive(obj, "pos");
+                        
+                        
+                        content = content->next;
+                    }
+                }
+                // Bytearray type, each 
+                else if (tmpl_type == 1) {  
+                    if (cJSON_IsArray(content)) {
+                        hdr->length = cJSON_GetArraySize(content);
+                        if (hdr->length > hdr->alloc) {
+                            hdr->length = hdr->alloc;
+                        }
+                        for (int i=0; i<hdr->length; i++) {
+                            cJSON* array_i  = cJSON_GetArrayItem(content, i);
+                            filedata[i]     = (uint8_t)(255 & array_i->valueint);
+                        }
+                    }
+                }
+                // hexstring type
+                else {                      
+                    if (cJSON_IsString(content)) {
+                        size_t srcbytes;
+                        srcbytes = strlen(content->valuestring);
+                        if (srcbytes > (2*hdr->alloc)) {
+                            srcbytes = (2*hdr->alloc);
+                        }
+                        hdr->length = sub_readhex(filedata, content->valuestring, strlen(content->valuestring));
+                    }
+                }
+            }
+
+            obj = obj->next;
+        }
+        
+        
+        
+        
+        
+        // Derive length from counting the content children
+            content     = cJSON_GetObjectItemCaseSensitive(obj, "_content");
+            hdr->length = 0;
+
+            
+
         
         
         obj = tmpl->child;

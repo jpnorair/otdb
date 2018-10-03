@@ -25,6 +25,36 @@
 #include <stdio.h>
 
 
+#define ARGFIELD_DEVICEID       (1<<0)
+#define ARGFIELD_DEVICEIDOPT    (1<<1)
+#define ARGFIELD_DEVICEIDLIST   (1<<2)
+#define ARGFIELD_ARCHIVE        (1<<3)
+#define ARGFIELD_COMPRESS       (1<<4)
+#define ARGFIELD_BLOCKID        (1<<5)
+#define ARGFIELD_FILEID         (1<<6)
+#define ARGFIELD_FILEPERMS      (1<<7)
+#define ARGFIELD_FILEALLOC      (1<<8)
+#define ARGFIELD_FILERANGE      (1<<9) 
+#define ARGFIELD_FILEDATA       (1<<10) 
+
+typedef struct {
+    unsigned int    fields;
+    const char*     archive_path;
+    uint8_t*        filedata;
+    int             filedata_size;
+    uint64_t        devid;
+    const char**    devid_strlist;
+    int             devid_strlist_size;
+    uint8_t         compress_flag;
+    uint8_t         block_id;
+    uint8_t         file_id;
+    uint8_t         file_perms;
+    uint16_t        file_alloc;
+    uint16_t        range_lo;
+    uint16_t        range_hi;
+} cmd_arglist_t;
+
+
 
 
 
@@ -36,6 +66,12 @@ typedef int (*cmdaction_t)(dterm_handle_t*, uint8_t*, int*, uint8_t*, size_t);
 
 
 void cmd_init_args(void);
+
+
+int cmd_readhex(uint8_t* dst, char* src, size_t src_bytes);
+int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const char* src, int* src_bytes);
+
+
 
 
 

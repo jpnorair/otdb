@@ -152,44 +152,139 @@ static int sub_readhex(uint8_t* dst, char* src, size_t src_bytes) {
 }
 
 
-static int sub_load_element(uint8_t* dst, size_t max, double pos, const char* type, void* value) {
+static int sub_load_element(uint8_t* dst, size_t size, double pos, const char* type, void* value) {
     int bytesout;
-    int byteoffset;
-    uint32_t bitmask;
+    unsigned int byteoffset;
+    const char* cursor;
+    
+    bytesout    = 0;
+    byteoffset  = (unsigned int)floor(pos);
+    cursor      = &type[1];
     
     switch (type[0]) {
         // bitX_t, bool
         case 'b': {
-            int shift;
-            int dat;
-            int mask;
+            long shift;
+            unsigned int dat = 0;
+            unsigned int maskbits;
+            ot_uni32 scr;
             
-            if (strcmp(&type[1], "ool") == 0) {
-                dat = *(int*)value & 1;
+            if (strcmp(cursor, "ool") == 0) {
+                maskbits = 1;
             }
-
+            else if ((strncmp(cursor, "it", 2) == 0) && (strcmp(&type[4], "_t") == 0)) {
+                maskbits = type[3] - '0';
+                if (maskbits > 8) {
+                    maskbits = 8;
+                }
+            }
+            else {
+                goto sub_load_element_END;
+            }
             
+            shift = lround( ((pos - floor(pos)) * 100) );
+            if ((1+((shift+maskbits)/4)) > size) {
+                goto sub_load_element_END;
+            }
             
-            shift = round( ((pos - floor(pos)) * 100) );
-            
-            
-            
-        
+            ///@todo this may be endian dependent
+            memcpy(&scr.ubyte[0], dst, size);
+            maskbits    = ((1<<maskbits) - 1) << shift;
+            dat         = (*(unsigned int*)value) << shift;
+            if (size >= 4) {
+                scr.ulong  &= ~maskbits; 
+                scr.ulong  |= (dat & maskbits);
+            }
+            else if (size >= 2) {
+                scr.ushort[0] &= ~maskbits; 
+                scr.ushort[0] |= (dat & maskbits);
+            }
+            else {
+                scr.ubyte[0] &= ~maskbits; 
+                scr.ubyte[0] |= (dat & maskbits);
+            }
+            memcpy(dst, &scr.ubyte[0], size);
+            bytesout = (int)size;
         } break;
         
         // char
-        case 'c':
-        case 'd':
-        case 'h':
-        case 'f':
-        case 'i':
-        case 'l':
-        case 's':
-        case 'u':
-        default:
+        case 'c': {
+            if ((strcmp(cursor, "har") == 0) && (size >= 1)) {
+                *dst = (uint8_t)(255 & *(int*)value);
+                bytesout = 1;
+            }
+        } break;
+        
+        // double
+        case 'd': {
+            if ((strcmp(cursor, "ouble") == 0) && (size >= 8)) {
+                memcpy(dst, (double*)value, 8);
+                bytesout = 8;
+            }
+        } break;
+        
+        // hex
+        case 'h': {
+            if (strcmp(cursor, "ex") == 0) {
+                int len = (int)strlen((char*)value);
+                if (size >= len/2) {
+                    bytesout = sub_readhex(dst, (char*)value, len);
+                }
+            }
+        } break;
+        
+        // float
+        case 'f': {
+            if ((strcmp(cursor, "loat") == 0) && (size >= 4)) {
+                memcpy(dst, (float*)value, 4);
+                bytesout = 4;
+            }
+        } break;
+        
+        // integers
+        case 'i': cursor = &type[0];
+        case 'u': {   
+            if (((strcmp(cursor, "int") == 0) || (strcmp(cursor, "int32_t") == 0)) && (size >= 4)) {
+                memcpy(dst, (uint32_t*)value, 4);
+                bytesout = 4;
+            }
+            else if ((strcmp(cursor, "int16_t") == 0) && (size >= 2)) {
+                memcpy(dst, (uint16_t*)value, 2);
+                bytesout = 2;
+            }
+            else if ((strcmp(cursor, "int8_t") == 0) && (size >= 1)) {
+                memcpy(dst, (uint8_t*)value, 1);
+                bytesout = 1;
+            }
+        } break;
+        
+        // long
+        case 'l': {
+            if ((strcmp(cursor, "ong") == 0) && (size >= 4)) {
+                memcpy(dst, (uint32_t*)value, 4);
+                bytesout = 4;
+            }
+        } break;
+        
+        // short or string
+        case 's': {
+            if ((strcmp(cursor, "hort") == 0) && (size >= 2)) {
+                memcpy(dst, (uint32_t*)value, 2);
+                bytesout = 2;
+            }
+            else if (strcmp(cursor, "tring") == 0) {
+                int len = (int)strlen((char*)value);
+                if (size >= len) {
+                    memcpy(dst, (char*)value, len);
+                    bytesout = len;
+                }
+            }
+        } break;
+        
+        default: break;
     }
     
-
+    sub_load_element_END:
     return bytesout;
 }
 

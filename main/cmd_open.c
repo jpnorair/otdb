@@ -432,8 +432,10 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     char pathbuf[256];
     char* cursor;
     int len;
-    DIR *dir;
+    DIR* dir;
+    DIR* devdir;
     struct dirent *ent;
+    struct dirent *devent;
     
     cJSON* tmpl = NULL;
     cJSON* data = NULL;
@@ -896,12 +898,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         if (ent == NULL) {
             break;
         }
+        
         if (ent->d_type == DT_DIR) {
-            if (strcmp(ent->d_name, "_TMPL") == 0) {
-                continue;
-            }
-            
-            // Name of directory should be a pure hex number
+            // Name of directory should be a pure hex number: skip others
             endptr = NULL;
             tmpl_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
             if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
@@ -911,10 +910,27 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             // Create new FS based on device id and template FS
             rc = ofts_new(dth->ext, &tmpl_fs);
             if (rc != 0) {
+                ///@todo adjusted error code: FS partially created
                 goto cmd_open_FREEJSON;
             }
             
+            // Enter Device Directory: max is 16 hex chars long (8 bytes)
+            strncpy(cursor, ent->d_name, 16);
+            devdir = opendir(pathbuf);
+            if (devdir == NULL) {
+                ///@todo adjusted error code: FS partially created
+                rc = -10;
+                goto cmd_open_FREEJSON;
+            }
+            
+            while ( (devent = readdir(devdir)) != NULL ) {
+            
+            }
+            closedir(devdir);
+            
+            
             ///@todo leave-off point
+            
         }
     }
     

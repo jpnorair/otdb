@@ -73,6 +73,14 @@ extern struct arg_end*     end_man;
 #endif
 
 
+
+typedef enum {
+    CONTENT_hex     = 0,
+    CONTENT_array   = 1,
+    CONTENT_struct  = 2,
+    CONTENT_MAX
+} content_type_enum;
+
 typedef enum {
     TYPE_bitmask    = 0,
     TYPE_bit1       = 1,
@@ -102,6 +110,131 @@ typedef struct {
     typeinfo_enum   index;
     int             bits;
 } typeinfo_t;
+
+
+
+
+
+static int sub_extract_int(cJSON* meta, const char* name) {
+    int value = 0;
+    cJSON* elem;
+    if (meta != NULL) {
+        elem = cJSON_GetObjectItemCaseSensitive(meta, name);
+        if (elem != NULL) {
+            if (cJSON_IsNumber(elem)) {
+                value = elem->valueint;
+            }
+        }
+    }
+    return value;
+}
+
+static double sub_extract_double(cJSON* meta, const char* name) {
+    double value = 0;
+    cJSON* elem;
+    if (meta != NULL) {
+        elem = cJSON_GetObjectItemCaseSensitive(meta, name);
+        if (elem != NULL) {
+            if (cJSON_IsNumber(elem)) {
+                value = elem->valuedouble;
+            }
+        }
+    }
+    return value;
+}
+
+static const char* sub_extract_string(cJSON* meta, const char* name) {
+    const char* value = NULL;
+    cJSON* elem;
+    if (meta != NULL) {
+        elem = cJSON_GetObjectItemCaseSensitive(meta, name);
+        if (elem != NULL) {
+            if (cJSON_IsString(elem)) {
+                value = elem->valuestring;
+            }
+        }
+    }
+    return value;
+}
+
+
+static uint8_t sub_extract_id(cJSON* meta) {
+    return (uint8_t)(255 & sub_extract_int(meta, "id"));
+}
+
+
+static uint8_t sub_extract_mod(cJSON* meta) {
+    return (uint8_t)(255 & sub_extract_int(meta, "mod"));
+}
+
+
+static uint8_t sub_blockid(cJSON* block_elem) {
+    char* elemstr;
+    elemstr = (block_elem != NULL) ? block_elem->valuestring : NULL;
+
+    if (elemstr != NULL) {
+        if (strcmp(elemstr, "gfb") == 0) {
+            return 1;
+        }
+        if (strcmp(elemstr, "iss") == 0) {
+            return 2;
+        }
+    }
+    return 3;   // isf --> default
+}
+static uint8_t sub_extract_blockid(cJSON* meta) {
+    cJSON* block_elem;
+    block_elem = (meta != NULL) ? cJSON_GetObjectItemCaseSensitive(meta, "block") : NULL;
+    return sub_blockid(block_elem);
+}
+
+
+static uint16_t sub_extract_size(cJSON* meta) {
+    return (uint16_t)(65535 & sub_extract_int(meta, "size"));
+}
+
+
+static uint16_t sub_extract_time(cJSON* meta) {
+    return (uint32_t)(sub_extract_int(meta, "time"));
+}
+
+
+static bool sub_extract_stock(cJSON* meta) {
+    return (bool)(sub_extract_int(meta, "stock") != 0);
+}
+
+
+static content_type_enum sub_tmpltype(cJSON* type_elem) {
+    char* elemstr;
+    elemstr = (type_elem != NULL) ? type_elem->valuestring : NULL;
+
+    if (elemstr != NULL) {
+        if (strcmp(elemstr, "struct") == 0) {
+            return CONTENT_struct;
+        }
+        if (strcmp(elemstr, "array") == 0) {
+            return CONTENT_array;
+        }
+    }
+    return CONTENT_hex;       // hex string --> default
+}
+static content_type_enum sub_extract_type(cJSON* meta) {
+    cJSON* type_elem;
+    type_elem = (meta != NULL) ? cJSON_GetObjectItemCaseSensitive(meta, "type") : NULL;
+    return sub_tmpltype(type_elem);
+}
+
+
+static unsigned int sub_extract_pos(cJSON* meta) {
+    return (unsigned int)(sub_extract_int(meta, "pos") != 0);
+}
+
+
+static double sub_extract_posd(cJSON* meta) {
+    return (unsigned int)(sub_extract_double(meta, "pos") != 0);
+}
+
+
 
 
 
@@ -251,7 +384,7 @@ static int sub_load_element(uint8_t* dst, size_t size, double pos, const char* t
                 dat = value->valueint;
             }
             else if (cJSON_IsString(value)) {
-                cmd_readhex((uint8_t*)&dat, value->valuestring, 8);
+                cmd_hexnread((uint8_t*)&dat, value->valuestring, sizeof(unsigned long));
             }
 
             shift = lround( ((pos - floor(pos)) * 100) );
@@ -294,7 +427,7 @@ static int sub_load_element(uint8_t* dst, size_t size, double pos, const char* t
             if (cJSON_IsString(value)) {
                 int len = (int)strlen((char*)value);
                 if (size >= len/2) {
-                    bytesout = cmd_readhex(dst, (char*)value, len);
+                    bytesout = cmd_hexread(dst, (char*)value);
                 }
             }
         } break;
@@ -314,7 +447,7 @@ static int sub_load_element(uint8_t* dst, size_t size, double pos, const char* t
             if (size >= len) {
                 if (cJSON_IsString(value)) {
                     memset(dst, 0, len);
-                    cmd_readhex(dst, (char*)value, len);
+                    cmd_hexread(dst, (char*)value);
                 }
                 else if (cJSON_IsNumber(value)) {
                     if (typeinfo.index == TYPE_float) {
@@ -429,23 +562,24 @@ static int sub_aggregate_json(cJSON** tmpl, const char* fname) {
 
 int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    
+    // POSIX Filesystem and JSON handles
     char pathbuf[256];
-    char* cursor;
-    int len;
-    DIR* dir;
-    DIR* devdir;
-    struct dirent *ent;
-    struct dirent *devent;
+    char* rtpath;
+    DIR* dir                = NULL;
+    DIR* devdir             = NULL;
+    struct dirent *ent      = NULL;
+    struct dirent *devent   = NULL;
+    cJSON* tmpl             = NULL;
+    cJSON* data             = NULL;
+    cJSON* obj              = NULL;
     
-    cJSON* tmpl = NULL;
-    cJSON* data = NULL;
-    cJSON* obj  = NULL;
-    
+    // OTFS data tables and handles
     otfs_t tmpl_fs;
     vlFSHEADER fshdr;
     vl_header_t *gfbhdr, *isshdr, *isfhdr;
     
-    
+    // Argument handling
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
     };
@@ -503,17 +637,17 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// 4b.Using the JSON data for this file, correlate it against the 
     ///    master template and write it to each file in the new FS.
     
-    len     = sizeof(pathbuf) - sizeof("/_TMPL/") - 16 - 32 - 1;
-    cursor  = stpncpy(pathbuf, arglist.archive_path, len);
-    cursor  = stpcpy(cursor, "/_TMPL/");
+    // String length is limited to the pathbuf minus the maximum OTDB filename
+    rtpath  = stpncpy(pathbuf, arglist.archive_path, 
+                    (sizeof(pathbuf) - sizeof("/_TMPL/") - (16+32+1)) );
+    strcpy(rtpath, "/_TMPL/");
     dir     = opendir(pathbuf);
     if (dir == NULL) {
         rc = -1;
         goto cmd_open_CLOSE;
     }
     
-    // 2.
-    tmpl = NULL;
+    // 2. Load all the JSON data (might span multiple files) into tmpl
     while (1) {
         ent = readdir(dir);
         if (ent == NULL) {
@@ -527,8 +661,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
         }
     }
+    closedir(dir);
+    dir = NULL;
     
-    // 3. 
+    // 3. Big Process of creating the default OTFS data structure based on JSON
+    // input files
     tmpl_fs.alloc   = 0;
     tmpl_fs.base    = NULL;
     tmpl_fs.uid.u64 = 0;
@@ -555,14 +692,14 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             elem = cJSON_GetObjectItemCaseSensitive(meta, "id");
             if (elem == NULL) {
                 rc = -512 - 1;
-                goto cmd_open_FREEJSON;
+                goto cmd_open_CLOSE;
             }
             
             // Size: mandatory
             elem = cJSON_GetObjectItemCaseSensitive(meta, "size");
             if (elem == NULL) {
                 rc = -512 - 2;
-                goto cmd_open_FREEJSON;
+                goto cmd_open_CLOSE;
             }
             filesize = elem->valueint;
             
@@ -586,20 +723,20 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 elem = cJSON_CreateString("isf");
                 cJSON_AddItemToObject(meta, "block", elem);
             }
-            else if (strcmp(elem->valuestring, "gfb") == 0) {
-                fshdr.gfb.alloc += filesize;
-                fshdr.gfb.used  += is_stock;
-                fshdr.gfb.files++;
-            }
-            else if (strcmp(elem->valuestring, "iss") == 0) {
-                fshdr.iss.alloc += filesize;
-                fshdr.iss.used  += is_stock;
-                fshdr.iss.files++;
-            }
-            else {
-                fshdr.isf.alloc += filesize;
-                fshdr.isf.used  += is_stock;
-                fshdr.isf.files++;
+            switch (sub_blockid(elem)) {
+                case 1: fshdr.gfb.alloc += filesize;
+                        fshdr.gfb.used  += is_stock;
+                        fshdr.gfb.files++;
+                        break;
+                        
+                case 2: fshdr.iss.alloc += filesize;
+                        fshdr.iss.used  += is_stock;
+                        fshdr.iss.files++;
+                        break;
+            
+               default: fshdr.isf.alloc += filesize;
+                        fshdr.isf.used  += is_stock;
+                        fshdr.isf.files++;
             }
             
             // Type: optional, default="array"
@@ -633,7 +770,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     tmpl_fs.base        = calloc(tmpl_fs.alloc, sizeof(uint8_t));
     if (tmpl_fs.base == NULL) {
         rc = -3;
-        goto cmd_open_FREEJSON;
+        goto cmd_open_CLOSE;
     }
     memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
     
@@ -647,65 +784,53 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     while (obj != NULL) {
         cJSON*  meta;
         vl_header_t* hdr;
+        ot_uni16    idmod;
 
         meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
         if (meta == NULL) {
             // Skip files without meta objects
             continue;
         }
-        else {
-            ot_uni16    idmod;
-            cJSON*      elem;
-            
-            // IDMOD & Block
-            // Find the file header position based on Block and ID
-            ///@todo make this a function (used in multiple places)
-            ///@todo implement way to use non-stock files
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "id");
-            idmod.ubyte[0]  = (uint8_t)(255 & elem->valueint);
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "mod");
-            idmod.ubyte[1]  = (uint8_t)(255 & elem->valueint);
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "block");
-            if (strcmp(elem->valuestring, "gfb") == 0) {
-                if (idmod.ubyte[0] >= fshdr.gfb.used) {
-                    continue;   
-                }
-                hdr = &gfbhdr[idmod.ubyte[0]];
-            }
-            else if (strcmp(elem->valuestring, "iss") == 0) {
-                if (idmod.ubyte[0] >= fshdr.iss.used) {
-                    continue;   
-                }
-                hdr = &isshdr[idmod.ubyte[0]];
-            }
-            else {
-                if (idmod.ubyte[0] >= fshdr.isf.used) {
-                    continue;   
-                }
-                hdr = &isfhdr[idmod.ubyte[0]];
-            }
-            
-            // TIME: epoch seconds
-            elem        = cJSON_GetObjectItemCaseSensitive(meta, "time");
-            hdr->modtime= (uint32_t)elem->valueint;
-            
-            // MIRROR: always 0xFFFF for OTDB
-            hdr->mirror = 0xFFFF;
-            
-            // BASE: this is derived after all tmpl files are loaded
-            //hdr->base = ... ;
-            
-            // IDMOD: from already extracted value
-            hdr->idmod  = idmod.ushort;
-            
-            // ALLOC
-            elem        = cJSON_GetObjectItemCaseSensitive(meta, "size");
-            hdr->alloc  = (uint16_t)elem->valueint;
-            
-            // LENGTH: this is derived later, from file contents
-            //hdr->length  = ... ;
+        
+        // IDMOD & Block
+        // Find the file header position based on Block and ID
+        ///@todo make this a function (used in multiple places)
+        ///@todo implement way to use non-stock files
+        idmod.ubyte[0] = sub_extract_id(meta);
+        idmod.ubyte[1] = sub_extract_mod(meta);
+        
+        switch (sub_extract_blockid(meta)) {
+            case 1: if (idmod.ubyte[0] >= fshdr.gfb.used) {
+                        continue;   
+                    }
+                    hdr = &gfbhdr[idmod.ubyte[0]];
+                    break;
+            case 2: if (idmod.ubyte[0] >= fshdr.iss.used) {
+                        continue;   
+                    }
+                    hdr = &isshdr[idmod.ubyte[0]];
+                    break;
+                    
+           default: if (idmod.ubyte[0] >= fshdr.isf.used) {
+                        continue;   
+                    }
+                    hdr = &isfhdr[idmod.ubyte[0]];
+                    break;
         }
         
+        // TIME: epoch seconds
+        // MIRROR: always 0xFFFF for OTDB
+        // BASE: this is derived after all tmpl files are loaded
+        // IDMOD: from already extracted value
+        // ALLOC
+        // LENGTH: this is derived later, from file contents
+        hdr->modtime= sub_extract_time(meta);
+        hdr->mirror = 0xFFFF;
+        //hdr->base = ... ;
+        hdr->idmod  = idmod.ushort;
+        hdr->alloc  = sub_extract_size(meta);
+        //hdr->length  = ... ;
+
         obj = obj->next;
     }
     
@@ -737,70 +862,56 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         cJSON*  content;
         vl_header_t* hdr;
         bool    is_stock;
-        int     tmpl_type;
+        content_type_enum ctype;
         uint8_t* filedata;
+        ot_uni16    idmod;
 
         meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
         if (meta == NULL) {
             // Skip files without meta objects
             continue;
         }
-        else {
-            ot_uni16    idmod;
-            cJSON*      elem;
-            
-            // IDMOD & Block
-            // Find the file header position based on Block and ID
-            ///@todo make this a function (used in multiple places)
-            ///@todo implement way to use non-stock files
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "id");
-            idmod.ubyte[0]  = (uint8_t)(255 & elem->valueint);
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "mod");
-            idmod.ubyte[1]  = (uint8_t)(255 & elem->valueint);
-            elem            = cJSON_GetObjectItemCaseSensitive(meta, "block");
-            if (strcmp(elem->valuestring, "gfb") == 0) {
-                if (idmod.ubyte[0] >= fshdr.gfb.used) {
-                    continue;   
-                }
-                hdr = &gfbhdr[idmod.ubyte[0]];
-            }
-            else if (strcmp(elem->valuestring, "iss") == 0) {
-                if (idmod.ubyte[0] >= fshdr.iss.used) {
-                    continue;   
-                }
-                hdr = &isshdr[idmod.ubyte[0]];
-            }
-            else {
-                if (idmod.ubyte[0] >= fshdr.isf.used) {
-                    continue;   
-                }
-                hdr = &isfhdr[idmod.ubyte[0]];
-            }
-            
-            // Implicit params stock & type
-            elem        = cJSON_GetObjectItemCaseSensitive(meta, "stock");
-            is_stock    = (bool)(elem->valueint != 0);
-            elem        = cJSON_GetObjectItemCaseSensitive(meta, "type");
-            if (strcmp(elem->valuestring, "struct") == 0) {
-                tmpl_type = 2;
-            }
-            else if (strcmp(elem->valuestring, "array") == 0) {
-                tmpl_type = 1;  // array
-            }
-            else {
-                tmpl_type = 0;  //hex string
-            }
+        
+        // IDMOD & Block
+        // Find the file header position based on Block and ID
+        ///@todo make this a function (used in multiple places)
+        ///@todo implement way to use non-stock files
+        idmod.ubyte[0] = sub_extract_id(meta);
+        idmod.ubyte[1] = sub_extract_mod(meta);
+        
+        switch (sub_extract_blockid(meta)) {
+            case 1: if (idmod.ubyte[0] >= fshdr.gfb.used) {
+                        continue;   
+                    }
+                    hdr = &gfbhdr[idmod.ubyte[0]];
+                    break;
+                    
+            case 2: if (idmod.ubyte[0] >= fshdr.iss.used) {
+                        continue;   
+                    }
+                    hdr = &isshdr[idmod.ubyte[0]];
+                    break;
+                    
+           default: if (idmod.ubyte[0] >= fshdr.isf.used) {
+                        continue;   
+                    }
+                    hdr = &isfhdr[idmod.ubyte[0]];
+                    break;
         }
+        
+        
+        // Implicit params stock & type
+        is_stock    = sub_extract_stock(meta);
+        ctype       = sub_extract_type(meta);
         
         content     = cJSON_GetObjectItemCaseSensitive(obj, "_content");
         hdr->length = 0;
         filedata    = (uint8_t*)tmpl_fs.base + hdr->base;
         if (content != NULL) {
             // Struct type, most involved
-            if (tmpl_type == 2) {       
+            if (ctype == CONTENT_struct) {       
                 content = content->child;
                 while (content != NULL) {
-                    cJSON* elem;
                     cJSON* submeta;
                     int offset;
                     int e_sz;
@@ -809,24 +920,16 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     ///@todo recursive treatment of nested elements
                     submeta = cJSON_GetObjectItemCaseSensitive(content, "_meta");
                     if (submeta != NULL) {
-                        elem    = cJSON_GetObjectItemCaseSensitive(submeta, "pos");
-                        offset  = (elem == NULL) ? 0 : elem->valueint;
-                        elem    = cJSON_GetObjectItemCaseSensitive(submeta, "size");
-                        e_sz    = (elem == NULL) ? 0 : elem->valueint;
+                        offset  = sub_extract_pos(submeta);
+                        e_sz    = sub_extract_size(submeta);
                         submeta = cJSON_GetObjectItemCaseSensitive(content, "_content");
                         if (submeta != NULL) {
                             submeta = submeta->child;
                             while (submeta != NULL) {
-                                double pos;
-                                char* typestr;
-                                elem    = cJSON_GetObjectItemCaseSensitive(submeta, "pos");
-                                pos     = (elem == NULL) ? 0. : elem->valuedouble;
-                                elem    = cJSON_GetObjectItemCaseSensitive(submeta, "type");
-                                typestr = (elem == NULL) ? NULL : elem->valuestring;
                                 sub_load_element( &filedata[offset], 
                                         (size_t)e_sz, 
-                                        pos, 
-                                        typestr, 
+                                        sub_extract_posd(submeta), 
+                                        sub_extract_string(submeta, "type"), 
                                         cJSON_GetObjectItemCaseSensitive(content, "def"));
                                 submeta = submeta->next;
                             }
@@ -835,21 +938,19 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     
                     // Flat data element
                     else {
-                        elem    = cJSON_GetObjectItemCaseSensitive(content, "pos");
-                        offset  = (elem == NULL) ? 0 : elem->valueint;
-                        elem    = cJSON_GetObjectItemCaseSensitive(content, "type");
-                        e_sz    = sub_load_element( &filedata[offset], 
-                                        (size_t)(hdr->alloc - offset), 
-                                        0, 
-                                        elem->valuestring, 
-                                        cJSON_GetObjectItemCaseSensitive(content, "def"));
+                        offset = sub_extract_pos(submeta);
+                        e_sz = sub_load_element( &filedata[offset], 
+                                    (size_t)(hdr->alloc - offset), 
+                                    0, 
+                                    sub_extract_string(submeta, "type"), 
+                                    cJSON_GetObjectItemCaseSensitive(content, "def"));
                     }
                     content = content->next;
                 }
             }
             
             // Bytearray type, each 
-            else if (tmpl_type == 1) {  
+            else if (ctype == CONTENT_array) {  
                 if (cJSON_IsArray(content)) {
                     hdr->length = cJSON_GetArraySize(content);
                     if (hdr->length > hdr->alloc) {
@@ -865,12 +966,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             // hexstring type
             else {                      
                 if (cJSON_IsString(content)) {
-                    size_t srcbytes;
-                    srcbytes = strlen(content->valuestring);
-                    if (srcbytes > (2*hdr->alloc)) {
-                        srcbytes = (2*hdr->alloc);
-                    }
-                    hdr->length = cmd_readhex(filedata, content->valuestring, strlen(content->valuestring));
+                    hdr->length = cmd_hexnread(filedata, content->valuestring, hdr->alloc);
                 }
             }
         }
@@ -883,12 +979,13 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // this template and apply changes that are present.
     
     // Go into each directory that isn't "_TMPL"
-    len     = sizeof(pathbuf) - 16 - 32 - 1;
-    cursor  = stpncpy(pathbuf, arglist.archive_path, len);
+    // The pathbuf already contains the root directory, from step 2, but we 
+    // need to clip the _TMPL part.
+    *rtpath = 0;
     dir     = opendir(pathbuf);
     if (dir == NULL) {
         rc = -1;
-        goto cmd_open_FREEJSON;
+        goto cmd_open_CLOSE;
     }
     
     while (1) {
@@ -900,6 +997,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         
         if (ent->d_type == DT_DIR) {
+            vlFILE* fp;
+        
             // Name of directory should be a pure hex number: skip others
             endptr = NULL;
             tmpl_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
@@ -908,42 +1007,216 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             // Create new FS based on device id and template FS
-            rc = ofts_new(dth->ext, &tmpl_fs);
+            rc = otfs_new(dth->ext, &tmpl_fs);
             if (rc != 0) {
                 ///@todo adjusted error code: FS partially created
-                goto cmd_open_FREEJSON;
+                goto cmd_open_CLOSE;
             }
             
             // Enter Device Directory: max is 16 hex chars long (8 bytes)
-            strncpy(cursor, ent->d_name, 16);
+            strncpy(rtpath, ent->d_name, 16);
             devdir = opendir(pathbuf);
             if (devdir == NULL) {
                 ///@todo adjusted error code: FS partially created
                 rc = -10;
-                goto cmd_open_FREEJSON;
+                goto cmd_open_CLOSE;
             }
             
+            // Loop through files in the device directory, and aggregate them.
             while ( (devent = readdir(devdir)) != NULL ) {
-            
+                if (ent->d_type == DT_REG) {
+                    rc = sub_aggregate_json(&data, ent->d_name);
+                    if (rc != 0) {
+                        rc = -256 + rc;
+                        goto cmd_open_CLOSE;
+                    }
+                }
             }
             closedir(devdir);
+            devdir = NULL;
             
+            // Set OTFS to reference the current device FS.
+            otfs_setfs(dth->ext, &tmpl_fs.uid.u8[0]);
             
-            ///@todo leave-off point
+            // Write the default device ID to the standardized locations.
+            // - UID64 to ISF1 0:8
+            // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
+            fp = ISF_open_su(0);
+            if (fp != NULL) {
+                uint16_t* cursor = (uint16_t*)vl_memptr(fp);
+                if (cursor != NULL) {
+                    cursor[0] = (uint16_t)(tmpl_fs.uid.u64 & 65535);
+                }
+                vl_close(fp);
+            }
+            fp = ISF_open_su(1);
+            if (fp != NULL) {
+                uint8_t* cursor = vl_memptr(fp);
+                if (cursor != NULL) {
+                    memcpy(cursor, &tmpl_fs.uid.u8[0], 8);
+                }
+                vl_close(fp);
+            }
+            
+            // If there's no custom data to write, move on
+            if (data == NULL) {
+                continue;
+            }
+            data = data->child;
+            
+            // Correlate elements from data files with their metadata from the
+            // template.  For each data element, we need the following 
+            // attributes: (1) Block ID, (2) File ID, (3) Data range, (4) Data 
+            // value.  With this information it is possible to write all the
+            // per-device data.
+            while (data != NULL) {
+                cJSON* fileobj;
+                vlFILE* fp;
+                uint8_t* fdat;
+                uint8_t block, file;
+                content_type_enum ctype;
+                uint16_t max;
+                bool stock;
+                
+                fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, data->string);
+                if (fileobj == NULL) {
+                    continue;
+                }
+                
+                obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
+                if (obj == NULL) {
+                    continue;
+                }
+                block   = sub_extract_blockid(obj);
+                file    = sub_extract_id(obj);
+                ctype   = sub_extract_type(obj);
+                max     = sub_extract_size(obj);
+                stock   = sub_extract_stock(obj);
+
+                obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_contents");
+                if (obj == NULL) {
+                    continue;
+                }
+                
+                fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
+                if (fp == NULL) {
+                    continue;
+                }
+                fdat = vl_memptr(fp);
+                if (fdat == NULL) {
+                    vl_close(fp);
+                    continue;
+                }
+                            
+                if (fp->alloc < max) {
+                    max = fp->alloc;
+                }
+                
+                if (ctype == CONTENT_hex) {
+                    fp->length = cmd_hexnread(fdat, obj->valuestring, (size_t)max);
+                }
+                else if (ctype == CONTENT_array) {
+                    int items;
+                    items = cJSON_GetArraySize(obj);
+                    if (items > max) {
+                        items = max;
+                    }
+                    fp->length = items;
+                    for (int i=0; i<items; i++) {
+                        cJSON* array_i  = cJSON_GetArrayItem(obj, i);
+                        fdat[i]         = (uint8_t)(255 & array_i->valueint);
+                    }
+                }
+                
+                // CONTENT_struct
+                ///@todo might benefit from recursive treatment
+                else {  // CONTENT_struct
+                    obj = obj->child;
+                    while (obj != NULL) {
+                        cJSON* t_elem;
+                        
+                        // Make sure tag is in both data and tmpl
+                        t_elem  = cJSON_GetObjectItemCaseSensitive(obj, obj->string);
+                        if (t_elem != NULL) {
+                            int pos         = sub_extract_pos(t_elem);
+                            int sz          = sub_extract_size(t_elem);
+                            typeinfo_enum   = sub
+                        
+                            ///@todo leave off point
+                            
+                            
+                        }
+                        
+                        
+                        submeta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+                        if (submeta != NULL) {
+                        
+                        }
+                        
+                        else {
+                            offset = sub_extract_pos(submeta);
+                        }
+                        
+                        obj = obj->next;
+                    }
+                    
+                }
+                
+                
+                
+
+                    int offset;
+                    int e_sz;
+                    
+                    // Nested data element has _meta field
+                    ///@todo recursive treatment of nested elements
+                    
+                    if (submeta != NULL) {
+                        offset  = sub_extract_pos(submeta);
+                        e_sz    = sub_extract_size(submeta);
+                        submeta = cJSON_GetObjectItemCaseSensitive(content, "_content");
+                        if (submeta != NULL) {
+                            submeta = submeta->child;
+                            while (submeta != NULL) {
+                                sub_load_element( &filedata[offset], 
+                                        (size_t)e_sz, 
+                                        sub_extract_posd(submeta), 
+                                        sub_extract_string(submeta, "type"), 
+                                        cJSON_GetObjectItemCaseSensitive(content, "def"));
+                                submeta = submeta->next;
+                            }
+                        }
+                    }
+                    
+                    // Flat data element
+                    else {
+                        offset = sub_extract_pos(submeta);
+                        e_sz = sub_load_element( &filedata[offset], 
+                                    (size_t)(hdr->alloc - offset), 
+                                    0, 
+                                    sub_extract_string(submeta, "type"), 
+                                    cJSON_GetObjectItemCaseSensitive(content, "def"));
+                    }
+                    content = content->next;
+                
+            }
+            
             
         }
     }
-    
+    closedir(dir);
+    dir = NULL;
     
     // 5. 
     
-    cmd_open_FREEJSON:
-    cJSON_Delete(tmpl);
-    cJSON_Delete(data);
+    
+    
     
     cmd_open_CLOSE:
-    closedir(dir);
-        
+    if (tmpl != NULL)   cJSON_Delete(tmpl);
+    if (data != NULL)   cJSON_Delete(data);
+    if (devdir != NULL) closedir(devdir);
+    if (dir != NULL)    closedir(dir);
     
     cmd_open_END:
     return rc;

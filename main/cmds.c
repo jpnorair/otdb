@@ -175,7 +175,7 @@ int cmd_readhex(uint8_t* dst, char* src, size_t src_bytes) {
     
     uint8_t* start = dst;
 
-    while (src_bytes > 1) {
+    while (src[0] && src[1] && (src_bytes > 1)) {
         uint8_t byte;
         byte    = hexlut0[ *src++ & 0x7f];
         byte   += hexlut1[ *src++ & 0x7f];

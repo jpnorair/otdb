@@ -24,6 +24,7 @@
 // Local Libraries/Headers
 #include <bintex.h>
 #include <m2def.h>
+#include <otfs.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -123,8 +124,9 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext) {
         return -1;
     }
     
-    dth->ch = NULL;
-    dth->dt = malloc(sizeof(dterm_t));
+    dth->tmpl   = NULL;
+    dth->ch     = NULL;
+    dth->dt     = malloc(sizeof(dterm_t));
     if (dth->dt == NULL) {
         rc = -2;
         goto dterm_init_TERM;
@@ -161,6 +163,13 @@ void dterm_deinit(dterm_handle_t* dth) {
     }
     if (dth->ch != NULL) {
         ch_free(dth->ch);
+    }
+    if (dth->ext != NULL) {
+        ///@todo initialize dterm with a deallocator.  For now, fixed to otfs.
+        otfs_deinit(dth->ext);  
+    }
+    if (dth->tmpl != NULL) {
+        cJSON_Delete(dth->tmpl);
     }
     
     pthread_mutex_unlock(&dth->dtwrite_mutex);

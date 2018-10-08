@@ -20,10 +20,10 @@
 // Configuration Header
 #include "otdb_cfg.h"
 #include "cliopt.h"
-
-// Application Headers
 #include "cmdhistory.h"
 
+// HB Libraries
+#include <cJSON.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -99,6 +99,7 @@ typedef struct {
     dterm_t*            dt;
     cmdhist*            ch;
     void*               ext;
+    cJSON*              tmpl;
     pthread_mutex_t     dtwrite_mutex;
 } dterm_handle_t;
 

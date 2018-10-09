@@ -68,8 +68,11 @@ typedef int (*cmdaction_t)(dterm_handle_t*, uint8_t*, int*, uint8_t*, size_t);
 void cmd_init_args(void);
 
 
-int cmd_hexread(uint8_t* dst, char* src);
-int cmd_hexnread(uint8_t* dst, char* src, size_t dst_max);
+int cmd_hexread(uint8_t* dst, const char* src);
+int cmd_hexnread(uint8_t* dst, const char* src, size_t dst_max);
+int cmd_hexwrite(char* dst, const uint8_t* src, size_t src_bytes);
+int cmd_hexnwrite(char* dst, const uint8_t* src, size_t src_bytes, size_t dst_max);
+
 
 int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const char* src, int* src_bytes);
 

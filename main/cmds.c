@@ -171,7 +171,7 @@ static const uint8_t hexlut1[128] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-int cmd_hexread(uint8_t* dst, char* src) {
+int cmd_hexread(uint8_t* dst, const char* src) {
     uint8_t* start;
     
     if ((dst == NULL) || (src == NULL)) {
@@ -188,7 +188,7 @@ int cmd_hexread(uint8_t* dst, char* src) {
     return (int)(dst - start);
 }
 
-int cmd_hexnread(uint8_t* dst, char* src, size_t dst_max) {
+int cmd_hexnread(uint8_t* dst, const char* src, size_t dst_max) {
     uint8_t* start = dst;
     
     if ((dst == NULL) || (src == NULL)) {
@@ -205,6 +205,35 @@ int cmd_hexnread(uint8_t* dst, char* src, size_t dst_max) {
     }
     return (int)(dst - start);
 }
+
+
+
+static inline char* sub_hexwrite(char* dst, const uint8_t input) {
+    static const char convert[] = "0123456789ABCDEF";
+    dst[0]  = convert[input >> 4];
+    dst[1]  = convert[input & 0x0f];
+    return dst;
+}
+
+
+int cmd_hexwrite(char* dst, const uint8_t* src, size_t src_bytes) {
+    while (src_bytes != 0) {
+        src_bytes--;
+        sub_hexwrite(dst, *src++);
+        dst += 2;
+    }
+}
+
+int cmd_hexnwrite(char* dst, const uint8_t* src, size_t src_bytes, size_t dst_max) {
+    char* end = &dst[dst_max-1];
+
+    while ((src_bytes != 0) && (dst < end)) {
+        src_bytes--;
+        sub_hexwrite(dst, *src++);
+        dst += 2;
+    }
+}
+
 
 
 

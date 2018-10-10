@@ -308,43 +308,33 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 // nested items.
                 ///@todo make this recursive
                 while (content != NULL) {
-                    cJSON* nest;
-                    int pos, len;
-                    readmethod_enum* rm;
+                    cJSON* nest_tmpl;
+                    cJSON* nest_output;
+                    typeinfo_enum type;
+                    int pos, bitpos, bits;
                     
-                    nest = cJSON_GetObjectItemCaseSensitive(content, "_meta");
-                    if (nest != NULL) {
-                        
-                    }
-                    else {
-                        pos = jst_extract_pos(content);
-                        len = jst_extract_typesize(rm, content);
-                        
-                        if (len > 0) {
-                            if (
-                            else if (rm == METHOD_hexstring) {
-                            
+                    pos         = jst_extract_pos(content);
+                    bits        = jst_extract_typesize(&type, content);
+                    nest_output = jst_store_element(output, content->string, &fdat[pos], type, 0, bits);
+                    nest_tmpl   = cJSON_GetObjectItemCaseSensitive(content, "_meta");
+                    
+                    // This is a nested data type (namely, a bitmask)
+                    // Could be recursive, currently hardcoded for bitmask
+                    if (nest_tmpl != NULL) {
+                        nest_tmpl = cJSON_GetObjectItemCaseSensitive(nest_tmpl, "_content");
+                        if (nest_tmpl != NULL) {
+                            nest_tmpl = nest_tmpl->child;
+                            while (nest_tmpl != NULL) {
+                                ///@todo leave-off point.  Write bit type to nest_output
+                                jst_store_element(nest_output, nest_tmpl->string, &fdat[pos], type, bitpos, bits);
                             }
-                            else
-                            
                         }
                     }
-                    
+
                     content = content->next;
                 }
                 
-                
-                
-                
-                cursor  = cJSON_AddObjectToObject((cJSON* const)output, (const char* const)obj->string);
-                
-                
-                
-                
-                
-                
-                
-                
+                ///@todo is something needed here?
             }
             
             /// Writeout JSON 

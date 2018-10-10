@@ -448,6 +448,132 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
 
 
 
+cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned int bitpos, int bits) {
+    cJSON* newitem;
+    double number;
+    
+    if ((parent==NULL) || (bits<=0) || (src==NULL)) {
+        return 0;
+    }
+    
+    switch (type) {
+        // Bitmask type is a container that holds non-byte contents
+        // It returns a negative number of its size in bytes
+        case TYPE_bitmask: {
+            newitem = cJSON_AddObjectToObject(parent, name);
+        } break;
+        
+        // Bit types require a mask and set operation
+        // They return 0
+        case TYPE_bit1: 
+        case TYPE_bit2:
+        case TYPE_bit3:
+        case TYPE_bit4:
+        case TYPE_bit5:
+        case TYPE_bit6:
+        case TYPE_bit7:
+        case TYPE_bit8: {
+            ot_uni32 scr;
+            unsigned long maskbits  = bits;
+            
+            scr.ulong   = 0;
+            memcpy(&scr.ubyte[0], src, 1+(bits/8));
+            
+            maskbits    = ((1<<maskbits) - 1) << bitpos;
+            scr.ulong  &= maskbits;
+            scr.ulong >>= bitpos;
+            number      = (double)scr.ulong;
+        } goto jst_store_element_STOREDOUBLE;
+    
+        // String and hex types have length determined by value test
+        case TYPE_string: {
+            int end             = bits/8;
+            char saved_char     = ((char*)src)[end];
+            ((char*)src)[end]   = 0;
+            newitem             = cJSON_AddStringToObject(parent, name, src);
+            ((char*)src)[end]   = saved_char;
+        } break;
+        
+        case TYPE_hex: {
+            int bytes   = bits/8;
+            int end     = bits/4;
+            char* buf   = malloc(end+1);
+            buf[end]    = 0;
+            cmd_hexwrite(buf, src, bytes);
+            newitem     = cJSON_AddStringToObject(parent, name, buf);
+            free(buf);
+        } break;
+    
+        // Fixed length data types
+        case TYPE_int8: {
+            number  = (double)*(int8_t*)src;    
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_uint8: {
+            number  = (double)*(uint8_t*)src;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_int16: {
+            int16_t store;
+            memcpy(&store, src, sizeof(int16_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_uint16: {
+            uint16_t store;
+            memcpy(&store, src, sizeof(uint16_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_int32: {
+            int32_t store;
+            memcpy(&store, src, sizeof(uint32_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_uint32: {
+            uint32_t store;
+            memcpy(&store, src, sizeof(uint32_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_int64: {
+            int64_t store;
+            memcpy(&store, src, sizeof(int64_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_uint64: {
+            uint64_t store;
+            memcpy(&store, src, sizeof(uint64_t));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_float: {
+            float store;
+            memcpy(&store, src, sizeof(float));
+            number  = (double)store;
+            goto jst_store_element_STOREDOUBLE;
+        }
+        case TYPE_double: {
+            memcpy(&number, src, sizeof(double));
+            
+            jst_store_element_STOREDOUBLE:
+            newitem = cJSON_AddNumberToObject(parent, name, number);
+        } break;
+    
+        default: 
+            newitem = NULL;
+            break;
+    }
+    
+    return newitem;
+}
+
+
+
+
+
 int jst_aggregate_json(cJSON** tmpl, const char* fname) {
     FILE*       fp;
     uint8_t*    fbuf;
@@ -529,6 +655,10 @@ int jst_aggregate_json(cJSON** tmpl, const char* fname) {
     jst_aggregate_json_END:
     return rc;
 }
+
+
+
+
 
 
 

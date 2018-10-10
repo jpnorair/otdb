@@ -99,6 +99,8 @@ int jst_extract_typesize(typeinfo_enum* type, cJSON* meta);
 
 int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char* type, cJSON* value);
 
+cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned int bitpos, int bits);
+
 int jst_aggregate_json(cJSON** tmpl, const char* fname);
 
 

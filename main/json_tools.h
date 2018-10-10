@@ -25,7 +25,7 @@ typedef enum {
 
 typedef enum {
     METHOD_binary   = 0,
-    METHOD_sting    = 1,
+    METHOD_string   = 1,
     METHOD_hexstring= 2,
     METHOD_MAX
 } readmethod_enum;
@@ -95,7 +95,7 @@ unsigned long jst_parse_arraysize(const char* bracketexp);
 
 int jst_typesize(typeinfo_t* spec, const char* type);
 
-int jst_extract_typesize(readmethod_enum* rm, cJSON* meta);
+int jst_extract_typesize(typeinfo_enum* type, cJSON* meta);
 
 int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char* type, cJSON* value);
 

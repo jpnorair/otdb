@@ -76,13 +76,36 @@ extern struct arg_end*     end_man;
 #endif
 
 
-static void sub_nextdevice(void* handle, int* devtest, int* devid_i, const char** strlist, size_t listsz) {
-    for (*devtest=1, *devid_i=0; (*devtest!=0) && (*devid_i<listsz); (*devid_i)++) {
-        uint8_t devid[8] = {0,0,0,0,0,0,0,0};
-        cmd_hexnread(devid, strlist[*devid_i], 8);
-        *devtest = otfs_setfs(handle, devid);
+static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char** strlist, size_t listsz) {
+    int devtest = 1;
+
+    for (; (devtest!=0) && (*devid_i<listsz); (*devid_i)++) {
+        memset(uid, 0, 8);
+        cmd_hexnread(uid, strlist[*devid_i], 8);
+        devtest = otfs_setfs(handle, uid);
     }
+    
+    return devtest;
 }
+
+static int sub_json_writeout(cJSON* json_obj, const char* filepath) {
+    FILE* fjson;
+    char* output;
+
+    fjson = fopen(filepath, "w");
+    if (fjson != NULL) {
+        output = cJSON_Print(json_obj);
+        fwrite(output, sizeof(char), strlen(output), fjson);
+        fclose(fjson);
+        free(output);
+        return 0;
+    }
+    
+    return -1;
+}
+
+
+
 
 
 int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
@@ -91,15 +114,17 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // POSIX Filesystem and JSON handles
     char pathbuf[256];
     char* rtpath;
-    char* output;
-    FILE* fjson             = NULL;
-    DIR* dir                = NULL;
-    cJSON* tmpl             = NULL;
-    cJSON* obj              = NULL;
+    //char* output;
+    DIR* dir        = NULL;
+    cJSON* tmpl     = NULL;
+    cJSON* obj      = NULL;
     
-    // ...
-    int devid_i = 0;
+    // Device OTFS
     int devtest;
+    int devid_i;
+    otfs_t* devfs;
+    otfs_id_union uid;
+    
 
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
@@ -142,36 +167,212 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         goto cmd_save_END;
     }
     
+    /// Add trailing path separator if not already present
+    if (rtpath[-1] != '/') {
+        rtpath = stpcpy(rtpath, "/");
+    }
+    
     /// Write the saved tmpl to the output folder (pathbuf/_TMPL/tmpl.json)
-    strcpy(rtpath, "/_TMPL");
+    strcpy(rtpath, "_TMPL");
     if (mkdir(pathbuf, 0700) != 0) {
         rc = -5;
         goto cmd_save_END;
     }
     
-    strcpy(rtpath, "/_TMPL/tmpl.json");
-    fjson = fopen(pathbuf, "w");
-    if (fjson == NULL) {
-        rc = -5;
+    strcpy(rtpath, "_TMPL/tmpl.json");
+    if (sub_json_writeout(dth->tmpl, pathbuf) != 0) {
+        rc = -6;
         goto cmd_save_END;
     }
     
-    output = cJSON_Print(dth->tmpl);
-    fwrite(output, sizeof(char), strlen(output), fjson);
-    fclose(fjson);
-    free(output);
     
     /// If there is a list of Device IDs supplied in the command, we use these.
     /// Else, we dump all the devices present in the OTDB.
     if (arglist.devid_strlist_size > 0) {
-        sub_nextdevice(dth->ext, &devtest, &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
+        devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
     else {
-        devtest = otfs_iterator_start(dth->ext);
+        devtest = otfs_iterator_start(dth->ext, &devfs, &uid.u8[0]);
     }
     
     while (devtest == 0) {
+        char* dev_rtpath;
+        
+        /// Create new directory for the device
+        dev_rtpath  = rtpath;
+        dev_rtpath += snprintf(rtpath, 17, "%16llX", uid.u64);
+        if (mkdir(pathbuf, 0700) != 0) {
+            rc = -4;
+            ///@todo close necessary memory
+            goto cmd_save_END;
+        }
+        
+        /// Export each file in the Device FS to a JSON file in the dev root.
+        /// Only file elements from the tmpl get exported.
+        tmpl    = dth->tmpl;
+        obj     = tmpl->child;
+        while (obj != NULL) {
+            cJSON*      meta;
+            cJSON*      content;
+            cJSON*      output;
+            cJSON*      cursor;
+            vlFILE*     fp;
+            uint8_t*    fdat;
+            uint8_t     file_id;
+            uint8_t     block_id;
+            uint16_t    output_sz;
+            content_type_enum c_type;
+
+            /// Template files must contain metadata to be considered
+            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+            if (meta == NULL) {
+                // Skip files without meta objects
+                goto cmd_save_LOOPEND;
+            }
+            
+            /// Grab Block & ID of the file about to be exported, and open it.
+            ///@todo make this a function (used in multiple places)
+            ///@todo implement way to use non-stock files
+            file_id     = jst_extract_id(meta);
+            block_id    = jst_extract_blockid(meta);
+            fp          = vl_open(block_id, file_id, VL_ACCESS_R, NULL);
+            if (fp == NULL) {
+                goto cmd_save_LOOPEND;
+            }
+            fdat = vl_memptr(fp);
+            if (fdat == NULL) {
+                goto cmd_save_LOOPCLOSE;
+            }
+            output_sz = jst_extract_size(meta);
+            if (fp->length < output_sz) {
+                output_sz = fp->length;
+            }
+            
+            /// Create JSON object top level depth, for output
+            output = cJSON_CreateObject();
+            if (output == NULL) {
+                goto cmd_save_LOOPCLOSE;
+            }
+            
+            /// Drill into contents
+            c_type = jst_extract_type(meta);
+            
+            /// Hex output option: just a hex string
+            if (c_type == CONTENT_hex) {
+                char* hexstr = malloc((2*output_sz) + 1);
+                if (hexstr == NULL) {
+                    goto cmd_save_LOOPFREE;
+                }
+                hexstr[fp->length] = 0;
+                cmd_hexwrite(hexstr, fdat, output_sz);
+                cursor = cJSON_AddStringToObject(output, obj->string, hexstr);
+                free(hexstr);
+                if (cursor == NULL) {
+                    goto cmd_save_LOOPFREE;
+                }
+            }
+            
+            /// Array output option: integer for each byte
+            else if (c_type == CONTENT_array) {
+                int* intarray = malloc(sizeof(int)*output_sz);
+                if (intarray == NULL) {
+                    goto cmd_save_LOOPFREE;
+                }
+                for (int i; i<output_sz; i++) {
+                    intarray[i] = fdat[i];
+                }
+                
+                cursor = cJSON_CreateIntArray(intarray, output_sz);
+                free(intarray);
+                if (cursor == NULL) {
+                    goto cmd_save_LOOPFREE;
+                }
+                cJSON_AddItemReferenceToObject(output, obj->string, cursor);
+            }
+            
+            /// Struct output option: structured data elements based on template
+            else { 
+                // In struct type, the "_content" field must be an object.
+                content = cJSON_GetObjectItemCaseSensitive(obj, "_content");
+                if (cJSON_IsObject(content) == false) {
+                    goto cmd_save_LOOPFREE;
+                }
+                
+                // If content is empty, don't export this file
+                content = content->child;
+                if (content == NULL) {
+                    goto cmd_save_LOOPFREE;
+                }
+                
+                // Loop through the template, export flat items, drill into
+                // nested items.
+                ///@todo make this recursive
+                while (content != NULL) {
+                    cJSON* nest;
+                    int pos, len;
+                    readmethod_enum* rm;
+                    
+                    nest = cJSON_GetObjectItemCaseSensitive(content, "_meta");
+                    if (nest != NULL) {
+                        
+                    }
+                    else {
+                        pos = jst_extract_pos(content);
+                        len = jst_extract_typesize(rm, content);
+                        
+                        if (len > 0) {
+                            if (
+                            else if (rm == METHOD_hexstring) {
+                            
+                            }
+                            else
+                            
+                        }
+                    }
+                    
+                    content = content->next;
+                }
+                
+                
+                
+                
+                cursor  = cJSON_AddObjectToObject((cJSON* const)output, (const char* const)obj->string);
+                
+                
+                
+                
+                
+                
+                
+                
+            }
+            
+            /// Writeout JSON 
+            snprintf(dev_rtpath, 31, "/%s.json", obj->string);
+            if (sub_json_writeout(output, pathbuf) != 0) {
+                goto cmd_save_LOOPCLOSE;
+            }
+
+            cmd_save_LOOPFREE:
+            cJSON_Delete(output);
+            
+            cmd_save_LOOPCLOSE:
+            vl_close(fp);
+            
+            cmd_save_LOOPEND:
+            obj = obj->next;
+        }
     
+    
+    
+        /// Fetch next device 
+        if (arglist.devid_strlist_size > 0) {
+            devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
+        }
+        else {
+            devtest = otfs_iterator_next(dth->ext, &devfs, &uid.u8[0]);
+        }
+    }
         /// Step 1: Read the FS table descriptor to determine which elements
         /// are stored in the FS.  The table descriptor looks like this
         /// B0:1    Allocation Bytes of Metadata
@@ -199,102 +400,8 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         /// Step 5: Compress the output directory if required
         ///
 
-        /// Determine elements in the FS, via the tmpl.  Only file elements from 
-        /// the tmpl get exported.
-        tmpl    = dth->tmpl;
-        obj     = tmpl->child;
-        while (obj != NULL) {
-            cJSON*      meta;
-            cJSON*      content;
-            cJSON*      output;
-            vl_header_t* hdr;
-            
-            vlFILE*     fp;
-            uint8_t*    fdat;
-            uint8_t     file_id;
-            uint8_t     block_id;
-            uint16_t    output_sz;
-            content_type_enum c_type;
-
-            meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
-            if (meta == NULL) {
-                // Skip files without meta objects
-                continue;
-            }
-            
-            // ID & Block
-            // Find the file header position based on Block and ID
-            ///@todo make this a function (used in multiple places)
-            ///@todo implement way to use non-stock files
-            file_id     = jst_extract_id(meta);
-            block_id    = jst_extract_blockid(meta);
-            fp          = vl_open(block_id, file_id, VL_ACCESS_R, NULL);
-            if (fp == NULL) {
-                continue;
-            }
-            fdat = vl_memptr(fp);
-            if (fdat == NULL) {
-                vl_close(fp);
-                continue;
-            }
-            
-            // Create husk of data file
-            
-            
-            // Drill into contents
-            c_type = jst_extract_type(meta);
-            if (c_type == CONTENT_hex) {
-                
-                
-                
-                output_sz = jst_extract_size(meta);
-                
-            }
-            else if (c_type == CONTENT_hex) {
-                
-            }
-            else {  // struct-type --> need to go through template structure.
-                content = cJSON_GetObjectItemCaseSensitive(obj, "_content");
-            }
-            
-            vl_close(fp);
-            
-            
-            
-            switch (jst_extract_blockid(meta)) {
-                case 1: if (idmod.ubyte[0] >= fshdr.gfb.used) {
-                            continue;   
-                        }
-                        hdr = &gfbhdr[idmod.ubyte[0]];
-                        break;
-                case 2: if (idmod.ubyte[0] >= fshdr.iss.used) {
-                            continue;   
-                        }
-                        hdr = &isshdr[idmod.ubyte[0]];
-                        break;
-                        
-               default: if (idmod.ubyte[0] >= fshdr.isf.used) {
-                            continue;   
-                        }
-                        hdr = &isfhdr[idmod.ubyte[0]];
-                        break;
-            }
-            
-            // TIME: epoch seconds
-            // MIRROR: always 0xFFFF for OTDB
-            // BASE: this is derived after all tmpl files are loaded
-            // IDMOD: from already extracted value
-            // ALLOC
-            // LENGTH: this is derived later, from file contents
-            hdr->modtime= jst_extract_time(meta);
-            hdr->mirror = 0xFFFF;
-            //hdr->base = ... ;
-            hdr->idmod  = idmod.ushort;
-            hdr->alloc  = jst_extract_size(meta);
-            //hdr->length  = ... ;
-
-            obj = obj->next;
-        }
+        
+        
     
     }
 

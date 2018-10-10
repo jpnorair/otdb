@@ -308,41 +308,26 @@ int jst_typesize(typeinfo_t* spec, const char* type) {
 
 
 
-int jst_extract_typesize(readmethod_enum* rm, cJSON* meta) {
+int jst_extract_typesize(typeinfo_enum* type, cJSON* meta) {
     cJSON* elem;
     typeinfo_t spec;
-    readmethod_enum method;
-    int size;
     
     // Defaults
-    size    = 0;
-    method  = METHOD_binary;
+    spec.bits   = 0;
+    spec.index  = TYPE_MAX;
     
     if (meta != NULL) {
         elem = cJSON_GetObjectItemCaseSensitive(meta, "type");
-        if (elem != NULL) {
-            if (cJSON_IsString(elem)) {
-                jst_typesize(&spec, elem->valuestring);
-                size = spec.bits;
-                
-                if (size == 0) {
-                    size = jst_extract_int(meta, "size");
-                    size = (size == 0) ? 32 : 8*size;
-                }
-                else if (size < 0) {
-                    method  = (readmethod_enum)((int)spec.index - (int)TYPE_string + 1);
-                    size    = (int)strlen(jst_extract_string(meta, "def"));
-                    size   /= (int)method;
-                }
-            }
+        if (cJSON_IsString(elem)) {
+            jst_typesize(&spec, elem->valuestring);
         }
     }
     
-    if (rm != NULL) {
-        *rm = method;
+    if (type != NULL) {
+        *type = spec.index;
     }
     
-    return size;
+    return spec.bits;
 }
 
 

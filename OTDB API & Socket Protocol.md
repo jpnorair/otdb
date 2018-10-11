@@ -330,6 +330,35 @@ int otdb_writedata(void* handle, uint64_t device_id, otdb_fblock_enum block,
 
 The socket protocol is text-based and it follows the basic idea of shell command line inputs.  Binary data elements are represented as HEX.  All of the API functions map 1:1 to socket protocol commands.
 
+### JSON Output Option
+
+All commands have the option of outputting JSON via the socket protocol.  This can be enabled by using the `-j` flag in the command string.
+
+#### Error-only Output
+
+Many commands do not return data.  In JSON output mode, a JSON error string will be reported for these commands.  If the error code is 0, this is an acknowledgement that the command was processed successfully.  The format is shown below, with some examples.  Error code is always an integer.
+
+```
+{"cmd":"$CMDNAME", "err":$ERRCODE}
+
+# This is a successful write command
+{"cmd":"w", "err":0}
+
+# Here is a read command with file not found error
+{"cmd":"r", "err":-257}
+
+# Here is a read-all command with an internal error
+# Internal Errors are small negative numbers, typically -1 to -10
+{"cmd":"r*", "err":-1}
+```
+
+#### Data Output
+
+Certain commands also return data.  The JSON model for these commands is described in each command description in the next several sections.  Handling errors on these commands follows the rules below:
+
+* If there is an error running one of these commands, they will return error messages like above.  
+* If there is no error, they will return a JSON string **without** the "err" object present.
+
 ### Database File Commands
 
 * **dev-new**: used by otdb_newdevice()
@@ -341,46 +370,56 @@ The socket protocol is text-based and it follows the basic idea of shell command
 #### dev-new
 
 ```
-dev-new ID infile
+dev-new [-j] ID infile
 ```
 
 ID: HEX input of device ID to add a new file for.
 
 infile: Input file.  This is either a directory or a compressed archive of the directory.
 
+JSON output: Error-only
+
 #### dev-del
 
 ```
-dev-del ID
+dev-del [-j] ID
 ```
 
 ID: HEX input of device ID to delete file.
 
+JSON output: Error-only
+
 #### dev-set
 
 ```
-dev-set ID
+dev-set [-j] ID
 ```
 
 ID: HEX input of device ID to set as persistent Device.
 
+JSON output: Error-only
+
 #### open
 
 ```
-open infile
+open [-j] infile
 ```
 
 infile: Input file.  This is either a directory or a compressed archive depending on the way it is saved (-c option or not).
 
+JSON output: Error-only
+
 #### save
 
 ```
-save [-c] outfile
+save [-jc] outfile
 ```
 
 -c: Optional argument to compress output.  Compression is 7z type.
 
 outfile: File name of the saved output. If compression is not used, the output will be a directory with this name, with an internal structure of subdirectories and JSON files.
+
+JSON output: Error-only
 
 ### Database Editing Commands
 
@@ -399,7 +438,7 @@ Databased Editing Functions are CRUD (Create, Read, Update, Delete) oriented.  T
 #### del (delete internal file)
 
 ```
-del [-i ID] [-b block] file_id
+del [-j] [-i ID] [-b block] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -408,10 +447,12 @@ block: file block.  If unused, defaults to `isf`.
 
 file\_id: integer of internal file ID.
 
+JSON output: Error-only
+
 #### new (create internal file)
 
 ```
-new [-i ID] [-b block] file_id perms alloc
+new [-j] [-i ID] [-b block] file_id perms alloc
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -424,10 +465,12 @@ perms: Octal permission string, with two permission digits.  E.g. 66.
 
 alloc: Integer. The maximum data contained by the file in bytes
 
+JSON output: Error-only
+
 #### z (restore internal file to defaults)
 
 ```
-z [-i ID] [-b block] file_id
+z [-j] [-i ID] [-b block] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -435,11 +478,13 @@ ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID fro
 block: file block.  If unused, defaults to `isf`.
 
 file\_id: integer of internal file ID.
+
+JSON output: Error-only
 
 #### rp (read permissions of internal file)
 
 ```
-rp [-i ID] [-b block] file_id
+rp [-j] [-i ID] [-b block] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -447,11 +492,15 @@ ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID fro
 block: file block.  If unused, defaults to `isf`.
 
 file\_id: integer of internal file ID.
+
+JSON output: Returns the file block, id, and permissions, as described in the example below.  The mod value is a decimal representation of the permissions bits.
+
+`{"cmd":"rp", "block":3, "id":17, "mod":48}`
 
 #### rh (read header of internal file)
 
 ```
-rh [-i ID] [-b block] file_id
+rh [-j] [-i ID] [-b block] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -459,11 +508,21 @@ ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID fro
 block: file block.  If unused, defaults to `isf`.
 
 file\_id: integer of internal file ID.
+
+JSON output: Returns the file block, id, permissions, allocation size, length, and modification timestamp, as described in the example below.  The mod value is a decimal representation of the permissions bits.  The time value is a decimal representation of the seconds since epoch (1.1.1970).
+
+```
+# Input
+rh -j -i DEADBEEF 17
+
+# Output
+{"cmd":"rh", "block":3, "id":17, "mod":48, "alloc":50, "length":50, "time":1539294038}
+```
 
 #### r (read data from internal file)
 
 ```
-r [-i ID] [-b block] [-r range] file_id
+r [-j] [-i ID] [-b block] [-r range] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -473,11 +532,21 @@ block: file block.  If unused, defaults to `isf`.
 range: optional argument. A byte range such as `0:16` (first 16 bytes), `:16` (first 16 bytes), `8:` (all bytes after 7th), etc.  Defaults to `0:`
 
 file\_id: integer of internal file ID.
+
+JSON output: Returns the file block, id, offset, bytes, and data fields to describe the file data output.  Data output is in hex.
+
+```
+# Input
+r -j -i 0F -r 0:4 17
+
+# Output
+{"cmd":"r*", "block":3, "id":17, "offset":0, "bytes":4, "data":"01020304"}
+```
 
 #### r\* (read header and data from internal file)
 
 ```
-r* [-i ID] [-b block] [-r range] file_id
+r* [-j] [-i ID] [-b block] [-r range] file_id
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -488,10 +557,20 @@ range: optional argument. A byte range such as `0:16` (first 16 bytes), `:16` (f
 
 file\_id: integer of internal file ID.
 
+JSON output: Returns the file block, id, permissions, allocation size, length, and modification timestamp, as described in the example below.  The mod value is a decimal representation of the permissions bits.  The time value is a decimal representation of the seconds since epoch (1.1.1970).  Additionally, includes offset, bytes, and data fields to describe the file data output.  Data output is in hex.
+
+```
+# Input
+r* -j -i 2 -r 0:4 17
+
+# Output
+{"cmd":"r*", "block":3, "id":17, "mod":48, "alloc":50, "length":50, "time":15, "offset":0, "bytes":4, "data":"01020304"}
+```
+
 #### wp (write permissions to internal file)
 
 ```
-wp [-i ID] [-b block] file_id perms
+wp [-j] [-i ID] [-b block] file_id perms
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
@@ -505,7 +584,7 @@ perms: Octal permission string, with two permission digits.  E.g. 66.
 #### w (write data to internal file)
 
 ```
-w [-i ID] [-b block] [-r range] file_id writedata
+w [-j] [-i ID] [-b block] [-r range] file_id writedata
 ```
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.

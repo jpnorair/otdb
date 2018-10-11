@@ -448,7 +448,7 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
 
 
 
-cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned int bitpos, int bits) {
+cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned long bitpos, int bits) {
     cJSON* newitem;
     double number;
     

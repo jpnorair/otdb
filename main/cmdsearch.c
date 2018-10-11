@@ -66,7 +66,7 @@ static const cmd_t otdb_commands[] = {
 ///      It's not technically required yet becaus only one thread in otdb uses
 ///      cmdsearch, but we should put it in soon, just in case.
 static cmdtab_t cmdtab_default;
-static cmdtab_t* otdb_cmdtab;
+cmdtab_t* otdb_cmdtab;
 
 
 typedef enum {

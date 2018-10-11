@@ -121,7 +121,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     // Device OTFS
     int devtest;
-    int devid_i;
+    int devid_i = 0;
     otfs_t* devfs;
     otfs_id_union uid;
     
@@ -159,6 +159,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -3;
         goto cmd_save_END;
     }
+    closedir(dir);
     
     /// Try to create a directory at the archive path.
     ///@todo error reporting for inability to create the directory.
@@ -278,7 +279,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 if (intarray == NULL) {
                     goto cmd_save_LOOPFREE;
                 }
-                for (int i; i<output_sz; i++) {
+                for (int i=0; i<output_sz; i++) {
                     intarray[i] = fdat[i];
                 }
                 
@@ -311,7 +312,8 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     cJSON* nest_tmpl;
                     cJSON* nest_output;
                     typeinfo_enum type;
-                    int pos, bitpos, bits;
+                    int pos, bits;
+                    unsigned long bitpos;
                     
                     pos         = jst_extract_pos(content);
                     bits        = jst_extract_typesize(&type, content);
@@ -325,16 +327,16 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         if (nest_tmpl != NULL) {
                             nest_tmpl = nest_tmpl->child;
                             while (nest_tmpl != NULL) {
-                                ///@todo leave-off point.  Write bit type to nest_output
+                                bitpos = jst_extract_bitpos(nest_tmpl);
                                 jst_store_element(nest_output, nest_tmpl->string, &fdat[pos], type, bitpos, bits);
+                                
+                                nest_tmpl = nest_tmpl->next;
                             }
                         }
                     }
 
                     content = content->next;
                 }
-                
-                ///@todo is something needed here?
             }
             
             /// Writeout JSON 
@@ -353,8 +355,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             obj = obj->next;
         }
     
-    
-    
         /// Fetch next device 
         if (arglist.devid_strlist_size > 0) {
             devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
@@ -363,45 +363,9 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             devtest = otfs_iterator_next(dth->ext, &devfs, &uid.u8[0]);
         }
     }
-        /// Step 1: Read the FS table descriptor to determine which elements
-        /// are stored in the FS.  The table descriptor looks like this
-        /// B0:1    Allocation Bytes of Metadata
-        /// ---> File Action Fields not used in OTDB
-        /// B2:3    GFB Bytes Allocated
-        /// B4:5    GFB Bytes Used
-        /// B6:7    GFB Stock Files
-        /// B8:9    ISS Bytes Allocated
-        /// B10:11  ISS Bytes Used
-        /// B12:13  ISS Stock Files
-        /// B14:15  ISF Bytes Allocated
-        /// B16:17  ISF Bytes Used
-        /// B18:19  ISF Stock Files
-        /// B20:23  Modification Time 0
-        /// B24:27  Modification Time 1
-        ///
-        ///
-        /// Step 3: For each file
-        /// - Get the contents as a binary byte array.
-        /// - Load the internal JSON template for this file and get the structure
-        /// - Write an output JSON file using the structure from the internal template
-        ///
-        /// Step 4: Repeat for all files in DB, or for list of Device IDs supplied
-        ///
-        /// Step 5: Compress the output directory if required
-        ///
 
-        
-        
-    
-    }
 
-    // 2. 
-
-    // 3. 
-
-    // 4. 
-
-    // 5. Compress the directory structure and delete it.
+    /// Compress the directory structure and delete it.
     if (arglist.compress_flag == true) {
         ///@todo integrate 7z-lib
     }

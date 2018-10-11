@@ -95,22 +95,7 @@ struct arg_end*     end_man;
 
 
 
-typedef struct {
-    unsigned int    fields;
-    const char*     archive_path;
-    uint8_t*        filedata;
-    int             filedata_size;
-    uint64_t        devid;
-    const char**    devid_strlist;
-    int             devid_strlist_size;
-    uint8_t         compress_flag;
-    uint8_t         block_id;
-    uint8_t         file_id;
-    uint8_t         file_perms;
-    uint16_t        file_alloc;
-    uint16_t        range_lo;
-    uint16_t        range_hi;
-} cmd_arglist_t;
+
 
 
 

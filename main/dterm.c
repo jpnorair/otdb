@@ -562,7 +562,7 @@ void* dterm_prompter(void* args) {
     /// triple-char keystrokes are for special keys like arrows and control
     /// sequences.
     ///@note dterm_read() will keep the thread asleep, blocking it until data arrives
-    while ((keychars = read(dth->dt->fd_in, dt->readbuf, READSIZE)) > 0) {
+    while ((keychars = read(dth->dt->fd_in, dth->dt->readbuf, READSIZE)) > 0) {
         
         // Default: IGNORE
         cmd = ct_ignore;

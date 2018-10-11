@@ -18,8 +18,8 @@
 #define cmdsearch_h
 
 // Local Dependencies
-#include "cmds.h"
-#include "dterm.h"
+#include "../main/cmds.h"
+#include "../main/dterm.h"
 
 // External Dependencies
 #include <cmdtab.h>

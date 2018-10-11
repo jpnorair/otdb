@@ -3,21 +3,42 @@ CC=gcc
 THISMACHINE := $(shell uname -srm | sed -e 's/ /-/g')
 THISSYSTEM	:= $(shell uname -s)
 
-TARGET      ?= otdb
-TARGETDIR   ?= bin
-PKGDIR      ?= ../_hbpkg/$(THISMACHINE)
-SYSDIR      ?= ../_hbsys
+
+APP         ?= otdb
+APPDIR      := bin/$(THISMACHINE)
+BUILDDIR    := build/$(THISMACHINE)
+PKGDIR      := ../_hbpkg/$(THISMACHINE)
+SYSDIR      := ../_hbsys/$(THISMACHINE)
 EXT_DEF     ?= 
 EXT_INC     ?= 
 EXT_LIBFLAGS ?= 
-EXT_LIBS ?= 
-VERSION     ?= "0.1.0"
+EXT_LIBS    ?= 
+VERSION     ?= 0.1.0
+
+
+# Make sure the LD_LIBRARY_PATH includes the _hbsys directory
+ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
+	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
+endif
+
+
+
+ifeq ($(THISSYSTEM),Darwin)
+# Mac can't do conditional selection of static and dynamic libs at link time.
+#	PRODUCTS := libjudy.$(THISSYSTEM).dylib libjudy.$(THISSYSTEM).a
+	PRODUCTS := otdb.$(THISSYSTEM).a
+	LIBBSD :=
+else ifeq ($(THISSYSTEM),Linux)
+	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
+	LIBBSD := -lbsd
+else
+	error "THISSYSTEM set to unknown value: $(THISSYSTEM)"
+endif
 
 DEFAULT_DEF := -D__HBUILDER__
 LIBMODULES  := argtable cJSON cmdtab bintex hbuilder-lib libotfs $(EXT_LIBS)
-SUBMODULES  := main test
-
-BUILDDIR    := build
+#SUBMODULES  := main client test
+SUBMODULES  := main client
 
 SRCEXT      := c
 DEPEXT      := d
@@ -25,58 +46,91 @@ OBJEXT      := o
 
 CFLAGS_DEBUG:= -std=gnu99 -O -g -Wall -pthread
 CFLAGS      := -std=gnu99 -O3 -pthread
-INC         := -I. -I./$(PKGDIR)/argtable -I./$(PKGDIR)/bintex -I./$(PKGDIR)/cJSON -I./$(PKGDIR)/cmdtab -I./$(PKGDIR)/hbuilder -I./$(PKGDIR)/libotfs -I./$(PKGDIR)/m2def
+INC         := -I. -I./include -I./$(SYSDIR)/include
 INCDEP      := -I.
-LIB         := -largtable -lbintex -lcJSON -lcmdtab -lhbuilder -lotfs -L./$(PKGDIR)/argtable -L./$(PKGDIR)/bintex -L./$(PKGDIR)/cJSON -L./$(PKGDIR)/cmdtab -L./$(PKGDIR)/hbuilder -L./$(PKGDIR)/libotfs
+LIBINC      := -L./$(SYSDIR)/lib
+LIB         := -largtable -lbintex -lcJSON -lcmdtab -lhbuilder -lotfs -loteax -ljudy -lm -lc $(LIBBSD)
+
+
+# Makesystem variables
+# Export the following variables to the shell: will affect submodules
 OTDB_PKG   := $(PKGDIR)
 OTDB_DEF   := $(DEFAULT_DEF) $(EXT_DEF)
 OTDB_INC   := $(INC) $(EXT_INC)
 OTDB_LIB   := $(LIB) $(EXT_LIBFLAGS)
-
-#OBJECTS     := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)")
-#MODULES     := $(SUBMODULES) $(LIBMODULES)
-
-# Export the following variables to the shell: will affect submodules
+OTDB_LIBINC:= $(LIBINC)
+OTDB_BLD   := $(BUILDDIR)
+OTDB_APP   := $(APPDIR)
 export OTDB_PKG
 export OTDB_DEF
 export OTDB_INC
 export OTDB_LIB
+export OTDB_LIBINC
+export OTDB_BLD
+export OTDB_APP
 
 
-all: directories $(TARGET)
-debug: directories $(TARGET).debug
-obj: $(SUBMODULES) $(LIBMODULES) 
+deps: $(LIBMODULES)
+all: directories $(APP) $(PRODUCTS)
+debug: directories $(APP).debug $(PRODUCTS)
+obj: $(SUBMODULES)
+pkg: deps all install
 remake: cleaner all
-pkg: all install
+
 
 install: 
-	@mkdir -p $(SYSDIR)/bin
-	@mkdir -p $(PKGDIR)/$(TARGET).$(VERSION)
-	@cp $(TARGETDIR)/$(TARGET) $(PKGDIR)/$(TARGET).$(VERSION)
-	@rm -f $(SYSDIR)/bin/$(TARGET)
-	@cp $(TARGETDIR)/$(TARGET) $(SYSDIR)/bin
-# TODO	@ln -s hbuilder.$(VERSION) ./$(PKGDIR)/otdb/bin/$(TARGET)
+	@rm -rf $(PKGDIR)/$(APP).$(VERSION)
+	@mkdir -p $(PKGDIR)/$(APP).$(VERSION)
+	@cp $(APPDIR)/* $(PKGDIR)/$(APP).$(VERSION)/
+	@rm -f $(PKGDIR)/$(APP)
+	@ln -s $(APP).$(VERSION) ./$(PKGDIR)/$(APP)
+	cd ../_hbsys && $(MAKE) sys_install INS_MACHINE=$(THISMACHINE) INS_PKGNAME=otdb
+
 
 directories:
-	@mkdir -p $(TARGETDIR)
+	@mkdir -p $(APPDIR)
 	@mkdir -p $(BUILDDIR)
 
-#Clean only Objects
+# Clean only this machine
 clean:
 	@$(RM) -rf $(BUILDDIR)
+	@$(RM) -rf $(APPDIR)
 
-#Full Clean, Objects and Binaries
-cleaner: clean
-	@$(RM) -rf $(TARGETDIR)
+# Clean all builds
+cleaner: 
+	@$(RM) -rf ./build
+	@$(RM) -rf ./bin
 
-#Linker
-$(TARGET): $(SUBMODULES) $(LIBMODULES)
+
+
+
+
+# Linker for Client library
+# Build the static library
+# Note: testing with libtool now, which may be superior to ar
+otdb.Darwin.a: $(OBJECTS)
+	libtool -o $(APPDIR)/otdb.a -static $(OBJECTS)
+
+otdb.Linux.a: $(OBJECTS)
+	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	ar rcs -o $(APPDIR)/otdb.a $(OBJECTS)
+
+# Build shared library
+otdb.Linux.so: $(OBJECTS)
+	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	$(CC) -shared -fPIC -Wl,-soname,otdb.so.1 -o $(APPDIR)/otdb.so.$(VERSION) $(LIBTOOL_OBJ) -lc
+
+
+# Linker for OTDB application
+$(APP): $(SUBMODULES) 
 	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	$(CC) $(CFLAGS) $(OTDB_DEF) -o $(TARGETDIR)/$(TARGET) $(OBJECTS) $(OTDB_LIB)
+	$(CC) $(CFLAGS) $(OTDB_DEF) $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP) $(OBJECTS) $(OTDB_LIB)
 
-$(TARGET).debug: $(SUBMODULES) $(LIBMODULES)
+$(APP).debug: $(SUBMODULES)
 	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	$(CC) $(CFLAGS_DEBUG) $(OTDB_DEF) -D__DEBUG__ -o $(TARGETDIR)/$(TARGET).debug $(OBJECTS) $(OTDB_LIB)
+	$(CC) $(CFLAGS_DEBUG) $(OTDB_DEF) -D__DEBUG__ $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS) $(OTDB_LIB)
+
+
 
 #Library dependencies (not in otdb sources)
 $(LIBMODULES): %: 
@@ -87,5 +141,5 @@ $(SUBMODULES): %: $(LIBMODULES) directories
 	cd ./$@ && $(MAKE) -f $@.mk obj
 
 #Non-File Targets
-.PHONY: all remake clean cleaner
+.PHONY: all deps debug pkg obj remake clean cleaner
 

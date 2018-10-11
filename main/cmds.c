@@ -48,6 +48,7 @@ int home_path_len               = 2;
 struct arg_str*     devid_man;
 struct arg_file*    archive_man;
 struct arg_lit*     compress_opt;
+struct arg_lit*     jsonout_opt;
 
 // used by file commands
 struct arg_str*     devid_opt;
@@ -64,18 +65,6 @@ struct arg_lit*     help_man;
 struct arg_end*     end_man;
 
 
-
-#define ARGFIELD_DEVICEID       (1<<0)
-#define ARGFIELD_DEVICEIDOPT    (1<<1)
-#define ARGFIELD_DEVICEIDLIST   (1<<2)
-#define ARGFIELD_ARCHIVE        (1<<3)
-#define ARGFIELD_COMPRESS       (1<<4)
-#define ARGFIELD_BLOCKID        (1<<5)
-#define ARGFIELD_FILEID         (1<<6)
-#define ARGFIELD_FILEPERMS      (1<<7)
-#define ARGFIELD_FILEALLOC      (1<<8)
-#define ARGFIELD_FILERANGE      (1<<9) 
-#define ARGFIELD_FILEDATA       (1<<10) 
 
 
 #define INPUT_SANITIZE() do { \
@@ -103,6 +92,7 @@ void cmd_init_args(void) {
     /// Initialize the argtable structs
     devid_man       = arg_str1(NULL,NULL,"DeviceID",    "Device ID as HEX");
     archive_man     = arg_file1(NULL,NULL,"file",       "Archive file or directory");
+    jsonout_opt     = arg_lit0("j","json",              "Use JSON as output");
     compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
     devidlist_opt   = arg_strn(NULL,NULL,"DeviceID List", 0, 256, "Batch of up to 256 Device IDs");
     devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
@@ -202,24 +192,78 @@ static inline char* sub_hexwrite(char* dst, const uint8_t input) {
 
 
 int cmd_hexwrite(char* dst, const uint8_t* src, size_t src_bytes) {
+    char* start = dst;
     while (src_bytes != 0) {
         src_bytes--;
         sub_hexwrite(dst, *src++);
         dst += 2;
     }
+    *dst = 0;
+    return (int)(dst - start);
 }
 
 int cmd_hexnwrite(char* dst, const uint8_t* src, size_t src_bytes, size_t dst_max) {
     char* end = &dst[dst_max-1];
-
+    char* start = dst;
     while ((src_bytes != 0) && (dst < end)) {
         src_bytes--;
         sub_hexwrite(dst, *src++);
         dst += 2;
     }
+    *dst = 0;
+    return (int)(dst - start);
 }
 
 
+
+
+int cmd_jsonout_err(char* dst, size_t dstmax, bool jsonflag, int errcode, const char* cmdname) {
+    if (jsonflag) {
+        errcode = snprintf(dst, dstmax-1, "{\"cmd\":\"%s\", \"err\":%d}", cmdname, errcode);
+    }
+    return errcode;
+}
+
+
+int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...) {
+    va_list args;
+
+    if (jsonflag) {
+        *dstmax -= 1;
+        if (errcode < 0) {
+            errcode = snprintf((char*)dst, *dstmax, "{\"cmd\":\"%s\", \"err\":%d}", "rp", errcode);
+            
+        }
+        else {
+            va_start(args, fmt);
+            errcode = vsnprintf((char*)dst, *dstmax, fmt, args);
+            va_end(args);
+        }
+        *dstmax -= errcode;
+    }
+    
+    return errcode;
+}
+
+
+int cmd_jsonout_data(char* dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, size_t srcbytes) {
+    if (jsonflag && (srcbytes > 0)) {
+        int psize;
+        *dstmax    -= 1;
+        psize       = snprintf(dst, *dstmax, "\"data\":\"");
+        *dstmax    -= psize;
+        dst        += psize;
+        errcode    += psize;
+        psize       = cmd_hexnwrite(dst, src, srcbytes, *dstmax);
+        *dstmax    -= psize;
+        dst        += psize;
+        errcode    += psize;
+        psize       = snprintf(dst, *dstmax, "\"}");
+        *dstmax    -= psize;
+        errcode    += psize;
+    }
+    return errcode;
+}
 
 
 
@@ -285,6 +329,11 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             out_val = -5;
             goto sub_extract_args_END;
         }
+    }
+    
+    /// JSON-out Flag
+    if (data->fields & ARGFIELD_JSONOUT) {
+        data->jsonout_flag = (jsonout_opt->count > 0);
     }
     
     /// Compression Flag

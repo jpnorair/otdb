@@ -101,7 +101,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     // Argument handling
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
     };
     void* args[] = {help_man, archive_man, end_man};
 
@@ -738,6 +738,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     if (dir != NULL)    closedir(dir);
     
     cmd_open_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "open");
 }
 

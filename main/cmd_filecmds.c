@@ -77,7 +77,7 @@ extern struct arg_end*     end_man;
 int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
     
@@ -105,7 +105,7 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     }
     
     cmd_del_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "del");
 }
 
 
@@ -113,7 +113,7 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, filealloc_man, end_man};
     
@@ -142,18 +142,20 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     }
     
     cmd_new_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "new");
 }
 
 
 
 int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
-    int span;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    uint8_t*    dat_ptr     = NULL;
+    int         span        = 0;
+    
 
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r", (const char*)src, inbytes);
@@ -161,7 +163,6 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         vaddr header;
-        void* ptr;
         vlFILE* fp;
         
         DEBUGPRINT("cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
@@ -189,16 +190,33 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         fp = vl_open_file(header);
         if (fp != NULL) {
-            ptr = vl_memptr(fp);
-            if (ptr != NULL) {
-                rc = span;
-                memcpy(dst, ptr, span);
+            if ((fp->length-arglist.range_lo) <= 0) {
+                span = 0;
+            }
+            else if ((fp->length-arglist.range_lo) < span) {
+                span = (fp->length-arglist.range_lo);
+            }
+            dat_ptr = vl_memptr(fp);
+            if (dat_ptr != NULL) {
+                rc       = span;
+                dat_ptr += arglist.range_lo;
             }
             vl_close(fp);
+        }
+        
+        if (arglist.jsonout_flag == false)  {
+            if (dat_ptr != NULL) {
+                memcpy(dst, dat_ptr, span);
+            }
         }
     }
     
     cmd_read_END:
+    rc = cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "r", 
+                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, ", "r", arglist.block_id, arglist.file_id);
+    
+    rc = cmd_jsonout_data((char*)dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, span);
+    
     return rc;
 }
 
@@ -206,11 +224,14 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
 int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
-    int span;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    vl_header_t nullhdr     = {0};
+    vl_header_t* hdr_ptr    = &nullhdr;
+    uint8_t*    dat_ptr     = NULL;
+    int         span        = 0;
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r*", (const char*)src, inbytes);
@@ -218,8 +239,8 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         vaddr header;
-        void* ptr;
         vlFILE* fp;
+        void* ptr;
             
         DEBUGPRINT("cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
@@ -248,24 +269,44 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         if (ptr == NULL) {
             rc = -512 - 255;
             goto cmd_readall_END;
-        }
-            
-        rc = sizeof(vl_header_t);
-        memcpy(dst, ptr, sizeof(vl_header_t));
+        } 
+        hdr_ptr = ptr;
+        rc      = sizeof(vl_header_t);
         
         fp = vl_open_file(header);
         if (fp != NULL) {
-            ptr = vl_memptr(fp);
-            if (ptr != NULL) {
-                dst += sizeof(vl_header_t);
-                rc  += span;
-                memcpy(dst, ptr, span);
+            if ((fp->length-arglist.range_lo) <= 0) {
+                span = 0;
+            }
+            else if ((fp->length-arglist.range_lo) < span) {
+                span = (fp->length-arglist.range_lo);
+            }
+        
+            dat_ptr = vl_memptr(fp);
+            if (dat_ptr != NULL) {
+                rc      += span;
+                dat_ptr += arglist.range_lo;
             }
             vl_close(fp);
+        }
+        
+        if (arglist.jsonout_flag == false)  {
+            memcpy(dst, hdr_ptr, sizeof(vl_header_t));
+            dst += sizeof(vl_header_t);
+            
+            if (dat_ptr != NULL) {
+                memcpy(dst, dat_ptr, span);
+            }
         }
     }
     
     cmd_readall_END:
+    rc = cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "r*", 
+                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u, ", 
+                "r*", arglist.block_id, arglist.file_id, hdr_ptr->idmod>>8, hdr_ptr->alloc, hdr_ptr->length, hdr_ptr->modtime);
+    
+    rc = cmd_jsonout_data((char*)dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, span);
+                
     return rc;
 }
 
@@ -276,7 +317,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
     
@@ -301,7 +342,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     
     cmd_restore_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "z");
 }
 
 
@@ -309,9 +350,11 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
+    vl_header_t null_header = {0};
+    vl_header_t* ptr        = &null_header;
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "rh", (const char*)src, inbytes);
@@ -319,8 +362,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         vaddr header;
-        void* ptr;
-        
+
         DEBUGPRINT("cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
         
@@ -343,7 +385,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
             goto cmd_readhdr_END;
         }
 
-        ptr = vworm_get(header);
+        ptr = (vl_header_t*)vworm_get(header);
         if (ptr == NULL) {
             rc = -512 - 255;
             goto cmd_readhdr_END;
@@ -354,7 +396,9 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     
     cmd_readhdr_END:
-    return rc;
+    return cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "rh", 
+                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
+                "rh", arglist.block_id, arglist.file_id, ptr->idmod>>8, ptr->alloc, ptr->length, ptr->modtime);
 }
 
 
@@ -362,7 +406,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     
@@ -397,7 +441,9 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     }
     
     cmd_readperms_END:
-    return rc;
+    return cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "rp", 
+                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
+                "rp", arglist.block_id, arglist.file_id, (int)*dst);
 }
 
 
@@ -405,7 +451,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
 int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
     
@@ -474,7 +520,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     }
     
     cmd_write_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "w");
 }
 
 
@@ -482,7 +528,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
 int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
     };
     void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
     
@@ -522,7 +568,7 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
     }
     
     cmd_writeperms_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "wp");
 }
 
 

@@ -23,19 +23,20 @@
 // POSIX & Standard C Libraries
 #include <stdint.h>
 #include <stdio.h>
-
+#include <stdarg.h>
 
 #define ARGFIELD_DEVICEID       (1<<0)
 #define ARGFIELD_DEVICEIDOPT    (1<<1)
 #define ARGFIELD_DEVICEIDLIST   (1<<2)
 #define ARGFIELD_ARCHIVE        (1<<3)
 #define ARGFIELD_COMPRESS       (1<<4)
-#define ARGFIELD_BLOCKID        (1<<5)
-#define ARGFIELD_FILEID         (1<<6)
-#define ARGFIELD_FILEPERMS      (1<<7)
-#define ARGFIELD_FILEALLOC      (1<<8)
-#define ARGFIELD_FILERANGE      (1<<9) 
-#define ARGFIELD_FILEDATA       (1<<10) 
+#define ARGFIELD_JSONOUT        (1<<5)
+#define ARGFIELD_BLOCKID        (1<<6)
+#define ARGFIELD_FILEID         (1<<7)
+#define ARGFIELD_FILEPERMS      (1<<8)
+#define ARGFIELD_FILEALLOC      (1<<9)
+#define ARGFIELD_FILERANGE      (1<<10) 
+#define ARGFIELD_FILEDATA       (1<<11) 
 
 typedef struct {
     unsigned int    fields;
@@ -45,6 +46,7 @@ typedef struct {
     uint64_t        devid;
     const char**    devid_strlist;
     int             devid_strlist_size;
+    uint8_t         jsonout_flag;
     uint8_t         compress_flag;
     uint8_t         block_id;
     uint8_t         file_id;
@@ -75,6 +77,12 @@ int cmd_hexnwrite(char* dst, const uint8_t* src, size_t src_bytes, size_t dst_ma
 int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const char* src, int* src_bytes);
 
 
+
+int cmd_jsonout_err(char* dst, size_t dstmax, bool jsonflag, int errcode, const char* cmdname);
+
+int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...);
+
+int cmd_jsonout_data(char* dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, size_t srcbytes);
 
 
 
@@ -124,7 +132,7 @@ int cmd_quit(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * dev-new [-i ID] infile
+  * dev-new [-j] [-i ID] infile
   *
   * infile:     Input file.  This is either a directory or a compressed archive
   *             of the directory.
@@ -141,7 +149,7 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * dev-del ID
+  * dev-del [-j] ID
   *
   * ID:         Bintex formatted Device ID.  This device FS will be deleted.
   */
@@ -162,7 +170,7 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
   * at all -- all commands can take an optional Device ID input.
   *
   * Protocol usage: text input
-  * dev-set ID
+  * dev-set [-j] ID
   * 
   * ID is a bintex expression.
   */
@@ -178,7 +186,7 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * open infile
+  * open [-j] infile
   *
   * infile:     Input file.  This is either a directory or a compressed archive
   *             depending on the way it is saved (-c option or not).
@@ -195,7 +203,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * save [-c] outfile [IDlist]
+  * save [-jc] outfile [IDlist]
   *
   * -c:         Optional argument to compress output.  Compression is 7z type.
   *
@@ -226,7 +234,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * del [-i ID] [-b block] file_id
+  * del [-j] [-i ID] [-b block] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -243,7 +251,7 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * new [-i ID] [-b block] file_id perms alloc
+  * new [-j] [-i ID] [-b block] file_id perms alloc
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -263,7 +271,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * r [-i ID] [-b block] [-r range] file_id
+  * r [-j] [-i ID] [-b block] [-r range] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -283,7 +291,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * r* [-i ID] [-b block] [-r range] file_id 
+  * r* [-j] [-i ID] [-b block] [-r range] file_id 
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -307,7 +315,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * z [-i ID] [-b block] file_id
+  * z [-j] [-i ID] [-b block] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -324,7 +332,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * rh [-i ID] [-b block] file_id
+  * rh [-j] [-i ID] [-b block] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -341,7 +349,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * rp [-i ID] [-b block] file_id
+  * rp [-j] [-i ID] [-b block] file_id
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -358,7 +366,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * w [-i ID] [-b block] [-r range] file_id writedata
+  * w [-j] [-i ID] [-b block] [-r range] file_id writedata
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0
@@ -383,7 +391,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
   * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
   *
   * Protocol usage: text input
-  * wp [-i ID] [-b block] file_id perms
+  * wp [-j] [-i ID] [-b block] file_id perms
   *
   * if -i is missing, it defaults to the active device
   * if -b is missing, it defaults to isf0

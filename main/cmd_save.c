@@ -127,7 +127,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
 
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
     };
     void* args[] = {help_man, compress_opt, archive_man, devidlist_opt, end_man};
     
@@ -371,7 +371,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     
     cmd_save_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "save");
 }
 
 

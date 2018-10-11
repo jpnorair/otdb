@@ -39,23 +39,24 @@
 
 
 // used by DB manipulation commands
-extern struct arg_str*     devid_man;
-extern struct arg_file*    archive_man;
-extern struct arg_lit*     compress_opt;
+extern struct arg_str*  devid_man;
+extern struct arg_file* archive_man;
+extern struct arg_lit*  compress_opt;
+extern struct arg_lit*  jsonout_opt;
 
 // used by file commands
-extern struct arg_str*     devid_opt;
-extern struct arg_str*     devidlist_opt;
-extern struct arg_str*     fileblock_opt;
-extern struct arg_str*     filerange_opt;
-extern struct arg_int*     fileid_man;
-extern struct arg_str*     fileperms_man;
-extern struct arg_int*     filealloc_man;
-extern struct arg_str*     filedata_man;
+extern struct arg_str*  devid_opt;
+extern struct arg_str*  devidlist_opt;
+extern struct arg_str*  fileblock_opt;
+extern struct arg_str*  filerange_opt;
+extern struct arg_int*  fileid_man;
+extern struct arg_str*  fileperms_man;
+extern struct arg_int*  filealloc_man;
+extern struct arg_str*  filedata_man;
 
 // used by all commands
-extern struct arg_lit*     help_man;
-extern struct arg_end*     end_man;
+extern struct arg_lit*  help_man;
+extern struct arg_end*  end_man;
 
 
 
@@ -86,9 +87,9 @@ extern struct arg_end*     end_man;
 int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEIDOPT |ARGFIELD_ARCHIVE,
+        .fields = ARGFIELD_DEVICEIDOPT | ARGFIELD_JSONOUT | ARGFIELD_ARCHIVE,
     };
-    void* args[] = {help_man, devid_opt, archive_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, archive_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "dev-new", (const char*)src, inbytes);
@@ -96,6 +97,14 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         DEBUGPRINT("cmd_devnew():\n  archive=%s\n", arglist.archive_path);
+        
+        if (arglist.devid != 0) {
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_devnew_END;
+            }
+        }
         
         ///@todo implementation
         ///
@@ -110,7 +119,8 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         //int otfs_new(void* handle, const otfs_t* fs);
     }
 
-    return rc;
+    cmd_devnew_END:
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "dev-new");
 }
 
 
@@ -118,9 +128,9 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
 int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID,
+        .fields =  ARGFIELD_JSONOUT | ARGFIELD_DEVICEID,
     };
-    void* args[] = {help_man, devid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "dev-del", (const char*)src, inbytes);
@@ -137,11 +147,11 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
             }
         }
         
-        
+        ///@todo delete the file!
     }
 
     cmd_devdel_END:
-    return rc;
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "dev-del");
 }
 
 
@@ -149,9 +159,9 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
 int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEID,
+        .fields =  ARGFIELD_JSONOUT | ARGFIELD_DEVICEID,
     };
-    void* args[] = {help_man, devid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "dev-set", (const char*)src, inbytes);
@@ -168,7 +178,8 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         }
     }
 
-    return rc;
+    cmd_devset_END:
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "dev-set");
 }
 
 

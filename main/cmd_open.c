@@ -104,20 +104,20 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_ARCHIVE,
     };
     void* args[] = {help_man, archive_man, end_man};
-
-    /// dt == NULL is the initialization case.
-    /// There may not be an initialization for all command groups.
-    if (dth == NULL) {
-        return 0;
-    }
-    INPUT_SANITIZE();
     
+    ///@todo do input checks!!!!!!
+  
+    /// Make sure OTDB is available
+    if (dth->ext == NULL) {
+        return -1;
+    }
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "open", (const char*)src, inbytes);
     if (rc != 0) {
         goto cmd_open_END;
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// On successful extraction, create a new device in the database
     DEBUGPRINT("cmd_open():\n  archive=%s\n", arglist.archive_path);
     
@@ -173,7 +173,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -1;
         goto cmd_open_CLOSE;
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 2. Load all the JSON data (might span multiple files) into tmpl
     while (1) {
         ent = readdir(dir);
@@ -190,7 +190,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     closedir(dir);
     dir = NULL;
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 3. Big Process of creating the default OTFS data structure based on JSON
     // input files
     tmpl_fs.alloc   = 0;
@@ -203,7 +203,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -2;
         goto cmd_open_CLOSE;
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 3a. Check template metadata.  Make sure it is valid.  Optional 
     // elements get filled with defaults if not present.
     obj = tmpl->child;
@@ -212,7 +212,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         cJSON* elem;
         int filesize = 0;
         int is_stock;
-
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
         meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
         if (meta != NULL) {
             // ID: mandatory
@@ -289,7 +289,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         obj = obj->next;
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 3b. Template is valid.  This is the point-of-no return.  Clear any old
     // template that may extist on the terminal and assign the new one.
     if (dth->tmpl != NULL) {
@@ -297,7 +297,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     tmpl_valid  = true;
     dth->tmpl   = tmpl;
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 3b. Add overhead section to the allocation, Malloc the fs data
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
@@ -308,7 +308,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         goto cmd_open_CLOSE;
     }
     memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     gfbhdr  = (fshdr.gfb.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER) : NULL;
     isshdr  = (fshdr.iss.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+(fshdr.gfb.files*sizeof(vl_header_t)) : NULL;
     isfhdr  = (fshdr.isf.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+((fshdr.gfb.files+fshdr.iss.files)*sizeof(vl_header_t)) : NULL;
@@ -320,7 +320,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         cJSON*  meta;
         vl_header_t* hdr;
         ot_uni16    idmod;
-
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
         meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
         if (meta == NULL) {
             // Skip files without meta objects
@@ -368,7 +368,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
         obj = obj->next;
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 4b. Derive Base values from file allocations and write them to table
     if (fshdr.gfb.used > 0) {
         gfbhdr[0].base = fshdr.ftab_alloc;
@@ -388,7 +388,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             isfhdr[i].base = isfhdr[i-1].base + isfhdr[i-1].alloc;
         }
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     // 4c. Derive Length values from template and write default values to
     // the filesystem.
     obj = tmpl->child;
@@ -400,7 +400,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         content_type_enum ctype;
         uint8_t* filedata;
         ot_uni16    idmod;
-
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
         meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
         if (meta == NULL) {
             // Skip files without meta objects
@@ -434,7 +434,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     break;
         }
         
-        
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);        
         // Implicit params stock & type
         is_stock    = jst_extract_stock(meta);
         ctype       = jst_extract_type(meta);
@@ -450,7 +450,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     cJSON* submeta;
                     int offset;
                     int e_sz;
-                    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);                    
                     // Nested data element has _meta field
                     ///@todo recursive treatment of nested elements
                     submeta = cJSON_GetObjectItemCaseSensitive(content, "_meta");
@@ -525,7 +525,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     while (1) {
         char* endptr;
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
         ent = readdir(dir);
         if (ent == NULL) {
             break;
@@ -612,7 +612,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 content_type_enum ctype;
                 uint16_t max;
                 bool stock;
-                
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);                
                 fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, data->string);
                 if (fileobj == NULL) {
                     continue;
@@ -671,7 +671,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         cJSON*  t_elem;
                         int     bytepos;
                         int     bytesout;
-
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
                         // Make sure object is in both data and tmpl.
                         // If object yields another object, we need to drill 
                         // into the hierarchy
@@ -726,7 +726,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     dth->tmpl = tmpl;
     
     ///@todo open a file for writing.
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     
     
     cmd_open_CLOSE:
@@ -738,6 +738,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     if (dir != NULL)    closedir(dir);
     
     cmd_open_END:
-    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "open");
+    fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__); 
+    return cmd_jsonout_err((char*)dst, dstmax, (bool)arglist.jsonout_flag, rc, "open");
 }
 

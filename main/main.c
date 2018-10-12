@@ -244,13 +244,6 @@ int main(int argc, char* argv[]) {
         goto main_FINISH;
     }
 
-    /// special case: with no command line options induces brief help 
-    if (argc==1) {
-        printf("Try '%s --help' for more information.\n",progname);
-        exitcode = 0;
-        goto main_FINISH;
-    }
-
     /// Do some final checking of input values
     ///
     /// Get JSON config input.  Priority is direct input vs. file input
@@ -299,7 +292,7 @@ int main(int argc, char* argv[]) {
             intf_val = tmp_intf;
         }
     }
-    
+
     /// If no JSON file, then configuration should be through the arguments.
     /// If both exist, then the arguments will override JSON.
     if (intf->count != 0) {
@@ -358,14 +351,14 @@ int main(int argc, char* argv[]) {
     if (bailout == false) {
         exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)xpath_val, json);
     }
-    
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     if (json != NULL) {
         cJSON_Delete(json);
     }
     if (buffer != NULL) {
         free(buffer);
     }
-
+fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
     return exitcode;
 }
 
@@ -395,13 +388,13 @@ int otdb_main(  INTF_Type intf_val,
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
     cmd_init(NULL, xpath);
-    
+   
     /// Initialize OTFS
     if (otfs_init(&otfs_handle) < 0) {
         cli.exitcode = -1;
         goto otdb_main_TERM3;
     }
-    
+   
     /// Initialize DTerm data objects
     if (dterm_init(&dterm_handle, intf_val, &otfs_handle) != 0) {
         cli.exitcode = -2;
@@ -415,7 +408,7 @@ int otdb_main(  INTF_Type intf_val,
         cli.exitcode = -2;
         goto otdb_main_TERM1;
     }
-    
+  
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
     /// typical in POSIX apps.  When activated, the threads are halted and
@@ -431,7 +424,7 @@ int otdb_main(  INTF_Type intf_val,
     /// i.e. raise(SIGINT).
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished creating theads\n");
-    
+   
     /// Threads are now running.  The rest of the main() code, below, is
     /// blocked by pthread_cond_wait() until the kill_cond is sent by one of 
     /// the child threads.  This will cause the program to quit.
@@ -440,10 +433,10 @@ int otdb_main(  INTF_Type intf_val,
     
     DEBUG_PRINTF("Cancelling Theads\n");
     pthread_cancel(thr_dterm);
-    
+   
     otdb_main_TERM1:
     dterm_deinit(&dterm_handle);
-    
+ 
     otdb_main_TERM2:
     DEBUG_PRINTF("Freeing OTFS\n");
     otfs_deinit(otfs_handle);
@@ -456,7 +449,7 @@ int otdb_main(  INTF_Type intf_val,
     DEBUG_PRINTF("-- pthread_mutex_destroy(&cli.kill_mutex)\n");
     pthread_cond_destroy(&cli.kill_cond);
     DEBUG_PRINTF("-- cli.kill_mutex & cli.kill_cond destroyed\n");
-    
+ 
     // cli.exitcode is set to 0, unless sigint is raised.
     DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
     fflush(stdout);

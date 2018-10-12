@@ -131,6 +131,8 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     };
     void* args[] = {help_man, compress_opt, archive_man, devidlist_opt, end_man};
     
+    ///@todo do input checks!!!!!!
+    
     /// Make sure there is something to save.
     if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
         return -1;

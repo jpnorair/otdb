@@ -85,7 +85,7 @@ typedef enum {
 
 
 int cmd_init(cmdtab_t* init_table, const char* xpath) {
-    
+  
     otdb_cmdtab = (init_table == NULL) ? &cmdtab_default : init_table;
 
     /// cmdtab_add prioritizes subsequent command adds, so the highest priority
@@ -130,21 +130,20 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
     /// Add Otter commands to the cmdtab.
     for (int i=0; i<(sizeof(otdb_commands)/sizeof(cmd_t)); i++) {
         int rc;
-
+ 
         rc = cmdtab_add(otdb_cmdtab, otdb_commands[i].name, (void*)otdb_commands[i].action, (void*)EXTCMD_null);
         if (rc != 0) {
             fprintf(stderr, "ERROR: cmdtab_add() from %s line %d returned %d.\n", __FUNCTION__, __LINE__, rc);
             return -1;
         }
         
-        /// Run command with dt=NULL to initialize the command
-        ///@note This is specific to otdb, it's not a requirement of cmdtab
-        otdb_commands[i].action(NULL, NULL, NULL, NULL, 0);
+        ///@note No commands currently require initialization
+        //otdb_commands[i].action(NULL, NULL, NULL, NULL, 0);
     }
-    
+  
     /// Initialize the arguments used by commands
     cmd_init_args();
-    
+
     return 0;
 }
 

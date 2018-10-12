@@ -137,7 +137,7 @@ $(LIBMODULES): %:
 	cd ./../$@ && $(MAKE) lib && $(MAKE) install
 
 #otdb submodules
-$(SUBMODULES): %: $(LIBMODULES) directories
+$(SUBMODULES): %: directories
 	cd ./$@ && $(MAKE) -f $@.mk obj
 
 #Non-File Targets

@@ -124,6 +124,12 @@ uint8_t* goto_eol(uint8_t* src) {
 
 
 
+void cmd_printhex() {
+
+}
+
+
+
 static const uint8_t hexlut0[128] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
@@ -273,37 +279,31 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     char**  argv;
     int     nerrors;
     
-    fprintf(stderr, "%s %d :: src_bytes=%d\n", __FUNCTION__, __LINE__, *src_bytes); 
-    
     /// First, create an argument vector from the input string.
     /// hb_tools_parsestring will treat all bintex containers as whitespace-safe.
     argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
-for (int i=0; i<argc; i++) fprintf(stderr, "--> argv=%s\n", argv[i]);   
-    if (argc <= 1) {
-        out_val = -2;
-        goto sub_extract_args_END;
-    }
+
     nerrors = arg_parse(argc, argv, args);
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+  
     /// Print command specific help
     /// @todo this is currently just generic help
     if (help_man->count > 0) {
-        fprintf(stderr, "Usage: %s [cmd]", cmdname);
+        fprintf(stderr, "Usage: %s", cmdname);
         arg_print_syntax(stderr, args, "\n");
         arg_print_glossary(stderr, args, "  %-25s %s\n");
-        out_val = 0;
+        out_val = -1;
         goto sub_extract_args_END;
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+ 
     /// Print errors, if errors exist
     if (nerrors > 0) {
         char printbuf[32];
-        snprintf(printbuf, sizeof(printbuf), "%s [cmd]", cmdname);
+        snprintf(printbuf, sizeof(printbuf), "%s", cmdname);
         arg_print_errors(stderr, end_man, printbuf);
         out_val = -3;
         goto sub_extract_args_END;
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Device ID convert to uint64
     if (data->fields & ARGFIELD_DEVICEID) {
         if (devid_man->count > 0) {
@@ -322,7 +322,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             data->devid = 0;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Archive Path
     if (data->fields & ARGFIELD_ARCHIVE) {
         if (archive_man->count > 0) {
@@ -333,23 +333,23 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             goto sub_extract_args_END;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// JSON-out Flag
     if (data->fields & ARGFIELD_JSONOUT) {
         data->jsonout_flag = (jsonout_opt->count > 0);
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Compression Flag
     if (data->fields & ARGFIELD_COMPRESS) {
         data->compress_flag = (compress_opt->count > 0);
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// List of Device IDs
     if (data->fields & ARGFIELD_DEVICEIDLIST) {
         data->devid_strlist_size    = devidlist_opt->count;
         data->devid_strlist         = devidlist_opt->sval;
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Check for block flag (-b, --block), which specifies fs block
     /// Default is isf.
     if (data->fields & ARGFIELD_BLOCKID) {
@@ -371,7 +371,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             }
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// Range is optional.  Default is maximum file range (0:)
     if (data->fields & ARGFIELD_FILERANGE) {
         data->range_lo  = 0;
@@ -389,7 +389,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             }
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEID) {
         if (fileid_man->count > 0) {
@@ -401,11 +401,11 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             goto sub_extract_args_END;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEPERMS) {
         if (fileperms_man->count > 0) {
-            DEBUGPRINT("Permissions arg encountered: %d\n", fileperms_man->sval[0]);
+            DEBUGPRINT("Permissions arg encountered: %s\n", fileperms_man->sval[0]);
             data->file_perms = (uint8_t)(63 & strtoul(fileperms_man->sval[0], NULL, 8));
         }
         else {
@@ -413,7 +413,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             goto sub_extract_args_END;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEALLOC) {
         if (filealloc_man->count > 0) {
@@ -425,7 +425,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             goto sub_extract_args_END;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// Filedata field is converted from bintex and stored to data->filedata
     if (data->fields & ARGFIELD_FILEDATA) {
         if ((filedata_man->count > 0) && (data->filedata != NULL)) {
@@ -439,7 +439,7 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
             goto sub_extract_args_END;
         }
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__); 
+//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__); 
     /// Done!  Return 0 for success.
     out_val = 0;
 

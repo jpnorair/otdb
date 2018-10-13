@@ -33,30 +33,30 @@
             "opmod": {
                 "_meta": {"pos":112, "type":"bitmask", "size":4},
                 "_content": {
-                    "pas":{"pos":0.0, "type":"bool", "def":0},
-                    "consw":{"pos":0.1, "type":"bool", "def":0},
-                    "consv":{"pos":0.2, "type":"bool", "def":0},
-                    "consvar":{"pos":0.3, "type":"bool", "def":0},
-                    "conspf":{"pos":0.4, "type":"bool", "def":0},
-                    "exim":{"pos":0.5, "type":"bool", "def":0},
-                    "maxvar":{"pos":0.6, "type":"bool", "def":0},
-                    "vov":{"pos":0.7, "type":"bool", "def":0},
-                    "pk":{"pos":0.8, "type":"bool", "def":0},
-                    "isld":{"pos":0.9, "type":"bool", "def":0},
-                    "prc":{"pos":0.10, "type":"bool", "def":0},
-                    "vrt":{"pos":0.11, "type":"bool", "def":0},
-                    "frt":{"pos":0.12, "type":"bool", "def":0},
-                    "vvar":{"pos":0.13, "type":"bool", "def":0}
+                    "pas":{"pos":0.00, "type":"bit1_t", "def":0},
+                    "consw":{"pos":0.01, "type":"bit1_t", "def":0},
+                    "consv":{"pos":0.02, "type":"bit1_t", "def":0},
+                    "consvar":{"pos":0.03, "type":"bit1_t", "def":0},
+                    "conspf":{"pos":0.04, "type":"bit1_t", "def":0},
+                    "exim":{"pos":0.05, "type":"bit1_t", "def":0},
+                    "maxvar":{"pos":0.06, "type":"bit1_t", "def":0},
+                    "vov":{"pos":0.07, "type":"bit1_t", "def":0},
+                    "pk":{"pos":0.08, "type":"bit1_t", "def":0},
+                    "isld":{"pos":0.09, "type":"bit1_t", "def":0},
+                    "prc":{"pos":0.10, "type":"bit1_t", "def":0},
+                    "vrt":{"pos":0.11, "type":"bit1_t", "def":0},
+                    "frt":{"pos":0.12, "type":"bit1_t", "def":0},
+                    "vvar":{"pos":0.13, "type":"bit1_t", "def":0}
                 }
             },
             "opcondt": {
                 "_meta": {"pos":116, "type":"bitmask", "size":4},
                 "_content": {
-                    "pfsign":{"pos":0.0, "type":"bit2_t", "def":0},
-                    "pfext":{"pos":0.2, "type":"bit1_t", "def":0},
-                    "varact":{"pos":0.3, "type":"bit2_t", "def":0},
-                    "clctova":{"pos":0.5, "type":"bit2_t", "def":0},
-                    "varprior":{"pos":0.7, "type":"bit1_t", "def":0}
+                    "pfsign":{"pos":0.00, "type":"bit2_t", "def":0},
+                    "pfext":{"pos":0.02, "type":"bit1_t", "def":0},
+                    "varact":{"pos":0.03, "type":"bit2_t", "def":0},
+                    "clctova":{"pos":0.05, "type":"bit2_t", "def":0},
+                    "varprior":{"pos":0.07, "type":"bit1_t", "def":0}
                 }
             },
             "ramptms":{"pos":120, "type":"float", "def":0},

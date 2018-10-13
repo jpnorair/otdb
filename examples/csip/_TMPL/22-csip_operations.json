@@ -5,7 +5,7 @@
             "wintms":{"pos":0, "type":"uint32_t", "def":0},
             "rvrttms":{"pos":4, "type":"uint32_t", "def":0},
             "rmptms":{"pos":8, "type":"uint32_t", "def":0},
-            "opmodprc":{"pos":12, "type":"uint16_t", "def":0}
+            "opmodprc":{"pos":12, "type":"uint16_t", "def":0},
             "opmodst":{"pos":14, "type":"uint16_t", "def":0}
         }
     }

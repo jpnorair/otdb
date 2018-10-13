@@ -31,6 +31,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <errno.h>
 
 
 typedef struct {
@@ -122,17 +123,16 @@ static int sub_docmd(void* handle, const char* cmd, size_t cmdsize) {
         
 #       if OTDB_FEATURE_DEBUG
         if (bytes_out > 0) {
-            fprintf(stdout, "Client sent %d bytes:\n%*s\n\n", bytes_out, bytes_out, sockbuf);
+            fprintf(stdout, "Client sent %zd bytes:\n%*s\n\n", bytes_out, (int)bytes_out, otdb->rxbuf);
         }
         else {
             fprintf(stderr, "Client socket send error %d\n", errno);
         }
         if (bytes_in > 0) {
-            fprintf(stdout, "OTDB received %d bytes:\n%*s\n\n", bytes_in, bytes_in, sockbuf);
+            fprintf(stdout, "OTDB received %zd bytes:\n%*s\n\n", bytes_in, (int)bytes_in, otdb->rxbuf);
         }
         else if (bytes_in == 0) {
             fprintf(stderr, "OTDB socket is closed, can't receive.\n");
-            break;
         }
         else {
             fprintf(stderr, "OTDB socket receive error %d\n", errno);

@@ -33,7 +33,11 @@
 #   define OTDB_FEATURE_CLIENT      DISABLED
 #endif
 #ifndef OTDB_FEATURE_DEBUG
-#   define OTDB_FEATURE_DEBUG       DISABLED
+#   if defined(__DEBUG__) || defined(DEBUG) || defined (_DEBUG)
+#       define OTDB_FEATURE_DEBUG   ENABLED
+#   else
+#       define OTDB_FEATURE_DEBUG   DISABLED
+#   endif
 #endif
 
 /// Parameter configurations

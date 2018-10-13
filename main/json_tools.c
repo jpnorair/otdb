@@ -111,7 +111,7 @@ uint16_t jst_extract_size(cJSON* meta) {
 }
 
 
-uint16_t jst_extract_time(cJSON* meta) {
+uint32_t jst_extract_time(cJSON* meta) {
     return (uint32_t)(jst_extract_int(meta, "time"));
 }
 
@@ -142,8 +142,8 @@ content_type_enum jst_extract_type(cJSON* meta) {
 }
 
 
-unsigned int jst_extract_pos(cJSON* meta) {
-    return (unsigned int)(jst_extract_int(meta, "pos") != 0);
+unsigned long jst_extract_pos(cJSON* meta) {
+    return (unsigned long)jst_extract_int(meta, "pos");
 }
 
 
@@ -264,22 +264,22 @@ int jst_typesize(typeinfo_t* spec, const char* type) {
         case 'i': cursor = &type[0];
                   offset = -1;
         case 'u': {
-            if (strncmp(cursor, "int", 3)) {
+            if (strncmp(cursor, "int", 3) == 0) {
                 if ((cursor[3]==0) || (strcmp(&cursor[3], "32_t")==0)) {
                     spec->index = TYPE_uint32 + offset;
                     spec->bits  = 32;
                 }
-                else if ((strcmp(cursor, "16_t") == 0)) {
+                else if (strcmp(&cursor[3], "64_t") == 0) {
+                    spec->index = TYPE_uint64 + offset;
+                    spec->bits  = 64;
+                }
+                else if (strcmp(&cursor[3], "16_t") == 0) {
                     spec->index = TYPE_uint16 + offset;
                     spec->bits  = 16;
                 }
-                else if ((strcmp(cursor, "8_t") == 0)) {
+                else if (strcmp(&cursor[3], "8_t") == 0) {
                     spec->index = TYPE_uint8 + offset;
                     spec->bits  = 8;
-                }
-                else if ((strcmp(cursor, "64_t") == 0)) {
-                    spec->index = TYPE_uint64 + offset;
-                    spec->bits  = 64;
                 }
             }
         } break;
@@ -336,21 +336,22 @@ int jst_extract_typesize(typeinfo_enum* type, cJSON* meta) {
 int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char* type, cJSON* value) {
     typeinfo_t typeinfo;
     int bytesout;
-    
+    DEBUGPRINT("%s %d :: dst=%016llX, limit=%zu, bitpos=%u, type=%s, value=%016llX\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
     if ((dst==NULL) || (limit==0) || (type==NULL) || (value==NULL)) {
         return 0;
     }
-    
+
     // If jst_typesize returns nonzero, then type is invalid.  Write 0 bytes.
     if (jst_typesize(&typeinfo, type) != 0) {
         return 0;
     }
-    
+DEBUGPRINT("Fuck you\n");
     bytesout = 0;
     switch (typeinfo.index) {
         // Bitmask type is a container that holds non-byte contents
         // It returns a negative number of its size in bytes
         case TYPE_bitmask: {
+            DEBUGPRINT("%s %d :: Loading bitmask type (container only)\n", __FUNCTION__, __LINE__);
             return -(typeinfo.bits/8);
         }
         
@@ -367,6 +368,7 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
             ot_uni32 scr;
             unsigned long dat       = 0;
             unsigned long maskbits  = typeinfo.bits;
+            DEBUGPRINT("%s %d :: Loading bit%d_t type\n", __FUNCTION__, __LINE__, typeinfo.bits);
             
             if (cJSON_IsNumber(value)) {
                 dat = value->valueint;
@@ -382,6 +384,7 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
             memcpy(&scr.ubyte[0], dst, 4);
             maskbits    = ((1<<maskbits) - 1) << bitpos;
             dat       <<= bitpos;
+            DEBUGPRINT("%s %d :: Source=%08X, Mask=%08lX, Data=%08lX\n", __FUNCTION__, __LINE__, scr.ulong, maskbits, dat);
             scr.ulong  &= ~maskbits; 
             scr.ulong  |= (dat & maskbits);
             memcpy(dst, &scr.ubyte[0], 4);
@@ -393,7 +396,8 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
             if (cJSON_IsString(value)) {
                 bytesout = typeinfo.bits/8;
                 if (bytesout <= limit) {
-                    memcpy(dst, (char*)value, bytesout);
+                    DEBUGPRINT("%s %d :: Loading string type (bytesout=%d)\n", __FUNCTION__, __LINE__, bytesout);
+                    memcpy(dst, (char*)(value->valuestring), bytesout);
                 }
             }
         } break;
@@ -402,7 +406,8 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
             if (cJSON_IsString(value)) {
                 bytesout = typeinfo.bits/8;
                 if (bytesout <= limit) {
-                    cmd_hexnread(dst, (char*)value, bytesout);
+                    DEBUGPRINT("%s %d :: Loading hex type (bytesout=%d)\n", __FUNCTION__, __LINE__, bytesout);
+                    cmd_hexnread(dst, (char*)(value->valuestring), bytesout);
                 }
             }
         } break;
@@ -419,21 +424,26 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
         case TYPE_float:
         case TYPE_double: {
             bytesout = typeinfo.bits/8;
+            DEBUGPRINT("%s %d :: type %d (%d bits), limit=%zu\n", __FUNCTION__, __LINE__, typeinfo.index, typeinfo.bits, limit);
             if (bytesout <= limit) {
                 if (cJSON_IsString(value)) {
                     memset(dst, 0, bytesout);
-                    cmd_hexread(dst, (char*)value);
+                    cmd_hexread(dst, (char*)(value->valuestring));
+                    DEBUGPRINT("%s %d :: Loading arithmetic type as hex type (%d bytes)\n", __FUNCTION__, __LINE__, bytesout);
                 }
                 else if (cJSON_IsNumber(value)) {
                     if (typeinfo.index == TYPE_float) {
                         float tmp = (float)value->valuedouble;
                         memcpy(dst, &tmp, bytesout);
+                        DEBUGPRINT("%s %d :: Loading float type (data=%f)\n", __FUNCTION__, __LINE__, tmp);
                     }
                     else if (typeinfo.index == TYPE_double) {
                         memcpy(dst, &value->valuedouble, bytesout);
+                        DEBUGPRINT("%s %d :: Loading double type (data=%lf)\n", __FUNCTION__, __LINE__, value->valuedouble);
                     }
                     else {
                         memcpy(dst, &value->valueint, bytesout);
+                        DEBUGPRINT("%s %d :: Loading int type (data=%d)\n", __FUNCTION__, __LINE__, value->valueint);
                     }
                 }
             } 
@@ -574,23 +584,43 @@ cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum typ
 
 
 
-int jst_aggregate_json(cJSON** tmpl, const char* fname) {
+int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname) {
     FILE*       fp;
     uint8_t*    fbuf;
-    cJSON*      local;
+    cJSON*      local = NULL;
     cJSON*      obj;
     long        flen;
     int         rc = 0;
+    char        pathbuf[PATH_MAX];
+    char*       fname_ext;
     
     if ((tmpl == NULL) || (fname == NULL)) {
         return -1;
     }
-    
-    fp = fopen(fname, "r");
-    if (fp == NULL) {
-        return -2;
+
+    // Make sure file name has .json at the end.  If not, skip this file.
+    fname_ext = strrchr(fname, '.');
+    if ((fname_ext == NULL) 
+    ||  (fname_ext == fname) 
+    ||  (strcmp(fname_ext, ".json") != 0)) {
+        return 0;
+    }
+        
+    // Construct relative path with prefix path and fname
+    if (path == NULL) {
+        strncpy(pathbuf, fname, PATH_MAX-1);
+    }
+    else {
+        snprintf(pathbuf, PATH_MAX-1, "%s/%s", path, fname);
     }
 
+    // Try to open the file.  If it works, get the length
+    DEBUGPRINT("OPENING FILE %s\n", pathbuf);
+    fp = fopen(pathbuf, "r");
+    if (fp == NULL) {
+        perror("JSON file error");
+        return -2;
+    }
     fseek(fp, 0L, SEEK_END);
     flen = ftell(fp);
     rewind(fp);
@@ -601,6 +631,7 @@ int jst_aggregate_json(cJSON** tmpl, const char* fname) {
         goto jst_aggregate_json_END;
     }
 
+    // Try reading and parsing the JSON file.
     if(fread(fbuf, flen, 1, fp) == 1) {
         local = cJSON_Parse((const char*)fbuf);
         free(fbuf);
@@ -609,19 +640,20 @@ int jst_aggregate_json(cJSON** tmpl, const char* fname) {
     else {
         free(fbuf);
         fclose(fp);
-        DEBUGPRINT("read to %s fails\n", fname);
+        DEBUGPRINT("read to %s fails\n", pathbuf);
         rc = -4;
         goto jst_aggregate_json_END;
     }
 
+
     /// At this point the file is closed and the json is parsed into the
     /// "local" variable.  Make sure parsing succeeded.
     if (local == NULL) {
-        DEBUGPRINT("JSON parsing failed.  Exiting.\n");
+        DEBUGPRINT("JSON parsing failed on %s.  Exiting.\n", pathbuf);
         rc = -5;
         goto jst_aggregate_json_END;
     }
-    
+ 
     /// Link together the new JSON to the old.
     /// If *tmpl is NULL, the tmpl is empty, and we only need to link the local.
     /// If *tmpl not NULL, we need to move the local children into the tmpl.
@@ -629,13 +661,10 @@ int jst_aggregate_json(cJSON** tmpl, const char* fname) {
     if (*tmpl == NULL) {
         *tmpl = local;
     }
-    else {
-        obj = (*tmpl)->child;
-        while (obj != NULL) {
-            obj = obj->next;
-        }
+    else if (cJSON_IsObject(*tmpl)) {
         obj = local->child;
-        
+        cJSON_AddItemReferenceToObject(*tmpl, obj->string, obj);
+
         // Free the head of the local without touching children.
         // Adapted from cJSON_Delete()
         obj = NULL;
@@ -650,8 +679,9 @@ int jst_aggregate_json(cJSON** tmpl, const char* fname) {
             cJSON_free(local);
             local = obj;
         }
+        
     }
-    
+   
     jst_aggregate_json_END:
     return rc;
 }

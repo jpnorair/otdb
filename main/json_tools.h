@@ -79,7 +79,7 @@ uint8_t jst_extract_blockid(cJSON* meta);
 
 uint16_t jst_extract_size(cJSON* meta);
 
-uint16_t jst_extract_time(cJSON* meta);
+uint32_t jst_extract_time(cJSON* meta);
 
 bool jst_extract_stock(cJSON* meta);
 
@@ -87,7 +87,7 @@ content_type_enum jst_tmpltype(cJSON* type_elem);
 
 content_type_enum jst_extract_type(cJSON* meta);
 
-unsigned int jst_extract_pos(cJSON* meta);
+unsigned long jst_extract_pos(cJSON* meta);
 
 unsigned long jst_extract_bitpos(cJSON* meta);     
 
@@ -101,7 +101,7 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
 
 cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned long bitpos, int bits);
 
-int jst_aggregate_json(cJSON** tmpl, const char* fname);
+int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname);
 
 
 

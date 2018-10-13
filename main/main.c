@@ -396,7 +396,7 @@ int otdb_main(  INTF_Type intf_val,
     }
    
     /// Initialize DTerm data objects
-    if (dterm_init(&dterm_handle, intf_val, &otfs_handle) != 0) {
+    if (dterm_init(&dterm_handle, intf_val, otfs_handle) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }

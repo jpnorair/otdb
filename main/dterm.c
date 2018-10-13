@@ -348,7 +348,11 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
         if (linelen > 0) {
-            dterm_puts(dth->dt, "--> command not found\n");
+            //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", cmdname);
+            snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+                        "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", 
+                        cmdname);
+            dterm_puts(dth->dt, (char*)protocol_buf);
         }
     }
     else {
@@ -368,7 +372,11 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///@todo spruce-up the command error reporting, maybe even with
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
-            dterm_puts(dth->dt, "--> command execution error\n");
+            //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", cmdname, bytesout);
+            snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+                        "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", 
+                        cmdname, bytesout);
+            dterm_puts(dth->dt, (char*)protocol_buf);
         }
         
         // If there are bytes to send to MPipe, do that.
@@ -689,40 +697,14 @@ void* dterm_prompter(void* args) {
                                         ch_add(ch, dth->dt->linebuf);
                                     }
                                     
-                                    sub_proc_lineinput(dth, (char*)dth->dt->linebuf, 0);
-                                    /*
-                                    cmdlen = cmd_getname(cmdname, dt->linebuf, 256);
-                                    cmdptr = cmd_search(cmdname);
-                                    if (cmdptr == NULL) {
-                                        ///@todo build a nicer way to show where the error is,
-                                        ///      possibly by using pi or ci (sign reversing)
-                                        if (cmdlen > 0) {
-                                            dterm_puts(dt, "--> command not found\n");
-                                        }
-                                    }
-                                    else {
-                                        int outbytes;
-                                        int inbytes = 0;
-                                        uint8_t* cursor = (uint8_t*)&dt->linebuf[cmdlen];
-                                        
-                                        ///@todo change 1024 to a configured value
-                                        outbytes = cmd_run(cmdptr, dt, protocol_buf, &inbytes, cursor, 1024);
-                                        
-                                        // Error, print-out protocol_buf as an error message
-                                        ///@todo spruce-up the command error reporting, maybe even with
-                                        ///      a cursor showing where the first error was found.
-                                        if (outbytes < 0) {
-                                            dterm_puts(dt, "--> command execution error\n");
-                                        }
-                                        
-                                        // If there are bytes to send to MPipe, do that.
-                                        // If rawbytes == 0, there is no error, but also nothing
-                                        // to send to MPipe.
-                                        else if (outbytes > 0) {
-                                            //fprintf(stderr, "packet added to tlist, size = %d bytes\n", outbytes);
-                                        }
-                                    }
-                                    */
+                                    sub_proc_lineinput( dth, 
+                                                        (char*)dth->dt->linebuf, 
+                                                        (int)sub_str_mark((char*)dth->dt->linebuf, 1024)
+                                                    );
+                                                    
+                                    // Always put a linebreak at the end of prompter proc
+                                    dterm_puts(dth->dt, "\n");
+
                                     dterm_reset(dth->dt);
                                     dth->dt->state = prompt_close;
                                     break;

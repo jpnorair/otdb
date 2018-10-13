@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-void test_dumpbytes(const uint8_t* data, size_t datalen, const char* label);
+void test_dumpbytes(const uint8_t* data, size_t cols, size_t datalen, const char* label);
 
 
 #endif /* test_h */

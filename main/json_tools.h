@@ -87,17 +87,17 @@ content_type_enum jst_tmpltype(cJSON* type_elem);
 
 content_type_enum jst_extract_type(cJSON* meta);
 
-unsigned long jst_extract_pos(cJSON* meta);
+int jst_extract_pos(cJSON* meta);
 
-unsigned long jst_extract_bitpos(cJSON* meta);     
+int jst_extract_bitpos(cJSON* meta);     
 
-unsigned long jst_parse_arraysize(const char* bracketexp);
+int jst_parse_arraysize(const char* bracketexp);
 
 int jst_typesize(typeinfo_t* spec, const char* type);
 
 int jst_extract_typesize(typeinfo_enum* type, cJSON* meta);
 
-int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char* type, cJSON* value);
+int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* type, cJSON* value);
 
 cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned long bitpos, int bits);
 

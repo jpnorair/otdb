@@ -4,7 +4,7 @@
         "_content": {
             "info":{"pos":0, "type":"uint16_t", "def":"0038"},
             "lifetime":{"pos":2, "type":"uint32_t", "def":86400},
-            "key":{"pos":6, "type":"hex", "def":"00112233445566778899AABBCCDDEEFF"}
+            "key":{"pos":6, "type":"hex[16]", "def":"00112233445566778899AABBCCDDEEFF"}
         }
     }
 }

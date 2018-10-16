@@ -142,19 +142,19 @@ content_type_enum jst_extract_type(cJSON* meta) {
 }
 
 
-unsigned long jst_extract_pos(cJSON* meta) {
-    return (unsigned long)jst_extract_int(meta, "pos");
+int jst_extract_pos(cJSON* meta) {
+    return (int)jst_extract_int(meta, "pos");
 }
 
 
-unsigned long jst_extract_bitpos(cJSON* meta) {
-    unsigned long value = 0;
+int jst_extract_bitpos(cJSON* meta) {
+    int value = 0;
     cJSON* elem;
     if (meta != NULL) {
         elem = cJSON_GetObjectItemCaseSensitive(meta, "pos");
         if (elem != NULL) {
             if (cJSON_IsNumber(elem)) {
-                value = lround( ((elem->valuedouble - floor(elem->valuedouble)) * 100) );
+                value = (int)lround( ((elem->valuedouble - floor(elem->valuedouble)) * 100) );
             }
         }
     }
@@ -165,7 +165,7 @@ unsigned long jst_extract_bitpos(cJSON* meta) {
             
 
 
-unsigned long jst_parse_arraysize(const char* bracketexp) {
+int jst_parse_arraysize(const char* bracketexp) {
 
     if (bracketexp == NULL) {
         return 0;
@@ -181,7 +181,7 @@ unsigned long jst_parse_arraysize(const char* bracketexp) {
         return 0;
     }
     
-    return strtoul(bracketexp, NULL, 10);
+    return (int)strtoul(bracketexp, NULL, 10);
 }
 
 
@@ -241,7 +241,7 @@ int jst_typesize(typeinfo_t* spec, const char* type) {
         // hex
         case 'h': {
             if (strncmp(cursor, "ex", 2) == 0) {
-                if (cursor[3] == '[') {
+                if (cursor[2] == '[') {
                     spec->index = TYPE_hex;
                     spec->bits  = (int)(8 * jst_parse_arraysize(&cursor[2]));
                 }
@@ -333,11 +333,11 @@ int jst_extract_typesize(typeinfo_enum* type, cJSON* meta) {
 
 
 
-int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char* type, cJSON* value) {
+int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* type, cJSON* value) {
     typeinfo_t typeinfo;
     int bytesout;
-    DEBUGPRINT("%s %d :: dst=%016llX, limit=%zu, bitpos=%u, type=%s, value=%016llX\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
-    if ((dst==NULL) || (limit==0) || (type==NULL) || (value==NULL)) {
+    DEBUGPRINT("%s %d :: dst=%016llX, limit=%i, bitpos=%u, type=%s, value=%016llX\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
+    if ((dst==NULL) || (limit<=0) || (type==NULL) || (value==NULL)) {
         return 0;
     }
 
@@ -345,7 +345,7 @@ int jst_load_element(uint8_t* dst, size_t limit, unsigned int bitpos, const char
     if (jst_typesize(&typeinfo, type) != 0) {
         return 0;
     }
-DEBUGPRINT("Fuck you\n");
+
     bytesout = 0;
     switch (typeinfo.index) {
         // Bitmask type is a container that holds non-byte contents
@@ -424,7 +424,7 @@ DEBUGPRINT("Fuck you\n");
         case TYPE_float:
         case TYPE_double: {
             bytesout = typeinfo.bits/8;
-            DEBUGPRINT("%s %d :: type %d (%d bits), limit=%zu\n", __FUNCTION__, __LINE__, typeinfo.index, typeinfo.bits, limit);
+            DEBUGPRINT("%s %d :: type %d (%d bits), limit=%i\n", __FUNCTION__, __LINE__, typeinfo.index, typeinfo.bits, limit);
             if (bytesout <= limit) {
                 if (cJSON_IsString(value)) {
                     memset(dst, 0, bytesout);

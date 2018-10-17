@@ -1,9 +1,0 @@
-{
-    "realtime_vars": {
-        "time":{
-            "epoch_s":0,
-            "frac_s":0
-        },
-        "freq_grid":0
-    }
-}

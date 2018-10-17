@@ -408,7 +408,11 @@ int otdb_main(  INTF_Type intf_val,
         cli.exitcode = -2;
         goto otdb_main_TERM1;
     }
-  
+    
+    // Debugging outputs
+    DEBUG_PRINTF("Finished initializing\n");
+    DEBUG_PRINTF("otfs_handle=%016llX\n", (uint64_t)otfs_handle);
+    
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
     /// typical in POSIX apps.  When activated, the threads are halted and

@@ -349,7 +349,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///      possibly by using pi or ci (sign reversing)
         if (linelen > 0) {
             //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", cmdname);
-            snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+            bytesout = snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", 
                         cmdname);
             dterm_puts(dth->dt, (char*)protocol_buf);
@@ -373,7 +373,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
             //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", cmdname, bytesout);
-            snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+            bytesout = snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", 
                         cmdname, bytesout);
             dterm_puts(dth->dt, (char*)protocol_buf);
@@ -666,21 +666,23 @@ void* dterm_prompter(void* args) {
             
             switch (cmd) {
                 // A printable key is used
-                case ct_key:        dterm_putcmd(dth->dt, &c, 1);
-                                    //dterm_put(dt, &c, 1);
-                                    dterm_putc(dth->dt, c);
-                                    break;
+                case ct_key: {       
+                    dterm_putcmd(dth->dt, &c, 1);
+                    //dterm_put(dt, &c, 1);
+                    dterm_putc(dth->dt, c);
+                } break;
                                     
                 // Prompt-Escape is pressed, 
-                case ct_prompt:     if (dth->dt->state == prompt_on) {
-                                        dterm_remln(dth->dt);
-                                        dth->dt->state = prompt_off;
-                                    }
-                                    else {
-                                        dterm_puts(dth->dt, (char*)prompt_str[0]);
-                                        dth->dt->state = prompt_on;
-                                    }
-                                    break;
+                case ct_prompt: {    
+                    if (dth->dt->state == prompt_on) {
+                        dterm_remln(dth->dt);
+                        dth->dt->state = prompt_off;
+                    }
+                    else {
+                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dth->dt->state = prompt_on;
+                    }
+                } break;
             
                 // EOF currently has the same effect as ENTER/RETURN
                 case ct_eof:        
@@ -690,74 +692,84 @@ void* dterm_prompter(void* args) {
                 // 2. Add line-entry into the  history
                 // 3. Search and try to execute cmd
                 // 4. Reset prompt, change to OFF State, unlock mutex on dterm
-                case ct_enter:      //dterm_put(dt, (char[]){ASCII_NEWLN}, 2);
-                                    dterm_putc(dth->dt, '\n');
+                case ct_enter: {
+                    int bytesout;
+                    
+                    //dterm_put(dt, (char[]){ASCII_NEWLN}, 2);
+                    dterm_putc(dth->dt, '\n');
+                    
+                    if (!ch_contains(ch, dth->dt->linebuf)) {
+                        ch_add(ch, dth->dt->linebuf);
+                    }
+                    
+                    bytesout = sub_proc_lineinput( dth, 
+                                        (char*)dth->dt->linebuf, 
+                                        (int)sub_str_mark((char*)dth->dt->linebuf, 1024)
+                                    );
                                     
-                                    if (!ch_contains(ch, dth->dt->linebuf)) {
-                                        ch_add(ch, dth->dt->linebuf);
-                                    }
-                                    
-                                    sub_proc_lineinput( dth, 
-                                                        (char*)dth->dt->linebuf, 
-                                                        (int)sub_str_mark((char*)dth->dt->linebuf, 1024)
-                                                    );
-                                                    
-                                    // Always put a linebreak at the end of prompter proc
-                                    dterm_puts(dth->dt, "\n");
+                    // If there's meaningful output, add a linebreak
+                    if (bytesout > 0) {
+                        dterm_puts(dth->dt, "\n");
+                    }
 
-                                    dterm_reset(dth->dt);
-                                    dth->dt->state = prompt_close;
-                                    break;
+                    dterm_reset(dth->dt);
+                    dth->dt->state = prompt_close;
+                } break;
                 
                 // TAB presses cause the autofill operation (a common feature)
                 // autofill will try to finish the command input
-                case ct_autofill:   cmdlen = cmd_getname((char*)cmdname, dth->dt->linebuf, sizeof(cmdname));
-                                    cmdptr = cmd_subsearch((char*)cmdname);
-                                    if ((cmdptr != NULL) && (dth->dt->linebuf[cmdlen] == 0)) {
-                                        dterm_remln(dth->dt);
-                                        dterm_puts(dth->dt, (char*)prompt_str[0]);
-                                        dterm_putsc(dth->dt, (char*)cmdptr->name);
-                                        dterm_puts(dth->dt, (char*)cmdptr->name);
-                                    }
-                                    else {
-                                        dterm_puts(dth->dt, ASCII_BEL);
-                                    }
-                                    break;
+                case ct_autofill: {
+                    cmdlen = cmd_getname((char*)cmdname, dth->dt->linebuf, sizeof(cmdname));
+                    cmdptr = cmd_subsearch((char*)cmdname);
+                    if ((cmdptr != NULL) && (dth->dt->linebuf[cmdlen] == 0)) {
+                        dterm_remln(dth->dt);
+                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_putsc(dth->dt, (char*)cmdptr->name);
+                        dterm_puts(dth->dt, (char*)cmdptr->name);
+                    }
+                    else {
+                        dterm_puts(dth->dt, ASCII_BEL);
+                    }
+                } break;
                 
                 // DOWN-ARROW presses fill the prompt with the next command 
                 // entry in the command history
-                case ct_histnext:   //cmdstr = ch_next(ch);
-                                    cmdstr = ch_prev(ch);
-                                    if (ch->count && cmdstr) {
-                                        dterm_remln(dth->dt);
-                                        dterm_puts(dth->dt, (char*)prompt_str[0]);
-                                        dterm_putsc(dth->dt, cmdstr);
-                                        dterm_puts(dth->dt, cmdstr);
-                                    }
-                                    break;
+                case ct_histnext: {
+                    //cmdstr = ch_next(ch);
+                    cmdstr = ch_prev(ch);
+                    if (ch->count && cmdstr) {
+                        dterm_remln(dth->dt);
+                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_putsc(dth->dt, cmdstr);
+                        dterm_puts(dth->dt, cmdstr);
+                    }
+                } break;
                 
                 // UP-ARROW presses fill the prompt with the last command
                 // entry in the command history
-                case ct_histprev:   //cmdstr = ch_prev(ch);
-                                    cmdstr = ch_next(ch);
-                                    if (ch->count && cmdstr) {
-                                        dterm_remln(dth->dt);
-                                        dterm_puts(dth->dt, (char*)prompt_str[0]);
-                                        dterm_putsc(dth->dt, cmdstr);
-                                        dterm_puts(dth->dt, cmdstr);
-                                    }
-                                    break;
+                case ct_histprev: {
+                    //cmdstr = ch_prev(ch);
+                    cmdstr = ch_next(ch);
+                    if (ch->count && cmdstr) {
+                        dterm_remln(dth->dt);
+                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_putsc(dth->dt, cmdstr);
+                        dterm_puts(dth->dt, cmdstr);
+                    }
+                } break;
                 
                 // DELETE presses issue a forward-DELETE
-                case ct_delete:     if (dth->dt->linelen > 0) {
-                                        dterm_remc(dth->dt, 1);
-                                        dterm_put(dth->dt, VT100_CLEAR_CH, 4);
-                                    }
-                                    break;
+                case ct_delete: { 
+                    if (dth->dt->linelen > 0) {
+                        dterm_remc(dth->dt, 1);
+                        dterm_put(dth->dt, VT100_CLEAR_CH, 4);
+                    }
+                } break;
                 
                 // Every other command is ignored here.
-                default:            dth->dt->state = prompt_close;
-                                    break;
+                default: {
+                    dth->dt->state = prompt_close;
+                } break;
             }
         }
         

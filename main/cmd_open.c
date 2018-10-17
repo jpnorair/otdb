@@ -301,10 +301,10 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     dth->tmpl   = tmpl;
     
-    cmd_rmdir(".otdb_local");
-    if (mkdir(".otdb_local", 0700) == 0) {
-        if (mkdir(".otdb_local/_TMPL", 0700) == 0) {
-            jst_writeout(tmpl, ".otdb_local/_TMPL/tmpl.json");
+    cmd_rmdir(OTDB_PARAM_SCRATCHDIR);
+    if (mkdir(OTDB_PARAM_SCRATCHDIR, 0700) == 0) {
+        if (mkdir(OTDB_PARAM_SCRATCHDIR"/_TMPL", 0700) == 0) {
+            jst_writeout(tmpl, OTDB_PARAM_SCRATCHDIR"/_TMPL/tmpl.json");
         }
     }
     
@@ -777,7 +777,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
         // Save copy of JSON to local stash
         {   char local_path[64];
-            snprintf(local_path, sizeof(local_path)-10, ".otdb_local/%016llX", tmpl_fs.uid.u64);
+            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016llX", tmpl_fs.uid.u64);
             if (mkdir(local_path, 0700) == 0) {
                 strcat(local_path, "/data.json");
                 jst_writeout(data, local_path);

@@ -57,4 +57,7 @@
 /// Automatic Checks
 
 
+///@todo configuration for these constants
+#define OTDB_PARAM_SCRATCHDIR       "~tmp"
+
 #endif

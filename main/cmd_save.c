@@ -41,23 +41,24 @@
 
 
 // used by DB manipulation commands
-extern struct arg_str*     devid_man;
-extern struct arg_file*    archive_man;
-extern struct arg_lit*     compress_opt;
+extern struct arg_str*  devid_man;
+extern struct arg_file* archive_man;
+extern struct arg_lit*  compress_opt;
+extern struct arg_lit*  jsonout_opt;
 
 // used by file commands
-extern struct arg_str*     devid_opt;
-extern struct arg_str*     devidlist_opt;
-extern struct arg_str*     fileblock_opt;
-extern struct arg_str*     filerange_opt;
-extern struct arg_int*     fileid_man;
-extern struct arg_str*     fileperms_man;
-extern struct arg_int*     filealloc_man;
-extern struct arg_str*     filedata_man;
+extern struct arg_str*  devid_opt;
+extern struct arg_str*  devidlist_opt;
+extern struct arg_str*  fileblock_opt;
+extern struct arg_str*  filerange_opt;
+extern struct arg_int*  fileid_man;
+extern struct arg_str*  fileperms_man;
+extern struct arg_int*  filealloc_man;
+extern struct arg_str*  filedata_man;
 
 // used by all commands
-extern struct arg_lit*     help_man;
-extern struct arg_end*     end_man;
+extern struct arg_lit*  help_man;
+extern struct arg_end*  end_man;
 
 
 #define INPUT_SANITIZE() do { \
@@ -115,7 +116,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
     };
-    void* args[] = {help_man, compress_opt, archive_man, devidlist_opt, end_man};
+    void* args[] = {help_man, jsonout_opt, compress_opt, archive_man, devidlist_opt, end_man};
     
     ///@todo do input checks!!!!!!
     
@@ -181,17 +182,15 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
     else {
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
         devtest = otfs_iterator_start(dth->ext, &devfs, &uid.u8[0]);
     }
-    
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
+
     while (devtest == 0) {
         char* dev_rtpath;
         
         /// Create new directory for the device
         dev_rtpath  = rtpath;
-        dev_rtpath += snprintf(rtpath, 17, "%16llX", uid.u64);
+        dev_rtpath += snprintf(rtpath, 17, "%016llX", uid.u64);
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
             rc = -4;
@@ -214,14 +213,14 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
             uint8_t     block_id;
             uint16_t    output_sz;
             content_type_enum c_type;
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
+
             /// Template files must contain metadata to be considered
             meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
             if (meta == NULL) {
                 // Skip files without meta objects
                 goto cmd_save_LOOPEND;
             }
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
+          
             /// Grab Block & ID of the file about to be exported, and open it.
             ///@todo make this a function (used in multiple places)
             ///@todo implement way to use non-stock files
@@ -239,13 +238,13 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
             if (fp->length < output_sz) {
                 output_sz = fp->length;
             }
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
+          
             /// Create JSON object top level depth, for output
             output = cJSON_CreateObject();
             if (output == NULL) {
                 goto cmd_save_LOOPCLOSE;
             }
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
+         
             /// Drill into contents
             c_type = jst_extract_type(meta);
             
@@ -284,19 +283,18 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
             
             /// Struct output option: structured data elements based on template
             else { 
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
                 // In struct type, the "_content" field must be an object.
                 content = cJSON_GetObjectItemCaseSensitive(obj, "_content");
                 if (cJSON_IsObject(content) == false) {
                     goto cmd_save_LOOPFREE;
                 }
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                
+             
                 // If content is empty, don't export this file
                 content = content->child;
                 if (content == NULL) {
                     goto cmd_save_LOOPFREE;
                 }
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                
+             
                 // Loop through the template, export flat items, drill into
                 // nested items.
                 ///@todo make this recursive
@@ -306,12 +304,12 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
                     typeinfo_enum type;
                     int pos, bits;
                     unsigned long bitpos;
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                    
+               
                     pos         = jst_extract_pos(content);
                     bits        = jst_extract_typesize(&type, content);
                     nest_output = jst_store_element(output, content->string, &fdat[pos], type, 0, bits);
                     nest_tmpl   = cJSON_GetObjectItemCaseSensitive(content, "_meta");
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                    
+                 
                     // This is a nested data type (namely, a bitmask)
                     // Could be recursive, currently hardcoded for bitmask
                     if (nest_tmpl != NULL) {
@@ -320,8 +318,7 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
                             nest_tmpl = nest_tmpl->child;
                             while (nest_tmpl != NULL) {
                                 bitpos = jst_extract_bitpos(nest_tmpl);
-                                jst_store_element(nest_output, nest_tmpl->string, &fdat[pos], type, bitpos, bits);
-DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                                
+                                jst_store_element(nest_output, nest_tmpl->string, &fdat[pos], type, bitpos, bits);                              
                                 nest_tmpl = nest_tmpl->next;
                             }
                         }
@@ -333,7 +330,7 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
             
             /// Writeout JSON 
             snprintf(dev_rtpath, 31, "/%s.json", obj->string);
-            DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, dev_rtpath);
+            DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, &dev_rtpath[1]);
             if (jst_writeout(output, pathbuf) != 0) {
                 goto cmd_save_LOOPCLOSE;
             }
@@ -349,6 +346,7 @@ DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
         }
     
         /// Fetch next device 
+        DEBUGPRINT("%s %d :: fetch next device\n", __FUNCTION__, __LINE__);
         if (arglist.devid_strlist_size > 0) {
             devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
         }

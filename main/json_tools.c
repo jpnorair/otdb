@@ -21,7 +21,7 @@
 #include <math.h>
 
 
-#if OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -662,30 +662,34 @@ int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname) {
         *tmpl = local;
     }
     else if (cJSON_IsObject(*tmpl)) {
-        obj = local->child;
+        obj = cJSON_DetachItemFromObject(local, local->child->string);
         cJSON_AddItemReferenceToObject(*tmpl, obj->string, obj);
-
-        // Free the head of the local without touching children.
-        // Adapted from cJSON_Delete()
-        obj = NULL;
-        while (local != NULL) {
-            obj = local->next;
-            if (!(local->type & cJSON_IsReference) && (local->valuestring != NULL)) {
-                cJSON_free(local->valuestring);
-            }
-            if (!(local->type & cJSON_StringIsConst) && (local->string != NULL)) {
-                cJSON_free(local->string);
-            }
-            cJSON_free(local);
-            local = obj;
-        }
-        
+        cJSON_Delete(local);
     }
    
     jst_aggregate_json_END:
     return rc;
 }
 
+
+
+
+int jst_writeout(cJSON* json_obj, const char* filepath) {
+    FILE* fjson;
+    char* output;
+
+    fjson = fopen(filepath, "w");
+    if (fjson != NULL) {
+        output = cJSON_Print(json_obj);
+        fputs(output, fjson);
+        fputs("\n", fjson);
+        fclose(fjson);
+        free(output);
+        return 0;
+    }
+    
+    return -1;
+}
 
 
 

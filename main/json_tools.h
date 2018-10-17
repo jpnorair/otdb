@@ -103,7 +103,7 @@ cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum typ
 
 int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname);
 
-
+int jst_writeout(cJSON* json_obj, const char* filepath);
 
 
 

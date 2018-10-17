@@ -160,19 +160,19 @@ void dterm_deinit(dterm_handle_t* dth) {
     if (dth->dt != NULL) {
         dterm_close(dth->dt);
         free(dth->dt);
-    }
+    } 
     if (dth->ch != NULL) {
         ch_free(dth->ch);
-    }
+    } 
     if (dth->ext != NULL) {
-        ///@todo initialize dterm with a deallocator.  For now, fixed to otfs.
-        otfs_deinit(dth->ext);  
-    }
+        ///@note ext gets free'd externally
+        dth->ext = NULL; 
+    } 
     if (dth->tmpl != NULL) {
         cJSON_Delete(dth->tmpl);
-    }
+    } 
     
-    pthread_mutex_unlock(&dth->dtwrite_mutex);
+    pthread_mutex_unlock(&dth->dtwrite_mutex); 
     pthread_mutex_destroy(&dth->dtwrite_mutex);
 }
 

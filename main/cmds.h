@@ -85,6 +85,8 @@ int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const
 int cmd_jsonout_data(char* dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, size_t srcbytes);
 
 
+int cmd_rmdir(const char *dir);
+
 
 
 /** OTDB Internal Commands

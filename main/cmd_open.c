@@ -37,6 +37,10 @@
 #include <string.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 
 // used by DB manipulation commands
@@ -67,15 +71,13 @@ extern struct arg_end*  end_man;
     }                                       \
 } while(0)
 
-#if OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
 #   define PRINTLINE()     do { } while(0)
 #   define DEBUGPRINT(...) do { } while(0)
 #endif
-
-
 
 
 
@@ -94,7 +96,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cJSON* tmpl             = NULL;
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
-    bool tmpl_valid         = false;
+    bool open_valid         = false;
     
     // OTFS data tables and handles
     otfs_t tmpl_fs;
@@ -297,9 +299,15 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     if (dth->tmpl != NULL) {
         cJSON_Delete(dth->tmpl);
     }
-    tmpl_valid  = true;
     dth->tmpl   = tmpl;
-  
+    
+    cmd_rmdir(".otdb_local");
+    if (mkdir(".otdb_local", 0700) == 0) {
+        if (mkdir(".otdb_local/_TMPL", 0700) == 0) {
+            jst_writeout(tmpl, ".otdb_local/_TMPL/tmpl.json");
+        }
+    }
+    
     // 3b. Add overhead section to the allocation, Malloc the fs data
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
@@ -537,105 +545,106 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     while (1) {
         char* endptr;
+        vlFILE* fp;
+        cJSON* dataobj;
   
         ent = readdir(dir);
         if (ent == NULL) {
             break;
         }
-        ///@todo It appears some memory is not being freed between here and line 640
-        DEBUGPRINT("%s %d :: d_name=%s\n", __FUNCTION__, __LINE__, ent->d_name);           
-        if (ent->d_type == DT_DIR) {
-            vlFILE* fp;
         
-            // Name of directory should be a pure hex number: skip others
-            endptr = NULL;
-            tmpl_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
-            if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
-                continue;
-            }
-            
-            // Create new FS based on device id and template FS
-            DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64); 
-            rc = otfs_new(dth->ext, &tmpl_fs);
-            if (rc != 0) {
-                ///@todo adjusted error code: FS partially created
-                rc = -(256*2) - rc;
-                goto cmd_open_CLOSE;
-            }
-            
+        // If entity is not a Directory, go to next entity in the dir
+        DEBUGPRINT("%s %d :: d_name=%s\n", __FUNCTION__, __LINE__, ent->d_name);           
+        if (ent->d_type != DT_DIR) {
+            continue;
+        }
+        
+        // Name of directory should be a pure hex number: skip others
+        endptr = NULL;
+        tmpl_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
+        if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
+            continue;
+        }
+        
+        // Create new FS based on device id and template FS
+        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64); 
+        rc = otfs_new(dth->ext, &tmpl_fs);
+        if (rc != 0) {
+            ///@todo adjusted error code: FS partially created
+            rc = -(256*2) - rc;
+            goto cmd_open_CLOSE;
+        }
+        
 //{ 
 //void* base = vworm_get(0);
 //fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)tmpl_fs.base, tmpl_fs.alloc);
 //fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base);
 //}
-            
-            // Enter Device Directory: max is 16 hex chars long (8 bytes)
-            snprintf(rtpath, 16, "/%s", ent->d_name);
-            //strncpy(rtpath, ent->d_name, 16);
-            DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
-            devdir = opendir(pathbuf);
-            if (devdir == NULL) {
-                rc = -10;
-                goto cmd_open_CLOSE;
+        
+        // Enter Device Directory: max is 16 hex chars long (8 bytes)
+        snprintf(rtpath, 16, "/%s", ent->d_name);
+        DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
+        devdir = opendir(pathbuf);
+        if (devdir == NULL) {
+            rc = -10;
+            goto cmd_open_CLOSE;
+        }
+        
+        // Loop through files in the device directory, and aggregate them.
+        while (1) {
+            devent = readdir(devdir);
+            if (devent == NULL) {
+                break;
             }
-            
-            // Loop through files in the device directory, and aggregate them.
-            while (1) {
-                devent = readdir(devdir);
-                if (devent == NULL) {
-                    break;
-                }
-                if (devent->d_type == DT_REG) {
-                    DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, pathbuf, devent->d_name);
-                    rc = jst_aggregate_json(&data, pathbuf, devent->d_name);
-                    if (rc != 0) {
-                        rc = -256 + rc;
-                        goto cmd_open_CLOSE;
-                    }
+            if (devent->d_type == DT_REG) {
+                DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, pathbuf, devent->d_name);
+                rc = jst_aggregate_json(&data, pathbuf, devent->d_name);
+                if (rc != 0) {
+                    rc = -256 + rc;
+                    goto cmd_open_CLOSE;
                 }
             }
-            closedir(devdir);
-            devdir = NULL;
-            
-            ///@todo make sure this works, there could very easily be an endian problem
-            // Set OTFS to reference the current device FS.
-            //rc = otfs_setfs(dth->ext, &tmpl_fs.uid.u8[0]);
-            //if (rc != 0) {
-            //    rc = -256 - rc;
-            //    goto cmd_open_CLOSE;
-            //}
-            
-            // Write the default device ID to the standardized locations.
-            // - UID64 to ISF1 0:8
-            // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
-            fp = ISF_open_su(0);
-            if (fp != NULL) {
-                uint16_t* cursor = (uint16_t*)vl_memptr(fp);
-                //fprintf(stderr, "FILE0_BASE=%016llX\n", (uint64_t)cursor);
-                if (cursor != NULL) {
-                    DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016llX]\n", __FUNCTION__, __LINE__, (uint16_t)(tmpl_fs.uid.u64 & 65535), tmpl_fs.uid.u64);
-                    cursor[0] = (uint16_t)(tmpl_fs.uid.u64 & 65535);
-                }
-                vl_close(fp);
+        }
+        closedir(devdir);
+        devdir = NULL;
+        
+        ///@note otfs_new() already sets the fs
+        // Set OTFS to reference the current device FS.
+        //rc = otfs_setfs(dth->ext, &tmpl_fs.uid.u8[0]);
+        //if (rc != 0) {
+        //    rc = -256 - rc;
+        //    goto cmd_open_CLOSE;
+        //}
+        
+        // Write the default device ID to the standardized locations.
+        // - UID64 to ISF1 0:8
+        // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
+        fp = ISF_open_su(0);
+        if (fp != NULL) {
+            uint16_t* cursor = (uint16_t*)vl_memptr(fp);
+            if (cursor != NULL) {
+                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016llX]\n", __FUNCTION__, __LINE__, (uint16_t)(tmpl_fs.uid.u64 & 65535), tmpl_fs.uid.u64);
+                cursor[0] = (uint16_t)(tmpl_fs.uid.u64 & 65535);
             }
- 
-            fp = ISF_open_su(1);
-            if (fp != NULL) {
-                uint8_t* cursor = vl_memptr(fp);
-                //fprintf(stderr, "FILE1_BASE=%016llX\n", (uint64_t)cursor);
-                if (cursor != NULL) {
-                    ///@todo make sure endian gets sorted
-                    DEBUGPRINT("%s %d :: write UID [%016llX]\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64);
-                    memcpy(cursor, &tmpl_fs.uid.u8[0], 8);
-                }
-                vl_close(fp);
+            vl_close(fp);
+        }
+
+        fp = ISF_open_su(1);
+        if (fp != NULL) {
+            uint8_t* cursor = vl_memptr(fp);
+            if (cursor != NULL) {
+                ///@todo make sure endian gets sorted
+                DEBUGPRINT("%s %d :: write UID [%016llX]\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64);
+                memcpy(cursor, &tmpl_fs.uid.u8[0], 8);
             }
-            
-            // If there's no custom data to write, move on
-            if (data == NULL) {
-                continue;
-            }
-            
+            vl_close(fp);
+        }
+        
+        // If there's no custom data to write, move on
+        if (data == NULL) {
+            continue;
+        }
+        
 ///@todo add generic "DEBUG" Macro wrapper
 //{ 
 //void* base = vworm_get(0);
@@ -644,159 +653,162 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 //test_dumpbytes(base, sizeof(vl_header_t), tmpl_fs.alloc, "FS DEFAULT DATA");  
 //}
 
-            // Correlate elements from data files with their metadata from the
-            // template.  For each data element, we need the following 
-            // attributes: (1) Block ID, (2) File ID, (3) Data range, (4) Data 
-            // value.  With this information it is possible to write all the
-            // per-device data.
-            for (data=data->child; data!=NULL; data=data->next) {
-                cJSON* fileobj;
-                vlFILE* fp;
-                uint8_t* fdat;
-                uint8_t block, file;
-                content_type_enum ctype;
-                uint16_t max;
-                bool stock;
+        // Correlate elements from data files with their metadata from the
+        // template.  For each data element, we need the following 
+        // attributes: (1) Block ID, (2) File ID, (3) Data range, (4) Data 
+        // value.  With this information it is possible to write all the
+        // per-device data.
+        for (dataobj=data->child; dataobj!=NULL; dataobj=dataobj->next) {
+            cJSON* fileobj;
+            vlFILE* fp;
+            uint8_t* fdat;
+            uint8_t block, file;
+            content_type_enum ctype;
+            uint16_t max;
+            bool stock;
 
-                fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, data->string);
-                DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, data->string, (fileobj!=NULL));
-                if (cJSON_IsObject(fileobj) == false) {
-                    continue;
+            fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
+            DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
+            if (cJSON_IsObject(fileobj) == false) {
+                continue;
+            }
+            
+            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
+            DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+            if (cJSON_IsObject(obj) == false) {
+                continue;
+            }
+            block   = jst_extract_blockid(obj);
+            file    = jst_extract_id(obj);
+            ctype   = jst_extract_type(obj);
+            max     = jst_extract_size(obj);
+            stock   = jst_extract_stock(obj);
+            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
+            
+            DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+            if (cJSON_IsObject(obj) == false) {
+                continue;
+            }                  
+            fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
+            if (fp == NULL) {
+                continue;
+            }
+            
+            fdat = vl_memptr(fp);
+            DEBUGPRINT("%s %d :: File Data at: %016llX\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
+            DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
+            DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
+            if (fdat == NULL) {
+                vl_close(fp);
+                continue;
+            }
+            if (fp->alloc < max) {
+                max = fp->alloc;
+            }
+            
+            if (ctype == CONTENT_hex) {
+                DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
+                fp->length = cmd_hexnread(fdat, dataobj->valuestring, (size_t)max);
+            }
+            else if (ctype == CONTENT_array) {
+                int items;
+                DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
+                items = cJSON_GetArraySize(dataobj);
+                if (items > max) {
+                    items = max;
                 }
-                
-                obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
-                DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
-                if (cJSON_IsObject(obj) == false) {
-                    continue;
+                fp->length = items;
+                for (int i=0; i<items; i++) {
+                    cJSON* array_i  = cJSON_GetArrayItem(dataobj, i);
+                    fdat[i]         = (uint8_t)(255 & array_i->valueint);
                 }
-                block   = jst_extract_blockid(obj);
-                file    = jst_extract_id(obj);
-                ctype   = jst_extract_type(obj);
-                max     = jst_extract_size(obj);
-                stock   = jst_extract_stock(obj);
-                obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
-                
-                DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
-                if (cJSON_IsObject(obj) == false) {
-                    continue;
-                }                  
-                fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
-                if (fp == NULL) {
-                    continue;
-                }
-                
-                fdat = vl_memptr(fp);
-                DEBUGPRINT("%s %d :: File Data at: %016llX\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
-                DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
-                DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
-                if (fdat == NULL) {
-                    vl_close(fp);
-                    continue;
-                }
-                if (fp->alloc < max) {
-                    max = fp->alloc;
-                }
-                
-                if (ctype == CONTENT_hex) {
-                    DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
-                    fp->length = cmd_hexnread(fdat, data->valuestring, (size_t)max);
-                }
-                else if (ctype == CONTENT_array) {
-                    int items;
-                    DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
-                    items = cJSON_GetArraySize(data);
-                    if (items > max) {
-                        items = max;
-                    }
-                    fp->length = items;
-                    for (int i=0; i<items; i++) {
-                        cJSON* array_i  = cJSON_GetArrayItem(data, i);
-                        fdat[i]         = (uint8_t)(255 & array_i->valueint);
-                    }
-                }
-                // CONTENT_struct
-                ///@todo might benefit from recursive treatment
-                else {  // CONTENT_struct
-                    for (obj=obj->child; obj!=NULL; obj=obj->next) {
-                        cJSON*  d_elem;
-                        cJSON*  t_meta;
-                        cJSON*  t_content;
-                        int     bytepos;
-                        int     bytesout;
-                        
-                        DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
-                        
-                        // Make sure object is in both data and tmpl.
-                        // If object yields another object, we need to drill 
-                        // into the hierarchy
-                        d_elem  = cJSON_GetObjectItemCaseSensitive(data, obj->string);
-{ char* fbuf; fbuf=cJSON_Print(d_elem); fprintf(stderr, "DATA OBJECT ELEMENT:\n%s\n", fbuf); free(fbuf); }
+            }
+            // CONTENT_struct
+            ///@todo might benefit from recursive treatment
+            else {  // CONTENT_struct
+                for (obj=obj->child; obj!=NULL; obj=obj->next) {
+                    cJSON*  d_elem;
+                    cJSON*  t_meta;
+                    cJSON*  t_content;
+                    int     bytepos;
+                    int     bytesout;
+                    DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
+                    
+                    // Make sure object is in both data and tmpl.
+                    // If object yields another object, we need to drill 
+                    // into the hierarchy
+                    d_elem  = cJSON_GetObjectItemCaseSensitive(dataobj, obj->string);
+                    if (d_elem != NULL) {
+                        t_meta      = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+                        t_content   = cJSON_GetObjectItemCaseSensitive(obj, "_content");
+                        if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(dataobj)) {
+                            bytepos     = (int)jst_extract_pos(t_meta);
+                            bytesout    = (int)jst_extract_size(t_meta);
 
-                        if (d_elem != NULL) {
-                            t_meta      = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
-                            t_content   = cJSON_GetObjectItemCaseSensitive(obj, "_content");
-                            if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(data)) {
-                                bytepos     = (int)jst_extract_pos(t_meta);
-                                bytesout    = (int)jst_extract_size(t_meta);
-
-                                for (t_content=t_content->child; t_content!=NULL; t_content=t_content->next) {
-                                    d_elem  = cJSON_GetObjectItemCaseSensitive(data->child, t_content->string);
-                                    DEBUGPRINT("%s %d :: \n", __FUNCTION__, __LINE__, );
-                                    if (d_elem != NULL) {
-                                        jst_load_element( &fdat[bytepos], 
-                                            bytesout, 
-                                            (unsigned int)jst_extract_bitpos(t_content), 
-                                            jst_extract_string(t_content, "type"), 
-                                            d_elem);    //data->child
-                                    }
+                            for (t_content=t_content->child; t_content!=NULL; t_content=t_content->next) {
+                                cJSON* d_subelem;
+                                d_subelem  = cJSON_GetObjectItemCaseSensitive(d_elem, t_content->string);
+                                if (d_subelem != NULL) {
+                                    jst_load_element( &fdat[bytepos], 
+                                        bytesout, 
+                                        (unsigned int)jst_extract_bitpos(t_content), 
+                                        jst_extract_string(t_content, "type"), 
+                                        d_subelem);
                                 }
                             }
-                            else {
-                                bytepos = (int)jst_extract_pos(obj);
-                                DEBUGPRINT("%s %d :: max=%d, bytepos=%d\n", __FUNCTION__, __LINE__, max, bytepos);
-                                bytesout = jst_load_element( &fdat[bytepos], 
-                                                (int)max - bytepos, 
-                                                (unsigned int)jst_extract_bitpos(obj), 
-                                                jst_extract_string(obj, "type"), 
-                                                d_elem);
-                            }
-                            
-                            fp->length = bytepos + bytesout;
                         }
+                        else {
+                            bytepos = (int)jst_extract_pos(obj);
+                            bytesout = jst_load_element( &fdat[bytepos], 
+                                            (int)max - bytepos, 
+                                            (unsigned int)jst_extract_bitpos(obj), 
+                                            jst_extract_string(obj, "type"), 
+                                            d_elem);
+                        }
+                        
+                        fp->length = bytepos + bytesout;
                     }
-                } 
-                // end of CONTENT_struct
-                vl_close(fp);
-            }
-            // end of data file interator
+                }
+            } 
+            // end of CONTENT_struct
+            vl_close(fp);
         }
+        // end of data file interator
+    
+        // Save copy of JSON to local stash
+        {   char local_path[64];
+            snprintf(local_path, sizeof(local_path)-10, ".otdb_local/%016llX", tmpl_fs.uid.u64);
+            if (mkdir(local_path, 0700) == 0) {
+                strcat(local_path, "/data.json");
+                jst_writeout(data, local_path);
+            }
+        }
+
     }
     closedir(dir);
     dir = NULL;
     
-if (gfbhdr != NULL) {
-fprintf(stderr, "GFB BASE = %u\n", gfbhdr[0].base);
-test_dumpbytes(tmpl_fs.base+gfbhdr[0].base, 16, fshdr.gfb.alloc, "GFB DATA");
-}
-if (isshdr != NULL) {
-fprintf(stderr, "ISS BASE = %u\n", isshdr[0].base);
-test_dumpbytes(tmpl_fs.base+isshdr[0].base, 16, fshdr.iss.alloc, "ISS DATA");
-}
-if (isfhdr != NULL) {
-fprintf(stderr, "ISF BASE = %u\n", isfhdr[0].base);
-test_dumpbytes(tmpl_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
-}
+//if (gfbhdr != NULL) {
+//fprintf(stderr, "GFB BASE = %u\n", gfbhdr[0].base);
+//test_dumpbytes(tmpl_fs.base+gfbhdr[0].base, 16, fshdr.gfb.alloc, "GFB DATA");
+//}
+//if (isshdr != NULL) {
+//fprintf(stderr, "ISS BASE = %u\n", isshdr[0].base);
+//test_dumpbytes(tmpl_fs.base+isshdr[0].base, 16, fshdr.iss.alloc, "ISS DATA");
+//}
+//if (isfhdr != NULL) {
+//fprintf(stderr, "ISF BASE = %u\n", isfhdr[0].base);
+//test_dumpbytes(tmpl_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
+//}
     
-    // 6. Save new JSON template to local stash.  For debugging purposes it is
-    //    also written to a local file.
-    dth->tmpl = tmpl;
-    
-    ///@todo open a file for writing.
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
-    
-    
+    // 6. Save new JSON template to local stash.
+    dth->tmpl   = tmpl;
+    open_valid  = true;
+
+
+    // 7. Close and Free all dangling memory elements
     cmd_open_CLOSE:
-    if ((tmpl != NULL) && (tmpl_valid == true)) {
+    if ((tmpl != NULL) && (open_valid == false)) {
         cJSON_Delete(tmpl);
     }
     if (data != NULL)   cJSON_Delete(data);
@@ -804,7 +816,6 @@ fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
     if (dir != NULL)    closedir(dir);
     
     cmd_open_END:
-    fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__); 
     return cmd_jsonout_err((char*)dst, dstmax, (bool)arglist.jsonout_flag, rc, "open");
 }
 

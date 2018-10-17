@@ -351,14 +351,14 @@ int main(int argc, char* argv[]) {
     if (bailout == false) {
         exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)xpath_val, json);
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+
     if (json != NULL) {
         cJSON_Delete(json);
     }
     if (buffer != NULL) {
         free(buffer);
     }
-fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
+
     return exitcode;
 }
 
@@ -435,6 +435,7 @@ int otdb_main(  INTF_Type intf_val,
     pthread_cancel(thr_dterm);
    
     otdb_main_TERM1:
+    DEBUG_PRINTF("Freeing dterm\n");
     dterm_deinit(&dterm_handle);
  
     otdb_main_TERM2:
@@ -442,14 +443,11 @@ int otdb_main(  INTF_Type intf_val,
     otfs_deinit(otfs_handle);
     
     otdb_main_TERM3:
-    DEBUG_PRINTF("-- rlist_mutex & rlist_cond destroyed\n");
+    DEBUG_PRINTF("Destroying threading objects\n");
     pthread_mutex_unlock(&cli.kill_mutex);
-    DEBUG_PRINTF("-- pthread_mutex_unlock(&cli.kill_mutex)\n");
     pthread_mutex_destroy(&cli.kill_mutex);
-    DEBUG_PRINTF("-- pthread_mutex_destroy(&cli.kill_mutex)\n");
     pthread_cond_destroy(&cli.kill_cond);
-    DEBUG_PRINTF("-- cli.kill_mutex & cli.kill_cond destroyed\n");
- 
+    
     // cli.exitcode is set to 0, unless sigint is raised.
     DEBUG_PRINTF("Exiting cleanly and flushing output buffers\n");
     fflush(stdout);

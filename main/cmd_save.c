@@ -88,21 +88,7 @@ static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char**
     return devtest;
 }
 
-static int sub_json_writeout(cJSON* json_obj, const char* filepath) {
-    FILE* fjson;
-    char* output;
 
-    fjson = fopen(filepath, "w");
-    if (fjson != NULL) {
-        output = cJSON_Print(json_obj);
-        fwrite(output, sizeof(char), strlen(output), fjson);
-        fclose(fjson);
-        free(output);
-        return 0;
-    }
-    
-    return -1;
-}
 
 
 
@@ -143,26 +129,25 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     if (rc != 0) {
         goto cmd_save_END;
     }
-    DEBUGPRINT("cmd_open():\n  compress=%d\n  archive=%s\n", 
-            arglist.compress_flag, arglist.archive_path);
+    DEBUGPRINT("cmd_open():\n  compress=%d\n  archive=%s\n", arglist.compress_flag, arglist.archive_path);
     
     /// Make sure that archive path doesn't already exist
     ///@todo error code & reporting for directory access errors (dir already
     /// exists, or any error that is not "dir doesn't exist")
-    rtpath  = stpncpy(pathbuf, arglist.archive_path, sizeof(pathbuf)-(16+32+1));
-    dir     = opendir(pathbuf);
+    rtpath = stpncpy(pathbuf, arglist.archive_path, sizeof(pathbuf)-(16+32+1));
+    DEBUGPRINT("%s %d :: check dir at %s\n", __FUNCTION__, __LINE__, pathbuf);
+    cmd_rmdir(pathbuf);
+    dir = opendir(pathbuf);
     if (dir != NULL) {
         closedir(dir);
         rc = -2;
         goto cmd_save_END;
     }
     if (errno != ENOENT) {
-        closedir(dir);
         rc = -3;
         goto cmd_save_END;
     }
-    closedir(dir);
-    
+     
     /// Try to create a directory at the archive path.
     ///@todo error reporting for inability to create the directory.
     if (mkdir(pathbuf, 0700) != 0) {
@@ -177,17 +162,18 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// Write the saved tmpl to the output folder (pathbuf/_TMPL/tmpl.json)
     strcpy(rtpath, "_TMPL");
+    DEBUGPRINT("%s %d :: create tmpl dir at %s\n", __FUNCTION__, __LINE__, pathbuf);
     if (mkdir(pathbuf, 0700) != 0) {
         rc = -5;
         goto cmd_save_END;
     }
     
     strcpy(rtpath, "_TMPL/tmpl.json");
-    if (sub_json_writeout(dth->tmpl, pathbuf) != 0) {
+    DEBUGPRINT("%s %d :: writing tmpl at %s\n", __FUNCTION__, __LINE__, pathbuf);
+    if (jst_writeout(dth->tmpl, pathbuf) != 0) {
         rc = -6;
         goto cmd_save_END;
     }
-    
     
     /// If there is a list of Device IDs supplied in the command, we use these.
     /// Else, we dump all the devices present in the OTDB.
@@ -195,15 +181,18 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
     else {
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
         devtest = otfs_iterator_start(dth->ext, &devfs, &uid.u8[0]);
     }
     
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
     while (devtest == 0) {
         char* dev_rtpath;
         
         /// Create new directory for the device
         dev_rtpath  = rtpath;
         dev_rtpath += snprintf(rtpath, 17, "%16llX", uid.u64);
+        DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
             rc = -4;
             ///@todo close necessary memory
@@ -225,14 +214,14 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             uint8_t     block_id;
             uint16_t    output_sz;
             content_type_enum c_type;
-
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
             /// Template files must contain metadata to be considered
             meta = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
             if (meta == NULL) {
                 // Skip files without meta objects
                 goto cmd_save_LOOPEND;
             }
-            
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
             /// Grab Block & ID of the file about to be exported, and open it.
             ///@todo make this a function (used in multiple places)
             ///@todo implement way to use non-stock files
@@ -250,13 +239,13 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             if (fp->length < output_sz) {
                 output_sz = fp->length;
             }
-            
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
             /// Create JSON object top level depth, for output
             output = cJSON_CreateObject();
             if (output == NULL) {
                 goto cmd_save_LOOPCLOSE;
             }
-            
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);            
             /// Drill into contents
             c_type = jst_extract_type(meta);
             
@@ -295,18 +284,19 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             /// Struct output option: structured data elements based on template
             else { 
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
                 // In struct type, the "_content" field must be an object.
                 content = cJSON_GetObjectItemCaseSensitive(obj, "_content");
                 if (cJSON_IsObject(content) == false) {
                     goto cmd_save_LOOPFREE;
                 }
-                
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                
                 // If content is empty, don't export this file
                 content = content->child;
                 if (content == NULL) {
                     goto cmd_save_LOOPFREE;
                 }
-                
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                
                 // Loop through the template, export flat items, drill into
                 // nested items.
                 ///@todo make this recursive
@@ -316,12 +306,12 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     typeinfo_enum type;
                     int pos, bits;
                     unsigned long bitpos;
-                    
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                    
                     pos         = jst_extract_pos(content);
                     bits        = jst_extract_typesize(&type, content);
                     nest_output = jst_store_element(output, content->string, &fdat[pos], type, 0, bits);
                     nest_tmpl   = cJSON_GetObjectItemCaseSensitive(content, "_meta");
-                    
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                    
                     // This is a nested data type (namely, a bitmask)
                     // Could be recursive, currently hardcoded for bitmask
                     if (nest_tmpl != NULL) {
@@ -331,7 +321,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                             while (nest_tmpl != NULL) {
                                 bitpos = jst_extract_bitpos(nest_tmpl);
                                 jst_store_element(nest_output, nest_tmpl->string, &fdat[pos], type, bitpos, bits);
-                                
+DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);                                
                                 nest_tmpl = nest_tmpl->next;
                             }
                         }
@@ -343,7 +333,8 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             /// Writeout JSON 
             snprintf(dev_rtpath, 31, "/%s.json", obj->string);
-            if (sub_json_writeout(output, pathbuf) != 0) {
+            DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, dev_rtpath);
+            if (jst_writeout(output, pathbuf) != 0) {
                 goto cmd_save_LOOPCLOSE;
             }
 

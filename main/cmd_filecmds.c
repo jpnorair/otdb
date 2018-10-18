@@ -38,23 +38,25 @@
 
 
 // used by DB manipulation commands
-extern struct arg_str*     devid_man;
-extern struct arg_file*    archive_man;
-extern struct arg_lit*     compress_opt;
+extern struct arg_str*  devid_man;
+extern struct arg_file* archive_man;
+extern struct arg_lit*  compress_opt;
+extern struct arg_lit*  jsonout_opt;
 
 // used by file commands
-extern struct arg_str*     devid_opt;
-extern struct arg_str*     devidlist_opt;
-extern struct arg_str*     fileblock_opt;
-extern struct arg_str*     filerange_opt;
-extern struct arg_int*     fileid_man;
-extern struct arg_str*     fileperms_man;
-extern struct arg_int*     filealloc_man;
-extern struct arg_str*     filedata_man;
+extern struct arg_str*  devid_opt;
+extern struct arg_str*  devidlist_opt;
+extern struct arg_str*  fileblock_opt;
+extern struct arg_str*  filerange_opt;
+extern struct arg_int*  fileid_man;
+extern struct arg_str*  fileperms_man;
+extern struct arg_int*  filealloc_man;
+extern struct arg_str*  filedata_man;
 
 // used by all commands
-extern struct arg_lit*     help_man;
-extern struct arg_end*     end_man;
+extern struct arg_lit*  help_man;
+extern struct arg_end*  end_man;
+
 
 
 
@@ -77,9 +79,9 @@ extern struct arg_end*     end_man;
 int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "del", (const char*)src, inbytes);
@@ -113,9 +115,9 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS | ARGFIELD_FILEALLOC,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, filealloc_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, fileperms_man, filealloc_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "new", (const char*)src, inbytes);
@@ -150,16 +152,16 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     uint8_t*    dat_ptr     = NULL;
     int         span        = 0;
     
-
+DEBUGPRINT("%s %i\n", __FUNCTION__, __LINE__);
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r", (const char*)src, inbytes);
-    
+DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);    
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         vaddr header;
@@ -225,9 +227,9 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     vl_header_t nullhdr     = {0};
     vl_header_t* hdr_ptr    = &nullhdr;
     uint8_t*    dat_ptr     = NULL;
@@ -317,9 +319,9 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "z", (const char*)src, inbytes);
@@ -350,9 +352,9 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, end_man};
     vl_header_t null_header = {0};
     vl_header_t* ptr        = &null_header;
     
@@ -406,9 +408,9 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
 int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "rp", (const char*)src, inbytes);
@@ -451,9 +453,9 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
 int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "w", (const char*)src, inbytes);
@@ -528,9 +530,9 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
 int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEID | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILEID | ARGFIELD_FILEPERMS,
     };
-    void* args[] = {help_man, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
     
     /// Writeperms requires an initialized OTFS handle
     if (dth->ext == NULL) {

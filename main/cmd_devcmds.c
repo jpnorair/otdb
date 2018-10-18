@@ -87,9 +87,9 @@ extern struct arg_end*  end_man;
 int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_DEVICEIDOPT | ARGFIELD_JSONOUT | ARGFIELD_ARCHIVE,
+        .fields = ARGFIELD_DEVICEID | ARGFIELD_JSONOUT | ARGFIELD_ARCHIVE,
     };
-    void* args[] = {help_man, jsonout_opt, devid_opt, archive_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_man, archive_man, end_man};
     
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "dev-new", (const char*)src, inbytes);

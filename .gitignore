@@ -6,6 +6,7 @@
 # Runtime
 /pipes
 /parsers
+/~tmp
 
 #Don't add Build Files
 /build

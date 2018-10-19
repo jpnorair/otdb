@@ -236,20 +236,15 @@ int cmd_jsonout_err(char* dst, size_t dstmax, bool jsonflag, int errcode, const 
 }
 
 
-int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...) {
+int cmd_jsonout_fmt(char** dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...) {
     va_list args;
 
     if (jsonflag) {
         *dstmax -= 1;
-        if (errcode < 0) {
-            errcode = snprintf((char*)dst, *dstmax, "{\"cmd\":\"%s\", \"err\":%d}", "rp", errcode);
-            
-        }
-        else {
-            va_start(args, fmt);
-            errcode = vsnprintf((char*)dst, *dstmax, fmt, args);
-            va_end(args);
-        }
+        va_start(args, fmt);
+        errcode = vsnprintf(*dst, *dstmax, fmt, args);
+        va_end(args);
+        *dst    += errcode;
         *dstmax -= errcode;
     }
     
@@ -257,19 +252,33 @@ int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const
 }
 
 
-int cmd_jsonout_data(char* dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, size_t srcbytes) {
-    if (jsonflag && (srcbytes > 0)) {
+int cmd_jsonout_data(char** dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, uint16_t offset, size_t srcbytes) {
+    if (jsonflag) {
         int psize;
-        *dstmax    -= 1;
-        psize       = snprintf(dst, *dstmax, "\"data\":\"");
-        *dstmax    -= psize;
-        dst        += psize;
-        errcode    += psize;
-        psize       = cmd_hexnwrite(dst, src, srcbytes, *dstmax);
-        *dstmax    -= psize;
-        dst        += psize;
-        errcode    += psize;
-        psize       = snprintf(dst, *dstmax, "\"}");
+        if (srcbytes <= 0) {
+            psize       = snprintf(*dst, *dstmax, "}");
+        }
+        else {
+            *dstmax    -= 1;
+            psize       = snprintf(*dst, *dstmax, ", \"d_offset\":%i", offset);
+            *dstmax    -= psize;
+            *dst       += psize;
+            errcode    += psize;
+            psize       = snprintf(*dst, *dstmax, ", \"d_size\":%zu", srcbytes);
+            *dstmax    -= psize;
+            *dst       += psize;
+            errcode    += psize;
+            psize       = snprintf(*dst, *dstmax, ", \"d_hex\":\"");
+            *dstmax    -= psize;
+            *dst       += psize;
+            errcode    += psize;
+            psize       = cmd_hexnwrite(*dst, src, srcbytes, *dstmax);
+            *dstmax    -= psize;
+            *dst       += psize;
+            errcode    += psize;
+            psize       = snprintf(*dst, *dstmax, "\"}");
+        }
+        *dst       += psize;
         *dstmax    -= psize;
         errcode    += psize;
     }
@@ -358,17 +367,17 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     /// Check for block flag (-b, --block), which specifies fs block
     /// Default is isf.
     if (data->fields & ARGFIELD_BLOCKID) {
-        data->block_id = 3 << 4;      // default: isf
+        data->block_id = VL_ISF_BLOCKID;      // default: isf
         if (fileblock_opt->count > 0) {
             DEBUGPRINT("Block arg encountered: %s\n", fileblock_opt->sval[0]);
             if (strncmp(fileblock_opt->sval[0], "isf", 3) == 0) {
-                data->block_id = 3 << 4;
+                data->block_id = VL_ISF_BLOCKID;
             }
             else if (strncmp(fileblock_opt->sval[0], "iss", 3) == 0) {
-                data->block_id = 2 << 4;
+                data->block_id = VL_ISS_BLOCKID;
             }
             else if (strncmp(fileblock_opt->sval[0], "gfb", 3) == 0) {
-                data->block_id = 1 << 4;
+                data->block_id = VL_GFB_BLOCKID;
             }
             else {
                 out_val = -6;
@@ -433,6 +442,8 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
 //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// Filedata field is converted from bintex and stored to data->filedata
     if (data->fields & ARGFIELD_FILEDATA) {
+        DEBUGPRINT("DataCount=%i, Filedata=%016llX\n", filedata_man->count, (uint64_t)data->filedata);
+    
         if ((filedata_man->count > 0) && (data->filedata != NULL)) {
             DEBUGPRINT("Filedata arg encountered: %s\n", filedata_man->sval[0]);
             data->filedata_size = bintex_ss((unsigned char*)filedata_man->sval[0], 

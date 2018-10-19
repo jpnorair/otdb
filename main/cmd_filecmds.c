@@ -60,7 +60,7 @@ extern struct arg_end*  end_man;
 
 
 
-#if OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -170,12 +170,6 @@ DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);
         DEBUGPRINT("cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
-        span = arglist.range_hi - arglist.range_lo;
-        if (dstmax < span) {
-            rc = -5;
-            goto cmd_read_END;
-        }
-        
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
             if (rc != 0) {
@@ -192,6 +186,10 @@ DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);
         
         fp = vl_open_file(header);
         if (fp != NULL) {
+            span = arglist.range_hi - arglist.range_lo;
+            if (dstmax < span) {
+                span = (int)dstmax;
+            }
             if ((fp->length-arglist.range_lo) <= 0) {
                 span = 0;
             }
@@ -214,10 +212,14 @@ DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);
     }
     
     cmd_read_END:
-    rc = cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "r", 
-                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, ", "r", arglist.block_id, arglist.file_id);
-    
-    rc = cmd_jsonout_data((char*)dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, span);
+    if (rc < 0) {
+        rc = cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "r");
+    }
+    else {
+        rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r", 
+                "{\"cmd\":\"%s\", \"block\":%i, \"id\":%i", "r", arglist.block_id, arglist.file_id);
+        rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
+    }
     
     return rc;
 }
@@ -247,12 +249,6 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         DEBUGPRINT("cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
-        span = arglist.range_hi - arglist.range_lo;
-        if (dstmax < (sizeof(vl_header_t) + span)) {
-            rc = -5;
-            goto cmd_readall_END;
-        }
-        
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
             if (rc != 0) {
@@ -277,6 +273,10 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         
         fp = vl_open_file(header);
         if (fp != NULL) {
+            span = arglist.range_hi - arglist.range_lo;
+            if (dstmax < span) {
+                span = (int)dstmax;
+            }
             if ((fp->length-arglist.range_lo) <= 0) {
                 span = 0;
             }
@@ -303,12 +303,16 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     
     cmd_readall_END:
-    rc = cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "r*", 
-                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u, ", 
+    if (rc < 0) {
+        rc = cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "r*");
+    }
+    else {
+        rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r*", 
+                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u", 
                 "r*", arglist.block_id, arglist.file_id, hdr_ptr->idmod>>8, hdr_ptr->alloc, hdr_ptr->length, hdr_ptr->modtime);
-    
-    rc = cmd_jsonout_data((char*)dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, span);
-                
+        rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
+    }
+              
     return rc;
 }
 
@@ -398,9 +402,16 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     
     cmd_readhdr_END:
-    return cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "rh", 
+    if (rc < 0) {
+        rc = cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "rh");
+    }
+    else {
+        rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rh", 
                 "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
                 "rh", arglist.block_id, arglist.file_id, ptr->idmod>>8, ptr->alloc, ptr->length, ptr->modtime);
+    }
+    
+    return rc;
 }
 
 
@@ -443,9 +454,16 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     }
     
     cmd_readperms_END:
-    return cmd_jsonout_fmt((char*)dst, &dstmax, arglist.jsonout_flag, rc, "rp", 
+    if (rc < 0) {
+        rc = cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "rh");
+    }
+    else {
+        rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rp", 
                 "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
                 "rp", arglist.block_id, arglist.file_id, (int)*dst);
+    }
+    
+    return rc;
 }
 
 
@@ -458,7 +476,9 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
     
     /// Extract arguments into arglist struct
-    rc = cmd_extract_args(&arglist, args, "w", (const char*)src, inbytes);
+    arglist.filedata        = dst;
+    arglist.filedata_size   = (int)dstmax;
+    rc                      = cmd_extract_args(&arglist, args, "w", (const char*)src, inbytes);
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
@@ -511,13 +531,18 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         if (arglist.range_hi > fp->alloc) {
             arglist.range_hi = fp->alloc;
         }
-            
-        fp->length  = arglist.range_hi;
-        span        = arglist.range_hi - arglist.range_lo;
-        if (span > 0) {
-            memcpy(&dptr[arglist.range_lo], src, span);
+        
+        span = arglist.filedata_size;
+        if (span > (arglist.range_hi-arglist.range_lo)) {
+            span = (arglist.range_hi-arglist.range_lo);
         }
-            
+        if (fp->length > (span+arglist.range_lo)) {
+            fp->length = (span+arglist.range_lo);
+        }
+        if (span > 0) {
+            memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
+        }
+        
         ///@todo update the timestamp on this file, and on the device instance.
     }
     
@@ -563,7 +588,10 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
                             (uint8_t)arglist.file_id, 
                             (uint8_t)arglist.file_perms, 
                             NULL    );
-            if (rc != 0) {
+            if (rc == 0) {
+                ///@todo update the timestamp on this file, and on the device instance.
+            }
+            else {
                 rc = -512 - rc;
             }
         }

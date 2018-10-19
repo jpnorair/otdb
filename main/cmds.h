@@ -80,9 +80,9 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
 
 int cmd_jsonout_err(char* dst, size_t dstmax, bool jsonflag, int errcode, const char* cmdname);
 
-int cmd_jsonout_fmt(char* dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...);
+int cmd_jsonout_fmt(char** dst, size_t* dstmax, bool jsonflag, int errcode, const char* cmdname, const char* fmt, ...);
 
-int cmd_jsonout_data(char* dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, size_t srcbytes);
+int cmd_jsonout_data(char** dst, size_t* dstmax, bool jsonflag, int errcode, uint8_t* src, uint16_t offset, size_t srcbytes);
 
 
 int cmd_rmdir(const char *dir);

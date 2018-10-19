@@ -25,8 +25,8 @@
             "batt_rodc_max":{"pos":40, "type":"uint16_t", "def":0},
             "batt_voltage":{"pos":42, "type":"uint16_t", "def":0},
             "batt_temp":{"pos":44, "type":"uint16_t", "def":0},
-            "sys_time_to_empty":{"pos":40, "type":"uint16_t", "def":0},
-            "sys_time_to_full":{"pos":42, "type":"uint16_t", "def":0}
+            "sys_time_to_empty":{"pos":46, "type":"uint16_t", "def":0},
+            "sys_time_to_full":{"pos":48, "type":"uint16_t", "def":0}
         }
     }
 }

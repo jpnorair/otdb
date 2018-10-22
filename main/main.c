@@ -298,6 +298,7 @@ int main(int argc, char* argv[]) {
     if (intf->count != 0) {
         intf_val = sub_intf_cmp(intf->sval[0]);
     }
+ 
     if (socket->count != 0) {
         size_t sz;
         if (socket_val != NULL) {
@@ -305,12 +306,13 @@ int main(int argc, char* argv[]) {
         }
         sz = strlen(socket->filename[0]) + 1;
         socket_val = malloc(sz);
-        if (socket_val) {
+        if (socket_val == NULL) {
             goto main_FINISH;
         }
         memcpy(socket_val, socket->filename[0], sz);
         intf_val = INTF_socket;
     }
+
     if (xpath->count != 0) {
         size_t sz;
         if (xpath_val != NULL) {
@@ -318,11 +320,12 @@ int main(int argc, char* argv[]) {
         }
         sz = strlen(xpath->filename[0]) + 1;
         xpath_val = malloc(sz);
-        if (xpath_val) {
+        if (xpath_val == NULL) {
             goto main_FINISH;
         }
         memcpy(xpath_val, xpath->filename[0], sz);
     }
+
     if (verbose->count != 0) {
         verbose_val = true;
     }
@@ -379,6 +382,8 @@ int otdb_main(  INTF_Type intf_val,
     void*       otfs_handle;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
+    
+    DEBUG_PRINTF("otdb_main()\n  intf_val=%i\n  socket=%s\n  xpath=%s\n", intf_val, socket, xpath);
     
     /// Initialize Thread Mutexes & Conds.  This is finnicky.
     assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );

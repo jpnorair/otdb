@@ -20,6 +20,7 @@
 #include "cmdhistory.h"
 #include "cmdsearch.h"
 #include "dterm.h"
+#include "debug.h"
 
 // Local Libraries/Headers
 #include <bintex.h>
@@ -237,6 +238,7 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
             perror("Unable to create a server socket\n");
             goto dterm_open_END;
         }
+        DEBUG_PRINTF("Socket created on fd=%i\n", dt->fd_in);
         
         ///@todo make sure this unlinking stage is OK.
         ///      unsure how to unbind the socket when server is finished.
@@ -245,16 +247,19 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         strncpy(addr.sun_path, path, sizeof(addr.sun_path)-1);
         unlink(path);
         
+        DEBUG_PRINTF("Binding Socket fd=%i to %s\n", dt->fd_in, path);
         if (bind(dt->fd_in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             perror("Unable to bind server socket");
             goto dterm_open_END;
         }
         
+        DEBUG_PRINTF("Listening on Socket fd=%i\n", dt->fd_in);
         if (listen(dt->fd_in, 5) == -1) {
             perror("Unable to enter listen on server socket");
             goto dterm_open_END;
         }
         
+        DEBUG_PRINTF("Socket UP\n");
         retcode     = 0;
         dt_thread   = &dterm_socketer;
     }
@@ -403,7 +408,7 @@ void* dterm_socketer(void* args) {
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
     dterm_handle_t* dth     = (dterm_handle_t*)args;
-    int             loadlen = 0;
+    int             loadlen;
     char*           loadbuf = dth->dt->linebuf;
     
     // Initial state = off
@@ -414,34 +419,44 @@ void* dterm_socketer(void* args) {
     ///       client, but add mutex in the sub-thread in order to prevent 
     ///       concurrent access to the underlying filesystem.
     while (1) {
-        int linelen;
-        
+        DEBUG_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
         dth->dt->fd_out = accept(dth->dt->fd_in, NULL, NULL);
         if (dth->dt->fd_out < 0) {
             perror("Server Socket accept() failed");
             continue;
         }
-
-        loadlen = (int)read(dth->dt->fd_in, dth->dt->linebuf, LINESIZE);
-        loadbuf = dth->dt->linebuf;
-        sub_str_sanitize(loadbuf, (size_t)loadlen);
-        
-        do {
-            // Burn whitespace ahead of command.
-            while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
-            linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
             
-            // Process the line-input command
-            sub_proc_lineinput(dth, loadbuf, linelen);
+        ///@todo could spawn a thread here and use mutexes to block concurrent access
+        while (1) { 
+            int linelen;
             
-            // +1 eats the terminator
-            loadlen -= (linelen + 1);
-            loadbuf += (linelen + 1);
-        
-        } while (loadlen > 0);
-        
-        // After servicing the client socket, it is important to close it.
-        close(dth->dt->fd_out);
+            DEBUG_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
+            loadlen = (int)read(dth->dt->fd_out, loadbuf, LINESIZE);
+            if (loadlen > 0) {
+                sub_str_sanitize(loadbuf, (size_t)loadlen);
+                
+                DEBUG_PRINTF("Socket Read (%i bytes): %.*s\n", loadlen, loadlen, loadbuf);
+                do {
+                    // Burn whitespace ahead of command.
+                    while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+                    linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+                    
+                    // Process the line-input command
+                    DEBUG_PRINTF("Socket Line (%i bytes): %.*s\n", linelen, linelen, loadbuf);
+                    sub_proc_lineinput(dth, loadbuf, linelen);
+                    
+                    // +1 eats the terminator
+                    loadlen -= (linelen + 1);
+                    loadbuf += (linelen + 1);
+                
+                } while (loadlen > 0);
+            }
+            else {
+                // After servicing the client socket, it is important to close it.
+                close(dth->dt->fd_out);
+                break;
+            }
+        }
     }
     
     /// This code should never occur, given the while(1) loop.
@@ -471,8 +486,7 @@ void* dterm_piper(void* args) {
         
         if (loadlen <= 0) {
             dterm_reset(dth->dt);
-            loadlen = (int)read(dth->dt->fd_in, dth->dt->linebuf, 1024);
-            loadbuf = dth->dt->linebuf;
+            loadlen = (int)read(dth->dt->fd_in, loadbuf, 1024);
             sub_str_sanitize(loadbuf, (size_t)loadlen);
         }
         

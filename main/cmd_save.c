@@ -68,7 +68,7 @@ extern struct arg_end*  end_man;
     }                                       \
 } while(0)
 
-#if OTDB_FEATURE_DEBUG
+#if 0 // OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else

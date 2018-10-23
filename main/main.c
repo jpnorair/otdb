@@ -93,9 +93,9 @@ cli_struct cli;
   * management.
   */
   
-static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* socket, char* xpath);
+static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* socket, char* archive, char* xpath);
 
-static int otdb_main(INTF_Type intf_val, const char* socket, const char* xpath, cJSON* params); 
+static int otdb_main(INTF_Type intf_val, const char* socket, const char* archive, const char* xpath, cJSON* params); 
 
 
 
@@ -186,12 +186,13 @@ int main(int argc, char* argv[]) {
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
     struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
     struct arg_file *socket  = arg_file0("S","socket","path/addr",      "Socket path/address to use for otdb daemon");
+    struct arg_file *archive = arg_file0("A","archive","path",          "Path to archive file/directory to open at startup");
     struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",    "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
     struct arg_end  *end     = arg_end(10);
     
-    void* argtable[] = { config, verbose, debug, intf, socket, xpath, help, version, end };
+    void* argtable[] = { config, verbose, debug, intf, socket, archive, xpath, help, version, end };
     const char* progname = OTDB_PARAM(NAME);
     int nerrors;
     bool bailout        = true;
@@ -199,6 +200,7 @@ int main(int argc, char* argv[]) {
     
     char* xpath_val     = NULL;
     char* socket_val    = NULL;
+    char* archive_val   = NULL;
     cJSON* json         = NULL;
     char* buffer        = NULL;
     
@@ -288,7 +290,7 @@ int main(int argc, char* argv[]) {
             goto main_FINISH;
         }
         {   int tmp_intf;
-            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, xpath_val);
+            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, archive_val, xpath_val);
             intf_val = tmp_intf;
         }
     }
@@ -312,7 +314,20 @@ int main(int argc, char* argv[]) {
         memcpy(socket_val, socket->filename[0], sz);
         intf_val = INTF_socket;
     }
-
+    
+    if (archive->count != 0) {
+        size_t sz;
+        if (archive_val != NULL) {
+            free(archive_val);
+        }
+        sz = strlen(archive->filename[0]) + 1;
+        archive_val = malloc(sz);
+        if (archive_val == NULL) {
+            goto main_FINISH;
+        }
+        memcpy(archive_val, archive->filename[0], sz);
+    }
+    
     if (xpath->count != 0) {
         size_t sz;
         if (xpath_val != NULL) {
@@ -352,7 +367,7 @@ int main(int argc, char* argv[]) {
     arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
     
     if (bailout == false) {
-        exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)xpath_val, json);
+        exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)archive_val, (const char*)xpath_val, json);
     }
 
     if (json != NULL) {
@@ -360,6 +375,15 @@ int main(int argc, char* argv[]) {
     }
     if (buffer != NULL) {
         free(buffer);
+    }
+    if (socket_val != NULL) {
+        free(socket_val);
+    }
+    if (archive_val != NULL) {
+        free(archive_val);
+    }
+    if (xpath_val != NULL) {
+        free(xpath_val);
     }
 
     return exitcode;
@@ -372,6 +396,7 @@ int main(int argc, char* argv[]) {
 /// the dterm side, and one for the serial I/O.
 int otdb_main(  INTF_Type intf_val,
                 const char* socket,
+                const char* archive,
                 const char* xpath,
                 cJSON* params   ) {    
     
@@ -434,9 +459,25 @@ int otdb_main(  INTF_Type intf_val,
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished creating theads\n");
    
-    /// Threads are now running.  The rest of the main() code, below, is
-    /// blocked by pthread_cond_wait() until the kill_cond is sent by one of 
-    /// the child threads.  This will cause the program to quit.
+    /// Threads are now running.  
+    /// If there is an archive supplied as argument, open it.
+    if (archive != NULL) {
+        uint8_t dstbuf[80];
+        int     srcsize;
+        int     cmd_rc;
+        srcsize = (int)strlen(archive);
+        cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
+        if (cmd_rc != 0) {
+            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
+        }
+        else {
+            fprintf(stderr, "Archive \"%s\" opened.\n", archive);
+        }
+    }
+    
+    /// The rest of the main() code, below, is blocked by pthread_cond_wait() 
+    /// until the kill_cond is sent by one of the child threads.  This will 
+    /// cause the program to quit.
     pthread_mutex_lock(&cli.kill_mutex);
     pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
     
@@ -467,7 +508,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* xpath) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* archive, char* xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -526,6 +567,7 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
     
     GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
     GET_STRING_ARG(socket, "socket");
+    GET_STRING_ARG(archive, "archive");
     GET_STRING_ARG(xpath, "xpath");
     
     /// 2. Systematically get all of the individual arguments

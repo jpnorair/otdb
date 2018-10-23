@@ -1,0 +1,13 @@
+{
+    "device_features": {
+        "uid":"00000000DEADBEEF",
+        "settings":0,
+        "maxframe":255,
+        "maxpacket":1,
+        "macmodes":"0001",
+        "nlsmodes":"0000",
+        "hwversion":1,
+        "fwversion":1,
+        "blversion":1
+    }
+}

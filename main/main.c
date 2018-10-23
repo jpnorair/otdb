@@ -468,10 +468,10 @@ int otdb_main(  INTF_Type intf_val,
         srcsize = (int)strlen(archive);
         cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
         if (cmd_rc != 0) {
-            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
+            VERBOSE_PRINTF("Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
         }
         else {
-            fprintf(stderr, "Archive \"%s\" opened.\n", archive);
+            VERBOSE_PRINTF("Archive \"%s\" opened.\n", archive);
         }
     }
     
@@ -503,6 +503,7 @@ int otdb_main(  INTF_Type intf_val,
     fflush(stdout);
     fflush(stderr);
     
+    VERBOSE_PRINTF("otdb exiting (%i)\n", cli.exitcode);
     return cli.exitcode;
 }
 

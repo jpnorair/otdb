@@ -1,0 +1,29 @@
+{
+    "pwrdata_inv": {
+        "ac_current_l1":0,
+        "ac_current_l2":0,
+        "ac_voltage_l1":0,
+        "ac_voltage_l2":0,
+        "ac_phase_l1":0,
+        "ac_phase_l2":0,
+        "pwr_active_l1":0,
+        "pwr_active_l2":0,
+        "pwr_reactive_l1":0,
+        "pwr_reactive_l2":0,
+        "hw_temp_inv1":0,
+        "hw_temp_inv2":0,
+        "hw_dcdc_temp":0,
+        "sys_grid_dir":0,
+        "sys_opstate":0,
+        "batt_cr":0,
+        "batt_soc":0,
+        "batt_soh":0,
+        "batt_energy":0,
+        "batt_roc_max":0,
+        "batt_rodc_max":0,
+        "batt_voltage":0,
+        "batt_temp":0,
+        "sys_time_to_empty":0,
+        "sys_time_to_full":0
+}
+}

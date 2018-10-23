@@ -238,7 +238,7 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
             perror("Unable to create a server socket\n");
             goto dterm_open_END;
         }
-        DEBUG_PRINTF("Socket created on fd=%i\n", dt->fd_in);
+        VERBOSE_PRINTF("Socket created on fd=%i\n", dt->fd_in);
         
         ///@todo make sure this unlinking stage is OK.
         ///      unsure how to unbind the socket when server is finished.
@@ -247,19 +247,18 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         strncpy(addr.sun_path, path, sizeof(addr.sun_path)-1);
         unlink(path);
         
-        DEBUG_PRINTF("Binding Socket fd=%i to %s\n", dt->fd_in, path);
         if (bind(dt->fd_in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             perror("Unable to bind server socket");
             goto dterm_open_END;
         }
+        VERBOSE_PRINTF("Binding Socket fd=%i to %s\n", dt->fd_in, path);
         
-        DEBUG_PRINTF("Listening on Socket fd=%i\n", dt->fd_in);
         if (listen(dt->fd_in, 5) == -1) {
             perror("Unable to enter listen on server socket");
             goto dterm_open_END;
         }
+        VERBOSE_PRINTF("Listening on Socket fd=%i\n", dt->fd_in);
         
-        DEBUG_PRINTF("Socket UP\n");
         retcode     = 0;
         dt_thread   = &dterm_socketer;
     }
@@ -336,6 +335,23 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     int         bytesout = 0;
     
     const cmdtab_item_t* cmdptr;
+    cJSON*      cmdobj;
+    
+    /// The input can be JSON of the form:
+    /// { "type":"${cmd_type}", data:"${cmd_data}" }
+    /// where we only truly care about the data object, which must be a string.
+    cmdobj  = cJSON_Parse(loadbuf);
+    if (cJSON_IsObject(cmdobj)) {
+        cJSON* dataobj;
+        dataobj = cJSON_GetObjectItemCaseSensitive(cmdobj, "data");
+        if (cJSON_IsString(dataobj)) {
+            VERBOSE_PRINTF("JSON Request (%i bytes): %.*s\n", linelen, linelen, loadbuf);
+            loadbuf = dataobj->valuestring;
+        }
+        else {
+            goto sub_proc_lineinput_FREE;
+        }
+    }
     
     // determine length until newline, or null.
     // then search/get command in list.
@@ -347,8 +363,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     //fflush(stderr);
     // Test only
     
-    ///@todo this is the same block of code used in prompter.  It could be
-    ///      consolidated into a subroutine called by both.
     if (cmdptr == NULL) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
@@ -392,9 +406,16 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             //test_dumpbytes(protocol_buf, bytesout, "TX Packet Add");
             // Test only
             
+            if (cJSON_IsObject(cmdobj)) {
+                VERBOSE_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)protocol_buf);
+            }
+            
             write(dth->dt->fd_out, (char*)protocol_buf, bytesout);
         }
     }
+    
+    sub_proc_lineinput_FREE:
+    cJSON_Delete(cmdobj);
     
     return bytesout;
 }
@@ -419,7 +440,7 @@ void* dterm_socketer(void* args) {
     ///       client, but add mutex in the sub-thread in order to prevent 
     ///       concurrent access to the underlying filesystem.
     while (1) {
-        DEBUG_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
+        VERBOSE_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
         dth->dt->fd_out = accept(dth->dt->fd_in, NULL, NULL);
         if (dth->dt->fd_out < 0) {
             perror("Server Socket accept() failed");
@@ -430,21 +451,21 @@ void* dterm_socketer(void* args) {
         while (1) { 
             int linelen;
             
-            DEBUG_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
+            VERBOSE_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
             loadlen = (int)read(dth->dt->fd_out, loadbuf, LINESIZE);
             if (loadlen > 0) {
                 sub_str_sanitize(loadbuf, (size_t)loadlen);
                 
-                DEBUG_PRINTF("Socket Read (%i bytes): %.*s\n", loadlen, loadlen, loadbuf);
                 do {
+                    int dataout;
+                
                     // Burn whitespace ahead of command.
                     while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
                     linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
                     
                     // Process the line-input command
-                    DEBUG_PRINTF("Socket Line (%i bytes): %.*s\n", linelen, linelen, loadbuf);
-                    sub_proc_lineinput(dth, loadbuf, linelen);
-                    
+                    dataout = sub_proc_lineinput(dth, loadbuf, linelen);
+
                     // +1 eats the terminator
                     loadlen -= (linelen + 1);
                     loadbuf += (linelen + 1);

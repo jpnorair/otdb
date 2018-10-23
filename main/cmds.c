@@ -79,7 +79,7 @@ struct arg_end*     end_man;
     }                                       \
 } while(0)
 
-#if OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -230,7 +230,7 @@ int cmd_hexnwrite(char* dst, const uint8_t* src, size_t src_bytes, size_t dst_ma
 
 int cmd_jsonout_err(char* dst, size_t dstmax, bool jsonflag, int errcode, const char* cmdname) {
     if (jsonflag) {
-        errcode = snprintf(dst, dstmax-1, "{\"cmd\":\"%s\", \"err\":%d}", cmdname, errcode);
+        errcode = snprintf(dst, dstmax-1, "{\"type\":\"otdb\", \"cmd\":\"%s\", \"err\":%d}", cmdname, errcode);
     }
     return errcode;
 }
@@ -240,12 +240,18 @@ int cmd_jsonout_fmt(char** dst, size_t* dstmax, bool jsonflag, int errcode, cons
     va_list args;
 
     if (jsonflag) {
+        int psize;
         *dstmax -= 1;
+        psize    = snprintf(*dst, *dstmax, "{\"type\":\"otdb\", ");
+        *dst    += psize;
+        *dstmax -= psize;
+        errcode += psize;
         va_start(args, fmt);
-        errcode = vsnprintf(*dst, *dstmax, fmt, args);
+        psize    = vsnprintf(*dst, *dstmax, fmt, args);
         va_end(args);
-        *dst    += errcode;
-        *dstmax -= errcode;
+        *dst    += psize;
+        *dstmax -= psize;
+        errcode += psize;
     }
     
     return errcode;

@@ -71,7 +71,7 @@ extern struct arg_end*  end_man;
     }                                       \
 } while(0)
 
-#if 0 //OTDB_FEATURE_DEBUG
+#if OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -100,6 +100,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     // OTFS data tables and handles
     otfs_t tmpl_fs;
+    otfs_t data_fs;
     vlFSHEADER fshdr;
     vl_header_t *gfbhdr, *isshdr, *isfhdr;
     
@@ -195,6 +196,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     closedir(dir);
     dir = NULL;
 //{ char* fbuf = cJSON_Print(tmpl);  fputs(fbuf, stderr);  free(fbuf); }
+
+
+    ///@todo Delete existing open Database
+    
+
 
     // 3. Big Process of creating the default OTFS data structure based on JSON
     // input files
@@ -561,13 +567,21 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // Name of directory should be a pure hex number: skip others
         endptr = NULL;
-        tmpl_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
+        data_fs.uid.u64 = strtoull(ent->d_name, &endptr, 16);
         if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
             continue;
         }
         
+        data_fs.alloc   = tmpl_fs.alloc;
+        data_fs.base    = malloc(tmpl_fs.alloc);
+        if (data_fs.base == NULL) {
+            ///@todo align error codes.
+            rc = -10;
+            goto cmd_open_CLOSE;
+        }
+        
         // Create new FS based on device id and template FS
-        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64); 
+        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64);
         rc = otfs_new(dth->ext, &tmpl_fs);
         if (rc != 0) {
             ///@todo adjusted error code: FS partially created
@@ -617,6 +631,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         //}
         
         // Write the default device ID to the standardized locations.
+        // This may be overwritten later, by supplied JSON data.
         // - UID64 to ISF1 0:8
         // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
         fp = ISF_open_su(0);
@@ -668,13 +683,13 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             bool stock;
 
             fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
-            DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
+            //DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
             if (cJSON_IsObject(fileobj) == false) {
                 continue;
             }
             
             obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
-            DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+            //DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
             if (cJSON_IsObject(obj) == false) {
                 continue;
             }
@@ -685,7 +700,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             stock   = jst_extract_stock(obj);
             obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
             
-            DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+            //DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
             if (cJSON_IsObject(obj) == false) {
                 continue;
             }                  
@@ -695,9 +710,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             fdat = vl_memptr(fp);
-            DEBUGPRINT("%s %d :: File Data at: %016llX\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
-            DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
-            DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
+            //DEBUGPRINT("%s %d :: File Data at: %016llX\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
+            //DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
+            //DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
             if (fdat == NULL) {
                 vl_close(fp);
                 continue;
@@ -707,12 +722,12 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             if (ctype == CONTENT_hex) {
-                DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
+                //DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
                 fp->length = cmd_hexnread(fdat, dataobj->valuestring, (size_t)max);
             }
             else if (ctype == CONTENT_array) {
                 int items;
-                DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
+                //DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
                 items = cJSON_GetArraySize(dataobj);
                 if (items > max) {
                     items = max;
@@ -732,7 +747,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     cJSON*  t_content;
                     int     bytepos;
                     int     bytesout;
-                    DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
+                    //DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
                     
                     // Make sure object is in both data and tmpl.
                     // If object yields another object, we need to drill 

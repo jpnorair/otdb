@@ -404,7 +404,7 @@ int otdb_main(  INTF_Type intf_val,
     dterm_handle_t dterm_handle;
     
     // Child Threads (1)
-    void*       otfs_handle;
+    void*       otfs_handle = NULL;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
@@ -420,10 +420,10 @@ int otdb_main(  INTF_Type intf_val,
     cmd_init(NULL, xpath);
    
     /// Initialize OTFS
-    if (otfs_init(&otfs_handle) < 0) {
-        cli.exitcode = -1;
-        goto otdb_main_TERM3;
-    }
+    //if (otfs_init(&otfs_handle) < 0) {
+    //    cli.exitcode = -1;
+    //    goto otdb_main_TERM3;
+    //}
    
     /// Initialize DTerm data objects
     if (dterm_init(&dterm_handle, intf_val, otfs_handle) != 0) {

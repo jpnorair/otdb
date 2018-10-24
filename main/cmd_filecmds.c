@@ -217,7 +217,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r", 
-                "\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%i, \"id\":%i", "r", 
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%i, \"id\":%i", "r", 
                 arglist.devid, arglist.block_id, arglist.file_id);
         rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
     }
@@ -309,7 +309,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r*", 
-                "\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u", 
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u", 
                 "r*", arglist.devid, arglist.block_id, arglist.file_id, hdr_ptr->idmod>>8, hdr_ptr->alloc, hdr_ptr->length, hdr_ptr->modtime);
         rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
     }
@@ -408,7 +408,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rh", 
-                "\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
                 "rh", arglist.devid, arglist.block_id, arglist.file_id, ptr->idmod>>8, ptr->alloc, ptr->length, ptr->modtime);
     }
     
@@ -460,7 +460,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rp", 
-                "\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
                 "rp", arglist.devid, arglist.block_id, arglist.file_id, (int)*dst);
     }
     

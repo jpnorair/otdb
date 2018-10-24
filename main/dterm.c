@@ -332,10 +332,13 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     uint8_t     protocol_buf[1024];
     char        cmdname[32];
     int         cmdlen;
-    int         bytesout = 0;
-    
-    const cmdtab_item_t* cmdptr;
     cJSON*      cmdobj;
+    uint8_t*    cursor  = protocol_buf;
+    int         bufmax  = sizeof(protocol_buf);
+    int         bytesout = 0;
+    const cmdtab_item_t* cmdptr;
+    
+    DEBUG_PRINTF("raw input (%i bytes) %.*s\n", linelen, linelen, loadbuf);
     
     /// The input can be JSON of the form:
     /// { "type":"${cmd_type}", data:"${cmd_data}" }
@@ -343,10 +346,17 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     cmdobj  = cJSON_Parse(loadbuf);
     if (cJSON_IsObject(cmdobj)) {
         cJSON* dataobj;
+        cJSON* typeobj;
+        typeobj = cJSON_GetObjectItemCaseSensitive(cmdobj, "type");
         dataobj = cJSON_GetObjectItemCaseSensitive(cmdobj, "data");
-        if (cJSON_IsString(dataobj)) {
+        
+        if (cJSON_IsString(typeobj) && cJSON_IsString(dataobj)) {
+            int hdr_sz;
             VERBOSE_PRINTF("JSON Request (%i bytes): %.*s\n", linelen, linelen, loadbuf);
             loadbuf = dataobj->valuestring;
+            hdr_sz  = snprintf((char*)cursor, bufmax-1, "{\"type\":\"%s\", \"data\":", typeobj->valuestring);
+            cursor += hdr_sz;
+            bufmax -= hdr_sz;
         }
         else {
             goto sub_proc_lineinput_FREE;
@@ -368,7 +378,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///      possibly by using pi or ci (sign reversing)
         if (linelen > 0) {
             //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", cmdname);
-            bytesout = snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+            bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", 
                         cmdname);
             dterm_puts(dth->dt, (char*)protocol_buf);
@@ -377,11 +387,9 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     else {
         int bytesin = linelen;
 
-        ///@todo final arg is max size of protocol_buf.  It should be changed
-        ///      to a non constant.
         //fprintf(stderr, "bytesin=%d\nloadlen=%d\n", bytesin, (char*)loadbuf);
         //fflush(stderr);
-        bytesout = cmd_run(cmdptr, dth, protocol_buf, &bytesin, (uint8_t*)(loadbuf+cmdlen), 1024);
+        bytesout = cmd_run(cmdptr, dth, cursor, &bytesin, (uint8_t*)(loadbuf+cmdlen), bufmax);
         
         // Test only
         //fprintf(stderr, "\noutput\nloadbuf=%s\nloadlen=%d\n", loadbuf, loadlen);
@@ -392,7 +400,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
             //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", cmdname, bytesout);
-            bytesout = snprintf(   (char*)protocol_buf, sizeof(protocol_buf)-1, 
+            bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", 
                         cmdname, bytesout);
             dterm_puts(dth->dt, (char*)protocol_buf);
@@ -407,8 +415,14 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             // Test only
             
             if (cJSON_IsObject(cmdobj)) {
-                VERBOSE_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)protocol_buf);
+                VERBOSE_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
+                cursor += bytesout;
+                bufmax -= bytesout;
+                cursor  = (uint8_t*)stpncpy((char*)cursor, "}\f\0", bufmax);
+                bytesout= (int)(cursor - protocol_buf);
             }
+            
+            DEBUG_PRINTF("raw output (%i bytes) %.*s\n", bytesout, bytesout, protocol_buf);
             
             write(dth->dt->fd_out, (char*)protocol_buf, bytesout);
         }

@@ -241,17 +241,12 @@ int cmd_jsonout_fmt(char** dst, size_t* dstmax, bool jsonflag, int errcode, cons
 
     if (jsonflag) {
         int psize;
-        *dstmax -= 1;
-        psize    = snprintf(*dst, *dstmax, "{\"type\":\"otdb\", ");
-        *dst    += psize;
-        *dstmax -= psize;
-        errcode += psize;
         va_start(args, fmt);
-        psize    = vsnprintf(*dst, *dstmax, fmt, args);
+        psize    = vsnprintf(*dst, *dstmax-1, fmt, args);
         va_end(args);
         *dst    += psize;
         *dstmax -= psize;
-        errcode += psize;
+        errcode  = psize;
     }
     
     return errcode;
@@ -262,27 +257,26 @@ int cmd_jsonout_data(char** dst, size_t* dstmax, bool jsonflag, int errcode, uin
     if (jsonflag) {
         int psize;
         if (srcbytes <= 0) {
-            psize       = snprintf(*dst, *dstmax, "}");
+            psize       = snprintf(*dst, *dstmax-1, "}");
         }
         else {
-            *dstmax    -= 1;
-            psize       = snprintf(*dst, *dstmax, ", \"d_offset\":%i", offset);
+            psize       = snprintf(*dst, *dstmax-1, ", \"d_offset\":%i", offset);
             *dstmax    -= psize;
             *dst       += psize;
             errcode    += psize;
-            psize       = snprintf(*dst, *dstmax, ", \"d_size\":%zu", srcbytes);
+            psize       = snprintf(*dst, *dstmax-1, ", \"d_size\":%zu", srcbytes);
             *dstmax    -= psize;
             *dst       += psize;
             errcode    += psize;
-            psize       = snprintf(*dst, *dstmax, ", \"d_hex\":\"");
+            psize       = snprintf(*dst, *dstmax-1, ", \"d_hex\":\"");
             *dstmax    -= psize;
             *dst       += psize;
             errcode    += psize;
-            psize       = cmd_hexnwrite(*dst, src, srcbytes, *dstmax);
+            psize       = cmd_hexnwrite(*dst, src, srcbytes, *dstmax-1);
             *dstmax    -= psize;
             *dst       += psize;
             errcode    += psize;
-            psize       = snprintf(*dst, *dstmax, "\"}");
+            psize       = snprintf(*dst, *dstmax-1, "\"}");
         }
         *dst       += psize;
         *dstmax    -= psize;

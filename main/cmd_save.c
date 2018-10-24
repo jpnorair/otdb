@@ -68,7 +68,7 @@ extern struct arg_end*  end_man;
     }                                       \
 } while(0)
 
-#if 0 // OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -128,6 +128,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "save", (const char*)src, inbytes);
     if (rc != 0) {
+        rc = -2;
         goto cmd_save_END;
     }
     DEBUGPRINT("cmd_open():\n  compress=%d\n  archive=%s\n", arglist.compress_flag, arglist.archive_path);
@@ -141,18 +142,18 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     dir = opendir(pathbuf);
     if (dir != NULL) {
         closedir(dir);
-        rc = -2;
+        rc = -3;
         goto cmd_save_END;
     }
     if (errno != ENOENT) {
-        rc = -3;
+        rc = -4;
         goto cmd_save_END;
     }
      
     /// Try to create a directory at the archive path.
     ///@todo error reporting for inability to create the directory.
     if (mkdir(pathbuf, 0700) != 0) {
-        rc = -4;
+        rc = -5;
         goto cmd_save_END;
     }
     
@@ -165,14 +166,14 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     strcpy(rtpath, "_TMPL");
     DEBUGPRINT("%s %d :: create tmpl dir at %s\n", __FUNCTION__, __LINE__, pathbuf);
     if (mkdir(pathbuf, 0700) != 0) {
-        rc = -5;
+        rc = -6;
         goto cmd_save_END;
     }
     
     strcpy(rtpath, "_TMPL/tmpl.json");
     DEBUGPRINT("%s %d :: writing tmpl at %s\n", __FUNCTION__, __LINE__, pathbuf);
     if (jst_writeout(dth->tmpl, pathbuf) != 0) {
-        rc = -6;
+        rc = -7;
         goto cmd_save_END;
     }
     
@@ -186,14 +187,14 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
 
     while (devtest == 0) {
-        char* dev_rtpath;
+        char*   dev_rtpath;
         
         /// Create new directory for the device
         dev_rtpath  = rtpath;
         dev_rtpath += snprintf(rtpath, 17, "%016llX", uid.u64);
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
-            rc = -4;
+            rc = -8;
             ///@todo close necessary memory
             goto cmd_save_END;
         }
@@ -205,8 +206,9 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         while (obj != NULL) {
             cJSON*      meta;
             cJSON*      content;
-            cJSON*      output;
             cJSON*      cursor;
+            cJSON*      output = NULL;
+            cJSON*      head = NULL;
             vlFILE*     fp;
             uint8_t*    fdat;
             uint8_t     file_id;
@@ -240,9 +242,14 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
           
             /// Create JSON object top level depth, for output
-            output = cJSON_CreateObject();
-            if (output == NULL) {
+            /// output
+            head = cJSON_CreateObject();
+            if (head == NULL) {
                 goto cmd_save_LOOPCLOSE;
+            }
+            output = cJSON_AddObjectToObject(head, obj->string);
+            if (head == NULL) {
+                goto cmd_save_LOOPFREE;
             }
          
             /// Drill into contents
@@ -331,12 +338,12 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Writeout JSON 
             snprintf(dev_rtpath, 31, "/%s.json", obj->string);
             DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, &dev_rtpath[1]);
-            if (jst_writeout(output, pathbuf) != 0) {
+            if (jst_writeout(head, pathbuf) != 0) {
                 goto cmd_save_LOOPCLOSE;
             }
 
             cmd_save_LOOPFREE:
-            cJSON_Delete(output);
+            cJSON_Delete(head);
             
             cmd_save_LOOPCLOSE:
             vl_close(fp);

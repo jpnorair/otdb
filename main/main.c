@@ -490,7 +490,9 @@ int otdb_main(  INTF_Type intf_val,
  
     otdb_main_TERM2:
     DEBUG_PRINTF("Freeing OTFS\n");
-    otfs_deinit(otfs_handle);
+    if (otfs_handle != NULL) {
+        otfs_deinit(otfs_handle, true);
+    }
     
     otdb_main_TERM3:
     DEBUG_PRINTF("Destroying threading objects\n");

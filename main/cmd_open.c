@@ -21,6 +21,7 @@
 #include "otdb_cfg.h"
 #include "json_tools.h"
 #include "test.h"
+#include "debug.h"
 
 // HB Headers/Libraries
 #include <bintex.h>
@@ -71,7 +72,7 @@ extern struct arg_end*  end_man;
     }                                       \
 } while(0)
 
-#if OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -111,11 +112,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     void* args[] = {help_man, jsonout_opt, archive_man, end_man};
     
     ///@todo do input checks!!!!!!
-  
-    /// Make sure OTDB is available
-    if (dth->ext == NULL) {
-        return -1;
-    }
 
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "open", (const char*)src, inbytes);
@@ -198,17 +194,14 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 //{ char* fbuf = cJSON_Print(tmpl);  fputs(fbuf, stderr);  free(fbuf); }
 
 
-    ///@todo Delete existing open Database
-    
-
-
     // 3. Big Process of creating the default OTFS data structure based on JSON
     // input files
+
+    // Template FS for defaults
     tmpl_fs.alloc   = 0;
     tmpl_fs.base    = NULL;
     tmpl_fs.uid.u64 = 0;
     memset(&fshdr, 0, sizeof(vlFSHEADER));
-    
     if (tmpl == NULL) {
         // No template found
         rc = -2;
@@ -229,14 +222,14 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             // ID: mandatory
             elem = cJSON_GetObjectItemCaseSensitive(meta, "id");
             if (cJSON_IsNumber(elem) == false) {
-                rc = -512 - 1;
+                rc = -3;
                 goto cmd_open_CLOSE;
             }
             
             // Size: mandatory
             elem = cJSON_GetObjectItemCaseSensitive(meta, "size");
             if (cJSON_IsNumber(elem) == false) {
-                rc = -512 - 2;
+                rc = -4;
                 goto cmd_open_CLOSE;
             }
             filesize = elem->valueint;
@@ -305,8 +298,23 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     if (dth->tmpl != NULL) {
         cJSON_Delete(dth->tmpl);
     }
-    dth->tmpl   = tmpl;
+    dth->tmpl = tmpl;
     
+    // Delete existing open Database, and create a new one
+    if (dth->ext != NULL) {
+        rc = otfs_deinit(dth->ext, true);
+        if (rc != 0) {
+            rc = ERRCODE(otfs, otfs_deinit, rc);
+            goto cmd_open_CLOSE;
+        }
+    }
+    rc = otfs_init(&dth->ext);
+    if (rc != 0) {
+        rc = ERRCODE(otfs, otfs_init, rc);
+        goto cmd_open_CLOSE;
+    }
+    
+    // Remove scratchpad directory and all contents
     cmd_rmdir(OTDB_PARAM_SCRATCHDIR);
     if (mkdir(OTDB_PARAM_SCRATCHDIR, 0700) == 0) {
         if (mkdir(OTDB_PARAM_SCRATCHDIR"/_TMPL", 0700) == 0) {
@@ -320,7 +328,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
     tmpl_fs.base        = calloc(tmpl_fs.alloc, sizeof(uint8_t));
     if (tmpl_fs.base == NULL) {
-        rc = -3;
+        rc = -5;
         goto cmd_open_CLOSE;
     }
     memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
@@ -545,7 +553,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     *rtpath = 0;
     dir     = opendir(pathbuf);
     if (dir == NULL) {
-        rc = -1;
+        rc = -6;
         goto cmd_open_CLOSE;
     }
     
@@ -572,26 +580,26 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             continue;
         }
         
+        // Create new FS using defaults from template
         data_fs.alloc   = tmpl_fs.alloc;
         data_fs.base    = malloc(tmpl_fs.alloc);
         if (data_fs.base == NULL) {
-            ///@todo align error codes.
-            rc = -10;
+            rc = -7;
             goto cmd_open_CLOSE;
         }
+        memcpy(data_fs.base, tmpl_fs.base, tmpl_fs.alloc);
         
         // Create new FS based on device id and template FS
-        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64);
-        rc = otfs_new(dth->ext, &tmpl_fs);
+        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
+        rc = otfs_new(dth->ext, &data_fs);
         if (rc != 0) {
-            ///@todo adjusted error code: FS partially created
-            rc = -(256*2) - rc;
+            rc = ERRCODE(otfs, otfs_new, rc);
             goto cmd_open_CLOSE;
         }
         
 //{ 
 //void* base = vworm_get(0);
-//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)tmpl_fs.base, tmpl_fs.alloc);
+//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
 //fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base);
 //}
         
@@ -600,7 +608,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
         devdir = opendir(pathbuf);
         if (devdir == NULL) {
-            rc = -10;
+            rc = -8;
             goto cmd_open_CLOSE;
         }
         
@@ -614,7 +622,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, pathbuf, devent->d_name);
                 rc = jst_aggregate_json(&data, pathbuf, devent->d_name);
                 if (rc != 0) {
-                    rc = -256 + rc;
+                    rc = -9;
                     goto cmd_open_CLOSE;
                 }
             }
@@ -624,7 +632,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         ///@note otfs_new() already sets the fs
         // Set OTFS to reference the current device FS.
-        //rc = otfs_setfs(dth->ext, &tmpl_fs.uid.u8[0]);
+        //rc = otfs_setfs(dth->ext, &data_fs.uid.u8[0]);
         //if (rc != 0) {
         //    rc = -256 - rc;
         //    goto cmd_open_CLOSE;
@@ -638,8 +646,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         if (fp != NULL) {
             uint16_t* cursor = (uint16_t*)vl_memptr(fp);
             if (cursor != NULL) {
-                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016llX]\n", __FUNCTION__, __LINE__, (uint16_t)(tmpl_fs.uid.u64 & 65535), tmpl_fs.uid.u64);
-                cursor[0] = (uint16_t)(tmpl_fs.uid.u64 & 65535);
+                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016llX]\n", __FUNCTION__, __LINE__, (uint16_t)(data_fs.uid.u64 & 65535), data_fs.uid.u64);
+                cursor[0] = (uint16_t)(data_fs.uid.u64 & 65535);
             }
             vl_close(fp);
         }
@@ -649,8 +657,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             uint8_t* cursor = vl_memptr(fp);
             if (cursor != NULL) {
                 ///@todo make sure endian gets sorted
-                DEBUGPRINT("%s %d :: write UID [%016llX]\n", __FUNCTION__, __LINE__, tmpl_fs.uid.u64);
-                memcpy(cursor, &tmpl_fs.uid.u8[0], 8);
+                DEBUGPRINT("%s %d :: write UID [%016llX]\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
+                memcpy(cursor, &data_fs.uid.u8[0], 8);
             }
             vl_close(fp);
         }
@@ -663,9 +671,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 ///@todo add generic "DEBUG" Macro wrapper
 //{ 
 //void* base = vworm_get(0);
-//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)tmpl_fs.base, tmpl_fs.alloc);
+//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
 //fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base);
-//test_dumpbytes(base, sizeof(vl_header_t), tmpl_fs.alloc, "FS DEFAULT DATA");  
+//test_dumpbytes(base, sizeof(vl_header_t), data_fs.alloc, "FS DEFAULT DATA");  
 //}
 
         // Correlate elements from data files with their metadata from the
@@ -792,28 +800,33 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
         // Save copy of JSON to local stash
         {   char local_path[64];
-            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016llX", tmpl_fs.uid.u64);
+            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016llX", data_fs.uid.u64);
             if (mkdir(local_path, 0700) == 0) {
                 strcat(local_path, "/data.json");
                 jst_writeout(data, local_path);
             }
         }
-
+        
+        // Free Data JSON.  
+        // Set to NULL to avoid double-freeing on exception
+        cJSON_Delete(data);
+        data = NULL;
+        
     }
     closedir(dir);
     dir = NULL;
     
 //if (gfbhdr != NULL) {
 //fprintf(stderr, "GFB BASE = %u\n", gfbhdr[0].base);
-//test_dumpbytes(tmpl_fs.base+gfbhdr[0].base, 16, fshdr.gfb.alloc, "GFB DATA");
+//test_dumpbytes(data_fs.base+gfbhdr[0].base, 16, fshdr.gfb.alloc, "GFB DATA");
 //}
 //if (isshdr != NULL) {
 //fprintf(stderr, "ISS BASE = %u\n", isshdr[0].base);
-//test_dumpbytes(tmpl_fs.base+isshdr[0].base, 16, fshdr.iss.alloc, "ISS DATA");
+//test_dumpbytes(data_fs.base+isshdr[0].base, 16, fshdr.iss.alloc, "ISS DATA");
 //}
 //if (isfhdr != NULL) {
 //fprintf(stderr, "ISF BASE = %u\n", isfhdr[0].base);
-//test_dumpbytes(tmpl_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
+//test_dumpbytes(data_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
 //}
     
     // 6. Save new JSON template to local stash.

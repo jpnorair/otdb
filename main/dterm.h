@@ -21,6 +21,7 @@
 #include "otdb_cfg.h"
 #include "cliopt.h"
 #include "cmdhistory.h"
+#include "popen2.h"
 
 // HB Libraries
 #include <cJSON.h>
@@ -84,12 +85,13 @@ typedef struct {
     
     volatile prompt_state state; // state of the terminal prompt
     
-    int fd_in;                  // file descriptor for the terminal input
-    int fd_out;                 // file descriptor for the terminal output
-    
+    // fd_in, fd_out are used by controlling interface.
+    // Usage will differ in case of interactive, pipe, socket
+    int fd_in;
+    int fd_out;
+
     int linelen;                 // line length
     char *cline;                 // pointer to current position in linebuf
-    
     char linebuf[LINESIZE];      // command read buffer
     char readbuf[READSIZE];     // character read buffer
 } dterm_t;
@@ -98,6 +100,7 @@ typedef struct {
 typedef struct {
     dterm_t*            dt;
     cmdhist*            ch;
+    childproc_t*        devmgr;
     void*               ext;
     cJSON*              tmpl;
     pthread_mutex_t     dtwrite_mutex;
@@ -126,7 +129,7 @@ typedef enum {
 
 
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext);
+int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* ext);
 void dterm_deinit(dterm_handle_t* dth);
 
 

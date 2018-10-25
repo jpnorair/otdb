@@ -65,7 +65,12 @@ static const cmd_t otdb_commands[] = {
 ///@todo Make this thread safe by adding a mutex here.
 ///      It's not technically required yet becaus only one thread in otdb uses
 ///      cmdsearch, but we should put it in soon, just in case.
-static cmdtab_t cmdtab_default;
+static cmdtab_t cmdtab_default = {
+    .cmd    = NULL,
+    .size   = 0,
+    .alloc  = 0
+};
+
 cmdtab_t* otdb_cmdtab;
 
 
@@ -200,7 +205,7 @@ int cmd_run(const cmdtab_item_t* cmd, dterm_handle_t* dth, uint8_t* dst, int* in
 
 
 
-int cmd_getname(char* cmdname, char* cmdline, size_t max_cmdname) {
+int cmd_getname(char* cmdname, const char* cmdline, size_t max_cmdname) {
 	size_t diff = max_cmdname;
     
     // Copy command into cmdname, stopping when whitespace is detected, or

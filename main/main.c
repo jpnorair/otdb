@@ -36,10 +36,12 @@
 #include "otdb_cfg.h"
 
 // Application Headers
+#include "cmds.h"
 #include "cmdsearch.h"
 #include "cmdhistory.h"
 #include "cliopt.h"
 #include "debug.h"
+#include "popen2.h"
 
 // HBuilder Package Libraries
 #include <argtable3.h>
@@ -93,9 +95,21 @@ cli_struct cli;
   * management.
   */
   
-static void sub_json_loadargs(cJSON* json, bool* verbose_val, bool* debug_val, int* intf_val, char* socket, char* archive, char* xpath);
+static void sub_json_loadargs(  cJSON* json, 
+                                bool* verbose_val, 
+                                bool* debug_val, 
+                                int* intf_val, 
+                                char* socket, 
+                                char* archive, 
+                                char* devmgr,
+                                char* xpath);
 
-static int otdb_main(INTF_Type intf_val, const char* socket, const char* archive, const char* xpath, cJSON* params); 
+static int otdb_main(   INTF_Type intf_val, 
+                        const char* socket, 
+                        const char* archive, 
+                        const char* devmgr, 
+                        const char* xpath,
+                        cJSON* params); 
 
 
 
@@ -170,6 +184,24 @@ static INTF_Type sub_intf_cmp(const char* s1) {
     return selected_intf;
 }
 
+static int sub_copy_stringarg(char** dststring, int argcount, const char* argstring) {
+    if (argcount != 0) {
+        size_t sz;
+        if (*dststring != NULL) {
+            free(*dststring);
+        }
+        sz = strlen(argstring) + 1;
+        *dststring = malloc(sz);
+        if (*dststring == NULL) {
+            return -1;
+        }
+        memcpy(*dststring, argstring, sz);
+        return argcount;
+    }
+    return 0;
+}
+
+
 
 
 int main(int argc, char* argv[]) {
@@ -187,20 +219,23 @@ int main(int argc, char* argv[]) {
     struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
     struct arg_file *socket  = arg_file0("S","socket","path/addr",      "Socket path/address to use for otdb daemon");
     struct arg_file *archive = arg_file0("A","archive","path",          "Path to archive file/directory to open at startup");
+    struct arg_str  *devmgr  = arg_str0("D", "devmgr", "cmd string",    "Command string to invoke device manager app");
     struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",    "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
     struct arg_end  *end     = arg_end(10);
     
-    void* argtable[] = { config, verbose, debug, intf, socket, archive, xpath, help, version, end };
+    void* argtable[] = { config, verbose, debug, intf, socket, archive, devmgr, xpath, help, version, end };
     const char* progname = OTDB_PARAM(NAME);
     int nerrors;
     bool bailout        = true;
     int exitcode        = 0;
+    int test;
     
     char* xpath_val     = NULL;
     char* socket_val    = NULL;
     char* archive_val   = NULL;
+    char* devmgr_val    = NULL;
     cJSON* json         = NULL;
     char* buffer        = NULL;
     
@@ -290,7 +325,7 @@ int main(int argc, char* argv[]) {
             goto main_FINISH;
         }
         {   int tmp_intf;
-            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, archive_val, xpath_val);
+            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, archive_val, devmgr_val, xpath_val);
             intf_val = tmp_intf;
         }
     }
@@ -300,46 +335,19 @@ int main(int argc, char* argv[]) {
     if (intf->count != 0) {
         intf_val = sub_intf_cmp(intf->sval[0]);
     }
- 
-    if (socket->count != 0) {
-        size_t sz;
-        if (socket_val != NULL) {
-            free(socket_val);
-        }
-        sz = strlen(socket->filename[0]) + 1;
-        socket_val = malloc(sz);
-        if (socket_val == NULL) {
-            goto main_FINISH;
-        }
-        memcpy(socket_val, socket->filename[0], sz);
-        intf_val = INTF_socket;
-    }
     
-    if (archive->count != 0) {
-        size_t sz;
-        if (archive_val != NULL) {
-            free(archive_val);
-        }
-        sz = strlen(archive->filename[0]) + 1;
-        archive_val = malloc(sz);
-        if (archive_val == NULL) {
-            goto main_FINISH;
-        }
-        memcpy(archive_val, archive->filename[0], sz);
-    }
+    test = sub_copy_stringarg(&socket_val, socket->count, socket->filename[0]);
+    if (test < 0)       goto main_FINISH;
+    else if (test > 0)  intf_val = INTF_socket;
+
+    test = sub_copy_stringarg(&archive_val, archive->count, archive->filename[0]);
+    if (test < 0)       goto main_FINISH;
     
-    if (xpath->count != 0) {
-        size_t sz;
-        if (xpath_val != NULL) {
-            free(xpath_val);
-        }
-        sz = strlen(xpath->filename[0]) + 1;
-        xpath_val = malloc(sz);
-        if (xpath_val == NULL) {
-            goto main_FINISH;
-        }
-        memcpy(xpath_val, xpath->filename[0], sz);
-    }
+    test = sub_copy_stringarg(&xpath_val, xpath->count, xpath->filename[0]);
+    if (test < 0)       goto main_FINISH;
+    
+    test = sub_copy_stringarg(&devmgr_val, devmgr->count, devmgr->sval[0]);
+    if (test < 0)       goto main_FINISH;
 
     if (verbose->count != 0) {
         verbose_val = true;
@@ -367,24 +375,20 @@ int main(int argc, char* argv[]) {
     arg_freetable(argtable, sizeof(argtable)/sizeof(argtable[0]));
     
     if (bailout == false) {
-        exitcode = otdb_main(intf_val, (const char*)socket_val, (const char*)archive_val, (const char*)xpath_val, json);
+        exitcode = otdb_main(   intf_val, 
+                                (const char*)socket_val, 
+                                (const char*)archive_val, 
+                                (const char*)devmgr_val, 
+                                (const char*)xpath_val, 
+                                json    );
     }
 
-    if (json != NULL) {
-        cJSON_Delete(json);
-    }
-    if (buffer != NULL) {
-        free(buffer);
-    }
-    if (socket_val != NULL) {
-        free(socket_val);
-    }
-    if (archive_val != NULL) {
-        free(archive_val);
-    }
-    if (xpath_val != NULL) {
-        free(xpath_val);
-    }
+    if (json != NULL)           cJSON_Delete(json);
+    if (buffer != NULL)         free(buffer);
+    if (socket_val != NULL)     free(socket_val);
+    if (archive_val != NULL)    free(archive_val);
+    if (devmgr_val != NULL)     free(devmgr_val);
+    if (xpath_val != NULL)      free(xpath_val);
 
     return exitcode;
 }
@@ -397,14 +401,19 @@ int main(int argc, char* argv[]) {
 int otdb_main(  INTF_Type intf_val,
                 const char* socket,
                 const char* archive,
+                const char* devmgr,
                 const char* xpath,
-                cJSON* params   ) {    
+                cJSON* params   ) { 
+                   
+    // Devmgr process
+    childproc_t devmgr_proc;
+    childproc_t* devmgr_handle;
+    cmdtab_t main_cmdtab;
     
     // DTerm Datastructs
     dterm_handle_t dterm_handle;
     
     // Child Threads (1)
-    void*       otfs_handle = NULL;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
@@ -414,19 +423,45 @@ int otdb_main(  INTF_Type intf_val,
     assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
     pthread_cond_init(&cli.kill_cond, NULL);
     
+    /// Start the devmgr childprocess, if one is specified.
+    /// If it works, the devmgr command should be added using the name of the
+    /// program used for devmgr.
+    if (devmgr == NULL) {
+        devmgr_handle = NULL;
+    }
+    else if (popen2_s(&devmgr_proc, devmgr) == 0) {
+        char procname[32];
+        
+        if (cmdtab_init(&main_cmdtab) != 0) {
+            fprintf(stderr, "Err: command table cannot be initialized.\n");
+            cli.exitcode = -2;
+            goto otdb_main_TERM3;
+        }
+        
+        cmd_getname(procname, devmgr, 32);
+        if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
+            fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
+            cli.exitcode = -2;
+            goto otdb_main_TERM3;
+        }
+        
+        devmgr_handle = &devmgr_proc;
+    }
+    else {
+        fprintf(stderr, "Err: \"%s\" could not be started.\n", devmgr);
+        cli.exitcode = -2;
+        goto otdb_main_TERM3;
+    }
+    
     /// Initialize command search table.  
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
     cmd_init(NULL, xpath);
    
-    /// Initialize OTFS
-    //if (otfs_init(&otfs_handle) < 0) {
-    //    cli.exitcode = -1;
-    //    goto otdb_main_TERM3;
-    //}
-   
     /// Initialize DTerm data objects
-    if (dterm_init(&dterm_handle, intf_val, otfs_handle) != 0) {
+    /// otfs_handle (last arg) is NULL because it isn't initialized ahead of 
+    /// time.  It will be initialized during open command
+    if (dterm_init(&dterm_handle, intf_val, devmgr_handle, NULL) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
@@ -439,9 +474,7 @@ int otdb_main(  INTF_Type intf_val,
         goto otdb_main_TERM1;
     }
     
-    // Debugging outputs
     DEBUG_PRINTF("Finished initializing\n");
-    DEBUG_PRINTF("otfs_handle=%016llX\n", (uint64_t)otfs_handle);
     
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
@@ -468,7 +501,7 @@ int otdb_main(  INTF_Type intf_val,
         srcsize = (int)strlen(archive);
         cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
         if (cmd_rc != 0) {
-            VERBOSE_PRINTF("Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
+            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
         }
         else {
             VERBOSE_PRINTF("Archive \"%s\" opened.\n", archive);
@@ -485,14 +518,20 @@ int otdb_main(  INTF_Type intf_val,
     pthread_cancel(thr_dterm);
    
     otdb_main_TERM1:
+    ///@todo OTFS freeing procedure might be best to do internally... hard to say
+    DEBUG_PRINTF("Freeing OTFS\n");
+    if (dterm_handle.ext != NULL) {
+        otfs_deinit(dterm_handle.ext, true);
+    }
+    
     DEBUG_PRINTF("Freeing dterm\n");
     dterm_deinit(&dterm_handle);
  
+ 
     otdb_main_TERM2:
-    DEBUG_PRINTF("Freeing OTFS\n");
-    if (otfs_handle != NULL) {
-        otfs_deinit(otfs_handle, true);
-    }
+    DEBUG_PRINTF("Freeing cmdtab\n");
+    cmdtab_free(&main_cmdtab);
+    
     
     otdb_main_TERM3:
     DEBUG_PRINTF("Destroying threading objects\n");
@@ -511,7 +550,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* archive, char* xpath) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* archive, char* devmgr, char* xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -571,6 +610,7 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
     GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
     GET_STRING_ARG(socket, "socket");
     GET_STRING_ARG(archive, "archive");
+    GET_STRING_ARG(devmgr, "devmgr");
     GET_STRING_ARG(xpath, "xpath");
     
     /// 2. Systematically get all of the individual arguments

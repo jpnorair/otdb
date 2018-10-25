@@ -31,10 +31,9 @@ int cmd_init(cmdtab_t* init_table, const char* xpath);
 int cmd_run(const cmdtab_item_t* cmd, dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
 
 
-
 /** @brief Extracts command name from command line, returns command name length
   */
-int cmd_getname(char* cmdname, char* cmdline, size_t max_cmdname);
+int cmd_getname(char* cmdname, const char* cmdline, size_t max_cmdname);
 
 
 // searches for command by exact name

@@ -1,6 +1,7 @@
 {
     "network_settings": {
         "_meta": { 
+            "devid":"000000000ABCD001"
             "block":"isf", 
             "id":0, 
             "mod":52, 

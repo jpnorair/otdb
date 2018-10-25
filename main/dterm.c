@@ -118,7 +118,7 @@ void* dterm_socketer(void* args);
   * ========================================================================<BR>
   */
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext) {
+int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* ext) {
     int rc = 0;
 
     if (dth == NULL) {
@@ -127,6 +127,7 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext) {
     
     dth->tmpl   = NULL;
     dth->ch     = NULL;
+
     dth->dt     = malloc(sizeof(dterm_t));
     if (dth->dt == NULL) {
         rc = -2;
@@ -147,7 +148,12 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, void* ext) {
         goto dterm_init_TERM;
     }
     
+    // Link devmgr process handle
+    dth->devmgr = devmgr;
+    
+    // Link external handle
     dth->ext = ext;
+    
     return 0;
     
     dterm_init_TERM:
@@ -164,7 +170,11 @@ void dterm_deinit(dterm_handle_t* dth) {
     } 
     if (dth->ch != NULL) {
         ch_free(dth->ch);
-    } 
+    }
+    
+    // Kill devmgr process. popen2_kill_s() does a NULL check internally
+    popen2_kill_s(dth->devmgr);
+    
     if (dth->ext != NULL) {
         ///@note ext gets free'd externally
         dth->ext = NULL; 

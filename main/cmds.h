@@ -89,6 +89,9 @@ int cmd_rmdir(const char *dir);
 
 
 
+int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
 /** OTDB Internal Commands
   * -------------------------------------------------------------------------
   */

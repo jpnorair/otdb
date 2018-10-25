@@ -1,0 +1,7 @@
+{
+    "root_auth_key": {
+        "info":"0038",
+        "lifetime":86400,
+        "key":"00112233445566778899AABBCCDDEEFF"
+    }
+}

@@ -404,7 +404,7 @@ int otdb_main(  INTF_Type intf_val,
     dterm_handle_t dterm_handle;
     
     // Child Threads (1)
-    void*       otfs_handle;
+    void*       otfs_handle = NULL;
     void*       (*dterm_fn)(void* args);
     pthread_t   thr_dterm;
     
@@ -420,10 +420,10 @@ int otdb_main(  INTF_Type intf_val,
     cmd_init(NULL, xpath);
    
     /// Initialize OTFS
-    if (otfs_init(&otfs_handle) < 0) {
-        cli.exitcode = -1;
-        goto otdb_main_TERM3;
-    }
+    //if (otfs_init(&otfs_handle) < 0) {
+    //    cli.exitcode = -1;
+    //    goto otdb_main_TERM3;
+    //}
    
     /// Initialize DTerm data objects
     if (dterm_init(&dterm_handle, intf_val, otfs_handle) != 0) {
@@ -468,10 +468,10 @@ int otdb_main(  INTF_Type intf_val,
         srcsize = (int)strlen(archive);
         cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
         if (cmd_rc != 0) {
-            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
+            VERBOSE_PRINTF("Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
         }
         else {
-            fprintf(stderr, "Archive \"%s\" opened.\n", archive);
+            VERBOSE_PRINTF("Archive \"%s\" opened.\n", archive);
         }
     }
     
@@ -490,7 +490,9 @@ int otdb_main(  INTF_Type intf_val,
  
     otdb_main_TERM2:
     DEBUG_PRINTF("Freeing OTFS\n");
-    otfs_deinit(otfs_handle);
+    if (otfs_handle != NULL) {
+        otfs_deinit(otfs_handle, true);
+    }
     
     otdb_main_TERM3:
     DEBUG_PRINTF("Destroying threading objects\n");
@@ -503,6 +505,7 @@ int otdb_main(  INTF_Type intf_val,
     fflush(stdout);
     fflush(stderr);
     
+    VERBOSE_PRINTF("otdb exiting (%i)\n", cli.exitcode);
     return cli.exitcode;
 }
 

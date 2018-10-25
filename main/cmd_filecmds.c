@@ -19,6 +19,7 @@
 #include "dterm.h"
 #include "cliopt.h"
 #include "otdb_cfg.h"
+#include "debug.h"
 
 // HB Headers/Libraries
 #include <bintex.h>
@@ -89,7 +90,7 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     /// On successful extraction, delete a file in the device fs
     if (rc == 0) {
     
-        DEBUGPRINT("cmd_del():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
+        DEBUG_PRINTF("del (delete file cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
@@ -126,7 +127,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     if (rc == 0) {
         vlFILE* fp = NULL;
         
-        DEBUGPRINT("cmd_new():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
+        DEBUG_PRINTF("new (new file cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_perms=%0o\n  file_alloc=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc);
         
         if (arglist.devid != 0) {
@@ -158,20 +159,19 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     uint8_t*    dat_ptr     = NULL;
     int         span        = 0;
     
-DEBUGPRINT("%s %i\n", __FUNCTION__, __LINE__);
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r", (const char*)src, inbytes);
-DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);    
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
         vaddr header;
         vlFILE* fp;
         
-        DEBUGPRINT("cmd_read():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUG_PRINTF("r (read cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            DEBUG_PRINTF("otfs_setfs() = %i, [id = %016llx]\n", rc, arglist.devid); 
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_read_END;
@@ -217,7 +217,8 @@ DEBUGPRINT("%s %i :: rc=%i\n", __FUNCTION__, __LINE__, rc);
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r", 
-                "{\"cmd\":\"%s\", \"block\":%i, \"id\":%i", "r", arglist.block_id, arglist.file_id);
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%i, \"id\":%i", "r", 
+                arglist.devid, arglist.block_id, arglist.file_id);
         rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
     }
     
@@ -246,7 +247,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         vlFILE* fp;
         void* ptr;
             
-        DEBUGPRINT("cmd_readall():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUG_PRINTF("r* (read all cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
@@ -308,8 +309,8 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "r*", 
-                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u", 
-                "r*", arglist.block_id, arglist.file_id, hdr_ptr->idmod>>8, hdr_ptr->alloc, hdr_ptr->length, hdr_ptr->modtime);
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u", 
+                "r*", arglist.devid, arglist.block_id, arglist.file_id, hdr_ptr->idmod>>8, hdr_ptr->alloc, hdr_ptr->length, hdr_ptr->modtime);
         rc = cmd_jsonout_data((char**)&dst, &dstmax, arglist.jsonout_flag, rc, dat_ptr, arglist.range_lo, span);
     }
               
@@ -332,7 +333,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUG_PRINTF("z (restore cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
@@ -369,7 +370,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     if (rc == 0) {
         vaddr header;
 
-        DEBUGPRINT("cmd_readhdr():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
+        DEBUG_PRINTF("rh (read header cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id);
         
         if (dstmax < sizeof(vl_header_t)) {
@@ -407,8 +408,8 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rh", 
-                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
-                "rh", arglist.block_id, arglist.file_id, ptr->idmod>>8, ptr->alloc, ptr->length, ptr->modtime);
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d, \"alloc\":%d, \"length\":%d, \"time\":%u}", 
+                "rh", arglist.devid, arglist.block_id, arglist.file_id, ptr->idmod>>8, ptr->alloc, ptr->length, ptr->modtime);
     }
     
     return rc;
@@ -430,7 +431,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     if (rc == 0) {
         vaddr header;
         
-        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
+        DEBUG_PRINTF("rp (read perms cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
@@ -459,8 +460,8 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     }
     else {
         rc = cmd_jsonout_fmt((char**)&dst, &dstmax, arglist.jsonout_flag, rc, "rp", 
-                "{\"cmd\":\"%s\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
-                "rp", arglist.block_id, arglist.file_id, (int)*dst);
+                "{\"cmd\":\"%s\", \"devid\":\"%llX\", \"block\":%d, \"id\":%d, \"mod\":%d}", 
+                "rp", arglist.devid, arglist.block_id, arglist.file_id, (int)*dst);
     }
     
     return rc;
@@ -487,7 +488,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         uint8_t*    dptr;
         int         span;
     
-        DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
+        DEBUG_PRINTF("w (write cmd)\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
@@ -570,7 +571,7 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
         /// On successful extraction, write permissions to the specified file,
         /// on the specified device, within the device database.
         if (rc == 0) {
-            DEBUGPRINT("cmd_restore():\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
+            DEBUG_PRINTF("wp (write perms cmd):\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  write_perms=%0o\n", 
                     arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
                     
             if (arglist.devid != 0) {

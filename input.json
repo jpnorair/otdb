@@ -1,0 +1,10 @@
+{
+    "arguments": {
+        "verbose":1,
+        "debug":1,
+        "intf":"socket",
+        "socket":"../diagnostic-tool/solpad_inv_ipc",
+        "archive":"examples/csip",
+        "devmgr":"smut --pipe /dev/tty.usbserial-A1111 9600"
+    }
+}

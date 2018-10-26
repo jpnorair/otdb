@@ -423,6 +423,13 @@ int otdb_main(  INTF_Type intf_val,
     assert( pthread_mutex_init(&cli.kill_mutex, NULL) == 0 );
     pthread_cond_init(&cli.kill_cond, NULL);
     
+    /// Initialize command table
+    if (cmdtab_init(&main_cmdtab) != 0) {
+        fprintf(stderr, "Err: command table cannot be initialized.\n");
+        cli.exitcode = -2;
+        goto otdb_main_TERM3;
+    }
+    
     /// Start the devmgr childprocess, if one is specified.
     /// If it works, the devmgr command should be added using the name of the
     /// program used for devmgr.
@@ -431,40 +438,33 @@ int otdb_main(  INTF_Type intf_val,
     }
     else if (popen2_s(&devmgr_proc, devmgr) == 0) {
         char procname[32];
-        
-        if (cmdtab_init(&main_cmdtab) != 0) {
-            fprintf(stderr, "Err: command table cannot be initialized.\n");
-            cli.exitcode = -2;
-            goto otdb_main_TERM3;
-        }
-        
         cmd_getname(procname, devmgr, 32);
         if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
             fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
             cli.exitcode = -2;
-            goto otdb_main_TERM3;
+            goto otdb_main_TERM2;
         }
-        
         devmgr_handle = &devmgr_proc;
     }
     else {
         fprintf(stderr, "Err: \"%s\" could not be started.\n", devmgr);
         cli.exitcode = -2;
-        goto otdb_main_TERM3;
+        goto otdb_main_TERM2;
     }
     
     /// Initialize command search table.  
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
-    cmd_init(NULL, xpath);
+    cmd_init(&main_cmdtab, xpath);
    
     /// Initialize DTerm data objects
-    /// otfs_handle (last arg) is NULL because it isn't initialized ahead of 
-    /// time.  It will be initialized during open command
-    if (dterm_init(&dterm_handle, intf_val, devmgr_handle, NULL) != 0) {
+    /// Non intrinsic dterm elements (cmdtab, devmgr, ext, tmpl) get attached
+    /// following initialization
+    if (dterm_init(&dterm_handle, intf_val) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
+    dterm_handle.cmdtab = &main_cmdtab;
 
     /// Open DTerm interface & Setup DTerm threads
     /// If sockets are not used, by design socket_path will be NULL.

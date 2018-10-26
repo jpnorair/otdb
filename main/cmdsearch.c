@@ -224,14 +224,14 @@ int cmd_getname(char* cmdname, const char* cmdline, size_t max_cmdname) {
 
 
 
-const cmdtab_item_t* cmd_search(char *cmdname) {
-    return cmdtab_search(otdb_cmdtab, cmdname);
+const cmdtab_item_t* cmd_search(cmdtab_t* cmdtab, char *cmdname) {
+    return cmdtab_search(cmdtab, cmdname);
 }
 
 
 
-const cmdtab_item_t* cmd_subsearch(char *namepart) {
-    return cmdtab_subsearch(otdb_cmdtab, namepart);
+const cmdtab_item_t* cmd_subsearch(cmdtab_t* cmdtab, char *namepart) {
+    return cmdtab_subsearch(cmdtab, namepart);
 }
 
 

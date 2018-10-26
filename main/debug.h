@@ -55,8 +55,8 @@
 
 #endif
 
-#define VERBOSE_PRINTF(...)     do { if (cliopt_isverbose()) fprintf(stderr, _E_CYN "MSG: " _E_NRM __VA_ARGS__); } while(0)
-#define VDATA_PRINTF(...)       do { if (cliopt_isverbose()) fprintf(stderr, _E_GRN "DATA: " _E_NRM __VA_ARGS__); } while(0)
+#define VERBOSE_PRINTF(...)     do { if (cliopt_isverbose()) { fprintf(stdout, _E_CYN "MSG: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)
+#define VDATA_PRINTF(...)       do { if (cliopt_isverbose()) { fprintf(stdout, _E_GRN "DATA: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)
 
 
 

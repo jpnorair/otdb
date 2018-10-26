@@ -118,7 +118,7 @@ void* dterm_socketer(void* args);
   * ========================================================================<BR>
   */
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* ext) {
+int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
     int rc = 0;
 
     if (dth == NULL) {
@@ -127,6 +127,8 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* e
     
     dth->tmpl   = NULL;
     dth->ch     = NULL;
+    dth->devmgr = NULL;
+    dth->ext    = NULL;
 
     dth->dt     = malloc(sizeof(dterm_t));
     if (dth->dt == NULL) {
@@ -147,12 +149,6 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* e
         rc = -4;
         goto dterm_init_TERM;
     }
-    
-    // Link devmgr process handle
-    dth->devmgr = devmgr;
-    
-    // Link external handle
-    dth->ext = ext;
     
     return 0;
     
@@ -376,7 +372,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     // determine length until newline, or null.
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
-    cmdptr  = cmd_search(cmdname);
+    cmdptr  = cmd_search(dth->cmdtab, cmdname);
     
     // Test only
     //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
@@ -779,7 +775,7 @@ void* dterm_prompter(void* args) {
                 // autofill will try to finish the command input
                 case ct_autofill: {
                     cmdlen = cmd_getname((char*)cmdname, dth->dt->linebuf, sizeof(cmdname));
-                    cmdptr = cmd_subsearch((char*)cmdname);
+                    cmdptr = cmd_subsearch(dth->cmdtab, (char*)cmdname);
                     if ((cmdptr != NULL) && (dth->dt->linebuf[cmdlen] == 0)) {
                         dterm_remln(dth->dt);
                         dterm_puts(dth->dt, (char*)prompt_str[0]);

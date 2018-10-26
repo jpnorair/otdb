@@ -25,6 +25,7 @@
 
 // HB Libraries
 #include <cJSON.h>
+#include <cmdtab.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -98,12 +99,16 @@ typedef struct {
 
 
 typedef struct {
+    // Intrinsic
     dterm_t*            dt;
     cmdhist*            ch;
-    childproc_t*        devmgr;
-    void*               ext;
-    cJSON*              tmpl;
     pthread_mutex_t     dtwrite_mutex;
+    
+    // Externally initialized
+    cmdtab_t*           cmdtab;
+    childproc_t*        devmgr;
+    void*               ext;        ///@todo change to otfs
+    cJSON*              tmpl;
 } dterm_handle_t;
 
 
@@ -129,7 +134,7 @@ typedef enum {
 
 
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf, childproc_t* devmgr, void* ext);
+int dterm_init(dterm_handle_t* dth, INTF_Type intf);
 void dterm_deinit(dterm_handle_t* dth);
 
 

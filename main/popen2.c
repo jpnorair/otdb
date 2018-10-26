@@ -32,7 +32,7 @@ int popen2_s(childproc_t* childproc, const char* cmdline) {
     
     if ((childproc != NULL) && (cmdline != NULL)) {
         childproc->pid = popen2(cmdline, &childproc->fd_writeto, &childproc->fd_readfrom);
-        rc = (childproc->pid > 0);
+        rc = (childproc->pid <= 0);
     }
     else {
         rc = -1;

@@ -506,6 +506,9 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         /// implementations.
         ///
         ///@note OTDB works entirely as the root user (NULL user_id)
+        
+        ///@todo save contents to temporary buffer, which is reverted-to upon ACK failure.
+        
         rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
         if (rc != 0) {
             rc = 512 - rc;
@@ -545,6 +548,24 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         }
         
         ///@todo update the timestamp on this file, and on the device instance.
+        
+        ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
+        if (dth->devmgr != NULL) {
+            int inbytes;
+            char outbuf[576];
+            //uint8_t inbuf[256];
+            //cmd_devmgr(dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+            
+            inbytes  = snprintf(outbuf, 576-512-2, "file w -r %u:%u %u [", arglist.range_lo, arglist.range_hi, arglist.file_id);
+            inbytes += cmd_hexwrite(&outbuf[inbytes], arglist.filedata, span);
+            
+            outbuf[inbytes] = ']';  inbytes++;
+            outbuf[inbytes] = 0;    inbytes++;
+            
+            DEBUG_PRINTF("to smut: %.*s\n", inbytes, outbuf);
+            
+            write(dth->devmgr->fd_writeto, outbuf, inbytes);
+        }
     }
     
     cmd_write_END:

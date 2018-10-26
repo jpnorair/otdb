@@ -198,7 +198,6 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         /// Need to modify the stdout/stdin attributes in order to work with 
         /// the interactive terminal.  The "oldter" setting saves the original
         /// settings.
-        
         dt->fd_in   = STDIN_FILENO;
         dt->fd_out  = STDOUT_FILENO;
 
@@ -234,7 +233,7 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         dt_thread   = &dterm_piper;
     }
     
-    else if (dt->intf == INTF_socket) {
+    else if ((dt->intf == INTF_socket) && (path != NULL)) {
         /// Socket mode opens a listening socket
         ///@todo have listening queue size be dynamic
         struct sockaddr_un addr;
@@ -250,9 +249,10 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         ///      unsure how to unbind the socket when server is finished.
         memset(&addr, 0, sizeof(addr));
         addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, path, sizeof(addr.sun_path)-1);
+        strncpy(addr.sun_path, path, sizeof(addr.sun_path)-1); 
         unlink(path);
         
+        VERBOSE_PRINTF("Binding...\n");
         if (bind(dt->fd_in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             perror("Unable to bind server socket");
             goto dterm_open_END;

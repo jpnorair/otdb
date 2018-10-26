@@ -99,10 +99,10 @@ static void sub_json_loadargs(  cJSON* json,
                                 bool* verbose_val, 
                                 bool* debug_val, 
                                 int* intf_val, 
-                                char* socket, 
-                                char* archive, 
-                                char* devmgr,
-                                char* xpath);
+                                char** socket, 
+                                char** archive, 
+                                char** devmgr,
+                                char** xpath);
 
 static int otdb_main(   INTF_Type intf_val, 
                         const char* socket, 
@@ -325,7 +325,7 @@ int main(int argc, char* argv[]) {
             goto main_FINISH;
         }
         {   int tmp_intf;
-            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, socket_val, archive_val, devmgr_val, xpath_val);
+            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, &socket_val, &archive_val, &devmgr_val, &xpath_val);
             intf_val = tmp_intf;
         }
     }
@@ -335,6 +335,7 @@ int main(int argc, char* argv[]) {
     if (intf->count != 0) {
         intf_val = sub_intf_cmp(intf->sval[0]);
     }
+    cliopts.intf = intf_val;
     
     test = sub_copy_stringarg(&socket_val, socket->count, socket->filename[0]);
     if (test < 0)       goto main_FINISH;
@@ -343,29 +344,25 @@ int main(int argc, char* argv[]) {
     test = sub_copy_stringarg(&archive_val, archive->count, archive->filename[0]);
     if (test < 0)       goto main_FINISH;
     
-    test = sub_copy_stringarg(&xpath_val, xpath->count, xpath->filename[0]);
+    test = sub_copy_stringarg(&devmgr_val, devmgr->count, devmgr->sval[0]);
     if (test < 0)       goto main_FINISH;
     
-    test = sub_copy_stringarg(&devmgr_val, devmgr->count, devmgr->sval[0]);
+    test = sub_copy_stringarg(&xpath_val, xpath->count, xpath->filename[0]);
     if (test < 0)       goto main_FINISH;
 
     if (verbose->count != 0) {
         verbose_val = true;
     }
+    cliopts.verbose_on = verbose_val;
+    
+    if (debug->count != 0) {
+        debug_val = true;
+    }
+    cliopts.debug_on = debug_val;
     
     /// Client Options.  These are read-only from internal modules
-    cliopts.format      = FORMAT_Dynamic;
-    cliopts.intf        = intf_val;
-    if (debug->count != 0) {
-        cliopts.debug_on    = true;
-        cliopts.verbose_on  = true;
-    }
-    else {
-        cliopts.debug_on    = false;
-        cliopts.verbose_on  = verbose_val;
-    }
+    cliopts.format = FORMAT_Dynamic;
     cliopt_init(&cliopts);
-    
     
     /// All configuration is done.
     /// Send all configuration data to program main function.
@@ -424,21 +421,27 @@ int otdb_main(  INTF_Type intf_val,
     pthread_cond_init(&cli.kill_cond, NULL);
     
     /// Initialize command table
+    DEBUG_PRINTF("Initializing command table...\n");
     if (cmdtab_init(&main_cmdtab) != 0) {
         fprintf(stderr, "Err: command table cannot be initialized.\n");
         cli.exitcode = -2;
         goto otdb_main_TERM3;
     }
+    DEBUG_PRINTF("--> done\n");
     
     /// Start the devmgr childprocess, if one is specified.
     /// If it works, the devmgr command should be added using the name of the
     /// program used for devmgr.
+    DEBUG_PRINTF("Initializing devmgr (%s) ...\n", devmgr);
     if (devmgr == NULL) {
         devmgr_handle = NULL;
     }
     else if (popen2_s(&devmgr_proc, devmgr) == 0) {
-        char procname[32];
-        cmd_getname(procname, devmgr, 32);
+        const char* procname = "smut";
+        ///@todo extract command name from call string.
+        //char procname[32];
+        //cmd_getname(procname, devmgr, 32);
+
         if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
             fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
             cli.exitcode = -2;
@@ -451,30 +454,39 @@ int otdb_main(  INTF_Type intf_val,
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
+    DEBUG_PRINTF("--> done\n");
     
     /// Initialize command search table.  
     ///@todo in the future, let's pull this from an initialization file or
     ///      something dynamic as such.
+    DEBUG_PRINTF("Initializing commands ...\n");
     cmd_init(&main_cmdtab, xpath);
+    DEBUG_PRINTF("--> done\n");
    
     /// Initialize DTerm data objects
     /// Non intrinsic dterm elements (cmdtab, devmgr, ext, tmpl) get attached
     /// following initialization
+    DEBUG_PRINTF("Initializing DTerm ...\n");
     if (dterm_init(&dterm_handle, intf_val) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
+    dterm_handle.devmgr = devmgr_handle;
     dterm_handle.cmdtab = &main_cmdtab;
+    //dterm_handle.ext    = ;   // done in cmd_open
+    DEBUG_PRINTF("--> done\n");
 
     /// Open DTerm interface & Setup DTerm threads
     /// If sockets are not used, by design socket_path will be NULL.
+    DEBUG_PRINTF("Opening DTerm on %s ...\n", socket);
     dterm_fn = dterm_open(dterm_handle.dt, socket);
     if (dterm_fn == NULL) {
         cli.exitcode = -2;
         goto otdb_main_TERM1;
     }
+    DEBUG_PRINTF("--> done\n");
     
-    DEBUG_PRINTF("Finished initializing\n");
+    DEBUG_PRINTF("Finished otdb startup\n");
     
     /// Initialize the signal handlers for this process.
     /// These are activated by Ctl+C (SIGINT) and Ctl+\ (SIGQUIT) as is
@@ -550,7 +562,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char* socket, char* archive, char* devmgr, char* xpath) {
+void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char** socket, char** archive, char** devmgr, char** xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -560,7 +572,7 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
             }   \
         }   \
     } while(0)
-                       
+
 #   define GET_STRING_ARG(DST, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
         if (arg != NULL) {  \
@@ -571,7 +583,7 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
             }   \
         }   \
     } while(0)
-    
+
 #   define GET_CHAR_ARG(DST, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
         if (arg != NULL) {  \
@@ -600,18 +612,18 @@ void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* int
     } while(0)
     
     cJSON* arg;
-    
+
     ///1. Get "arguments" object, if it exists
     json = cJSON_GetObjectItem(json, "arguments");
     if (json == NULL) {
         return;
     }
-    
+
     GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
-    GET_STRING_ARG(socket, "socket");
-    GET_STRING_ARG(archive, "archive");
-    GET_STRING_ARG(devmgr, "devmgr");
-    GET_STRING_ARG(xpath, "xpath");
+    GET_STRING_ARG(*socket, "socket");
+    GET_STRING_ARG(*archive, "archive");
+    GET_STRING_ARG(*devmgr, "devmgr");
+    GET_STRING_ARG(*xpath, "xpath");
     
     /// 2. Systematically get all of the individual arguments
     GET_BOOL_ARG(debug_val, "debug");

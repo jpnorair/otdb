@@ -36,7 +36,7 @@ else
 endif
 
 DEFAULT_DEF := -D__HBUILDER__
-LIBMODULES  := argtable cJSON cmdtab bintex libotfs hbuilder-lib $(EXT_LIBS)
+LIBMODULES  := argtable cJSON cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIBS)
 #SUBMODULES  := main client test
 SUBMODULES  := main client
 

@@ -110,16 +110,16 @@ cleaner:
 # Build the static library
 # Note: testing with libtool now, which may be superior to ar
 otdb.Darwin.a: $(OBJECTS)
-	libtool -o $(APPDIR)/otdb.a -static $(OBJECTS)
+	libtool -o $(APPDIR)/libotdb.a -static $(OBJECTS)
 
 otdb.Linux.a: $(OBJECTS)
 	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	ar rcs -o $(APPDIR)/otdb.a $(OBJECTS)
+	ar rcs -o $(APPDIR)/libotdb.a $(OBJECTS)
 
 # Build shared library
 otdb.Linux.so: $(OBJECTS)
 	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	$(CC) -shared -fPIC -Wl,-soname,otdb.so.1 -o $(APPDIR)/otdb.so.$(VERSION) $(LIBTOOL_OBJ) -lc
+	$(CC) -shared -fPIC -Wl,-soname,libotdb.so.1 -o $(APPDIR)/libotdb.so.$(VERSION) $(LIBTOOL_OBJ) -lc
 
 
 # Linker for OTDB application

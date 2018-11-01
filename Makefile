@@ -134,7 +134,7 @@ $(APP).debug: $(SUBMODULES)
 
 #Library dependencies (not in otdb sources)
 $(LIBMODULES): %: 
-	cd ./../$@ && $(MAKE) lib && $(MAKE) install
+	cd ./../$@ && $(MAKE) pkg
 
 #otdb submodules
 $(SUBMODULES): %: directories

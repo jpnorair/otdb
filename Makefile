@@ -29,7 +29,8 @@ ifeq ($(THISSYSTEM),Darwin)
 	PRODUCTS := otdb.$(THISSYSTEM).a
 	LIBBSD :=
 else ifeq ($(THISSYSTEM),Linux)
-	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
+#	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
+    PRODUCTS := otdb.$(THISSYSTEM).a
 	LIBBSD := -lbsd
 else
 	error "THISSYSTEM set to unknown value: $(THISSYSTEM)"

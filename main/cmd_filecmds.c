@@ -139,6 +139,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
         }
         
         rc = vl_new(&fp, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc, NULL);
+        vl_close(fp);
         if (rc != 0) {
             rc = -512 - rc;
         }
@@ -520,16 +521,16 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             rc = -512 - 255;
             goto cmd_write_END;
         }
-            
+         
         dptr = vl_memptr(fp);
         if (dptr == NULL) {
             rc = -512 - 255;
-            goto cmd_write_END;
+            goto cmd_write_CLOSE;
         }
             
         if (arglist.range_lo >= fp->alloc) {
             rc = -512 - 7;
-            goto cmd_write_END;
+            goto cmd_write_CLOSE;
         }
             
         if (arglist.range_hi > fp->alloc) {
@@ -546,8 +547,6 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         if (span > 0) {
             memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
         }
-        
-        ///@todo update the timestamp on this file, and on the device instance.
         
         ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
         if (dth->devmgr != NULL) {
@@ -566,6 +565,10 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             
             write(dth->devmgr->fd_writeto, outbuf, inbytes);
         }
+        
+        /// Closing the file will update its modification and access timestamps
+        cmd_write_CLOSE:
+        vl_close(fp);
     }
     
     cmd_write_END:
@@ -625,6 +628,94 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
 
 
 
+
+
+int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    int rc;
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
+    };
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
+    
+    /// Extract arguments into arglist struct
+    arglist.filedata        = dst;
+    arglist.filedata_size   = (int)dstmax;
+    rc                      = cmd_extract_args(&arglist, args, "pub", (const char*)src, inbytes);
+    
+    /// On successful extraction, create a new device in the database
+    if (rc == 0) {
+        vaddr header;
+        vlFILE*     fp;
+        uint8_t*    dptr;
+        int         span;
+    
+        DEBUG_PRINTF("w (write cmd)\n  device_id=%016llX\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n", 
+                arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
+                
+        if (arglist.devid != 0) {
+            rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
+            if (rc != 0) {
+                rc = -256 + rc;
+                goto cmd_pub_END;
+            }
+        }
+
+        /// The write operation for OTDB is a direct access to RAM, once
+        /// getting the hardware address of the data element.  This works
+        /// when the data is stored in RAM, which is always the case for 
+        /// OTDB even though it is often not the case for embedded OTFS 
+        /// implementations.
+        ///
+        ///@note OTDB works entirely as the root user (NULL user_id)
+        
+        ///@todo save contents to temporary buffer, which is reverted-to upon ACK failure.
+        
+        rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
+        if (rc != 0) {
+            rc = 512 - rc;
+            goto cmd_pub_END;
+        }
+        
+        fp = vl_open_file(header);
+        if (fp == NULL) {
+            rc = -512 - 255;
+            goto cmd_pub_END;
+        }
+            
+        dptr = vl_memptr(fp);
+        if (dptr == NULL) {
+            rc = -512 - 255;
+            goto cmd_pub_END;
+        }
+            
+        if (arglist.range_lo >= fp->alloc) {
+            rc = -512 - 7;
+            goto cmd_pub_END;
+        }
+            
+        if (arglist.range_hi > fp->alloc) {
+            arglist.range_hi = fp->alloc;
+        }
+        
+        span = arglist.filedata_size;
+        if (span > (arglist.range_hi-arglist.range_lo)) {
+            span = (arglist.range_hi-arglist.range_lo);
+        }
+        if (fp->length > (span+arglist.range_lo)) {
+            fp->length = (span+arglist.range_lo);
+        }
+        if (span > 0) {
+            memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
+        }
+        
+        ///@todo update the timestamp on this file, and on the device instance.
+        
+
+    }
+    
+    cmd_pub_END:
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "pub");
+}
 
 
 

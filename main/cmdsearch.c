@@ -48,6 +48,7 @@ static const cmd_t otdb_commands[] = {
     { "dev-set",    &cmd_devset },
     { "open",       &cmd_open },
     { "new",        &cmd_new },
+    { "pub",        &cmd_pub },
     { "quit",       &cmd_quit },
     { "r",          &cmd_read },
     { "r*",         &cmd_readall },

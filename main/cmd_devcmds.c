@@ -47,6 +47,7 @@ extern struct arg_lit*  jsonout_opt;
 // used by file commands
 extern struct arg_str*  devid_opt;
 extern struct arg_str*  devidlist_opt;
+extern struct arg_int*  fileage_opt;
 extern struct arg_str*  fileblock_opt;
 extern struct arg_str*  filerange_opt;
 extern struct arg_int*  fileid_man;

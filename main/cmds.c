@@ -58,6 +58,7 @@ struct arg_lit*     jsonout_opt;
 // used by file commands
 struct arg_str*     devid_opt;
 struct arg_str*     devidlist_opt;
+struct arg_int*     fileage_opt;
 struct arg_str*     fileblock_opt;
 struct arg_str*     filerange_opt;
 struct arg_int*     fileid_man;
@@ -101,6 +102,7 @@ void cmd_init_args(void) {
     compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
     devidlist_opt   = arg_strn(NULL,NULL,"DeviceID List", 0, 256, "Batch of up to 256 Device IDs");
     devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
+    fileage_opt     = arg_int0("a","age","ms",          "Maximum age of file, in ms. Default:-1 (infinity).");
     fileblock_opt   = arg_str0("b","block","isf|iss|gfb", "File Block to search in");
     filerange_opt   = arg_str0("r","range","X:Y",       "Access File bytes between offsets X:Y");
     fileid_man      = arg_int1(NULL,NULL,"FileID",      "File ID, 0-255.");
@@ -363,6 +365,19 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
         data->devid_strlist_size    = devidlist_opt->count;
         data->devid_strlist         = devidlist_opt->sval;
     }
+    //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
+    /// Check for Age flag (-a, --age), which specifies maximum file
+    /// modification/access delta from present time.
+    if (data->fields & ARGFIELD_AGEMS) {
+        data->age_ms = -1;      // default: Infinity = -1
+        if (fileage_opt->count > 0) {
+            DEBUGPRINT("Age arg encountered: %i\n", fileblock_opt->sval[0]);
+            data->age_ms = fileage_opt->ival[0];
+        else {
+            out_val = -7;
+            goto sub_extract_args_END;
+        }
+    }
 //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Check for block flag (-b, --block), which specifies fs block
     /// Default is isf.
@@ -380,7 +395,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
                 data->block_id = VL_GFB_BLOCKID;
             }
             else {
-                out_val = -6;
+                out_val = -8;
                 goto sub_extract_args_END;
             }
         }
@@ -411,7 +426,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             data->file_id = (uint8_t)(fileid_man->ival[0] & 255);
         }
         else {
-            out_val = -7;
+            out_val = -9;
             goto sub_extract_args_END;
         }
     }
@@ -423,7 +438,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             data->file_perms = (uint8_t)(63 & strtoul(fileperms_man->sval[0], NULL, 8));
         }
         else {
-            out_val = -8;
+            out_val = -10;
             goto sub_extract_args_END;
         }
     }
@@ -435,7 +450,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             data->file_id = (uint8_t)(255 & fileid_man->ival[0]);
         }
         else {
-            out_val = -9;
+            out_val = -11;
             goto sub_extract_args_END;
         }
     }
@@ -451,7 +466,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
                                             data->filedata_size             );
         }
         else {
-            out_val = -10;
+            out_val = -12;
             goto sub_extract_args_END;
         }
     }

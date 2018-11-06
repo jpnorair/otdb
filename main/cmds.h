@@ -31,12 +31,13 @@
 #define ARGFIELD_ARCHIVE        (1<<3)
 #define ARGFIELD_COMPRESS       (1<<4)
 #define ARGFIELD_JSONOUT        (1<<5)
-#define ARGFIELD_BLOCKID        (1<<6)
-#define ARGFIELD_FILEID         (1<<7)
-#define ARGFIELD_FILEPERMS      (1<<8)
-#define ARGFIELD_FILEALLOC      (1<<9)
-#define ARGFIELD_FILERANGE      (1<<10) 
-#define ARGFIELD_FILEDATA       (1<<11) 
+#define ARGFIELD_AGEMS          (1<<6)
+#define ARGFIELD_BLOCKID        (1<<7)
+#define ARGFIELD_FILEID         (1<<8)
+#define ARGFIELD_FILEPERMS      (1<<9)
+#define ARGFIELD_FILEALLOC      (1<<10)
+#define ARGFIELD_FILERANGE      (1<<11)
+#define ARGFIELD_FILEDATA       (1<<12)
 
 typedef struct {
     unsigned int    fields;
@@ -46,6 +47,7 @@ typedef struct {
     uint64_t        devid;
     const char**    devid_strlist;
     int             devid_strlist_size;
+    int             age_ms;
     uint8_t         jsonout_flag;
     uint8_t         compress_flag;
     uint8_t         block_id;

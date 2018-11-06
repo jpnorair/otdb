@@ -47,6 +47,7 @@ extern struct arg_lit*  jsonout_opt;
 // used by file commands
 extern struct arg_str*  devid_opt;
 extern struct arg_str*  devidlist_opt;
+extern struct arg_int*  fileage_opt;
 extern struct arg_str*  fileblock_opt;
 extern struct arg_str*  filerange_opt;
 extern struct arg_int*  fileid_man;
@@ -154,9 +155,9 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_AGEMS | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, devid_opt, fileage_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     uint8_t*    dat_ptr     = NULL;
     int         span        = 0;
     
@@ -197,11 +198,28 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             else if ((fp->length-arglist.range_lo) < span) {
                 span = (fp->length-arglist.range_lo);
             }
+            
+            /// Beginning of Read synchronization section --------------------
+            /// Check if age parameter is in acceptable range.
+            
+            if (arglist.age_ms >= 0) {
+                uint32_t now        = (uint32_t)time(NULL);
+                uint32_t file_age   = now - vl_getmodtime(fp);
+                arglist.age_ms      = ((arglist.age_ms+999)/1000);
+                
+                if (file_age > arglist.age_ms) {
+                    
+                }
+            }
+            
+            /// End of Read sync ---------------------------------------------
+            
             dat_ptr = vl_memptr(fp);
             if (dat_ptr != NULL) {
                 rc       = span;
                 dat_ptr += arglist.range_lo;
             }
+            
             vl_close(fp);
         }
         
@@ -668,8 +686,6 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
         ///
         ///@note OTDB works entirely as the root user (NULL user_id)
         
-        ///@todo save contents to temporary buffer, which is reverted-to upon ACK failure.
-        
         rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_W, NULL);
         if (rc != 0) {
             rc = 512 - rc;
@@ -685,12 +701,12 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
         dptr = vl_memptr(fp);
         if (dptr == NULL) {
             rc = -512 - 255;
-            goto cmd_pub_END;
+            goto cmd_pub_CLOSE;
         }
             
         if (arglist.range_lo >= fp->alloc) {
             rc = -512 - 7;
-            goto cmd_pub_END;
+            goto cmd_pub_CLOSE;
         }
             
         if (arglist.range_hi > fp->alloc) {
@@ -708,9 +724,10 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
             memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
         }
         
-        ///@todo update the timestamp on this file, and on the device instance.
+        /// Closing the file will update its modification and access timestamps
+        cmd_pub_CLOSE:
+        vl_close(fp);
         
-
     }
     
     cmd_pub_END:

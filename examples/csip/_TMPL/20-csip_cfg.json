@@ -1,6 +1,6 @@
 {
     "csip_cfg": {
-        "_meta":{"block":"isf", "id":19, "mod":52, "size":164, "stock":true, "pos":0, "type":"struct"},
+        "_meta":{"block":"isf", "id":20, "mod":52, "size":164, "stock":true, "pos":0, "type":"struct"},
         "_content": {
             "wmax":{"pos":0, "type":"float", "def":0},
             "wchamax":{"pos":4, "type":"float", "def":0},

@@ -26,13 +26,7 @@ cliopt_t* cliopt_init(cliopt_t* new_master) {
     //master->verbose_on  = false;
     //master->debug_on    = false;
     
-    ///@note settings for modbus addressing, and perhaps future versions of
-    ///      MPipe that have encryption.
-    master->src_addr    = 0;
-    master->dst_addr    = 1;
-    
-    ///@note this is for default guest access
-    master->user_id     = 2;
+    master->timeout_ms  = 1000;
     
     return master;
 }
@@ -53,23 +47,10 @@ INTF_Type cliopt_getintf(void) {
     return master->intf;
 }
 
-int cliopt_getuser(void) {
-    return master->user_id;
+int cliopt_gettimeout(void) {
+    return master->timeout_ms;
 }
-void cliopt_setuser(int user_id) {
-    master->user_id = user_id;
-}
-
-int cliopt_getdstaddr(void) {
-    return master->dst_addr;
-}
-void cliopt_setdstaddr(int addr) {
-    master->dst_addr = addr;
+void cliopt_settimeout(int timeout_ms) {
+    master->timeout_ms = timeout_ms;
 }
 
-int cliopt_getsrcaddr(void) {
-    return master->src_addr;
-}
-void cliopt_setsrcaddr(int addr) {
-    master->src_addr = addr;
-}

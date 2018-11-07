@@ -100,9 +100,8 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     write(dth->devmgr->fd_writeto, src, *inbytes);
     
-    ///@note wait one second, and then timeout.  Maybe this should be a
-    /// configurable option at compile time or runtime.
-    rc = poll(fds, 1, 1000);
+    /// wait one second (or configured timeout ms), and then timeout.
+    rc = poll(fds, 1, cliopt_gettimeout());
     if (rc <= 0) {
         rc = -1;
         goto cmd_devmgr_END;

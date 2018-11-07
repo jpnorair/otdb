@@ -212,16 +212,16 @@
 #define FNCODE_otdb_writedata       16
 #define FNCODE_otdb_writeperms      17
 
-#define FNCODE_eax_init_and_key     18
-#define FNCODE_eax_end              19
-#define FNCODE_eax_encrypt_message  20
-#define FNCODE_eax_decrypt_message  21
-#define FNCODE_eax_init_message     22
-#define FNCODE_eax_encrypt          23
-#define FNCODE_eax_decrypt          24
-#define FNCODE_eax_compute_tag      25
-#define FNCODE_eax_auth_data        26
-#define FNCODE_eax_crypt_data       27
+#define FNCODE_eax_init_and_key     1
+#define FNCODE_eax_end              2
+#define FNCODE_eax_encrypt_message  3
+#define FNCODE_eax_decrypt_message  4
+#define FNCODE_eax_init_message     5
+#define FNCODE_eax_encrypt          6
+#define FNCODE_eax_decrypt          7
+#define FNCODE_eax_compute_tag      8
+#define FNCODE_eax_auth_data        9
+#define FNCODE_eax_crypt_data       10
 
 #define FNCODE_smut_init            1
 #define FNCODE_smut_free            2

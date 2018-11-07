@@ -202,13 +202,45 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Beginning of Read synchronization section --------------------
             /// Check if age parameter is in acceptable range.
             
-            if (arglist.age_ms >= 0) {
+            ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
+            if ((arglist.age_ms >= 0) && (dth->devmgr != NULL)) {
                 uint32_t now        = (uint32_t)time(NULL);
                 uint32_t file_age   = now - vl_getmodtime(fp);
                 arglist.age_ms      = ((arglist.age_ms+999)/1000);
                 
                 if (file_age > arglist.age_ms) {
+                    int cmdbytes;
+                    ot_uni16 frlen;
+                    cmdbytes = snprintf((char*)dst, dstmax, "file r %u\n", arglist.file_id);
+                    cmdbytes = cmd_devmgr(dth, dst, &cmdbytes, dst, dstmax);
                     
+                    if (cmdbytes < 0) {
+                        rc = cmdbytes;  ///@todo coordinate error codes with debug macros
+                        goto cmd_read_CLOSE;
+                    }
+                    
+                    // Convert to binary.
+                    // 5 bytes of file header
+                    cmdbytes = cmd_hexnread(dst, (const char*)dst, dstmax);
+                    if (cmdbytes <= 5) {
+                        ///@todo error code for file error
+                        rc = -768 - 1;
+                        goto cmd_read_CLOSE;
+                    }
+                    
+                    // Read length value is big endian, bytes 3:4
+                    frlen.ubyte[UPPER] = dst[3];
+                    frlen.ubyte[LOWER] = dst[4];
+                    
+                    // store new data to the local cache file.
+                    // This will also change any file attributes, such as the
+                    // file modtime on close
+                    rc = vl_store(fp, frlen.ushort, &dst[5]);
+                    if (rc != 0) {
+                        ///@todo error code for file error
+                        rc = -1024 - 1;
+                        goto cmd_read_CLOSE;
+                    }
                 }
             }
             
@@ -220,6 +252,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 dat_ptr += arglist.range_lo;
             }
             
+            cmd_read_CLOSE:
             vl_close(fp);
         }
         

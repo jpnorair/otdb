@@ -42,10 +42,7 @@ typedef struct {
     FORMAT_Type format;
     INTF_Type   intf;
     
-    ///@todo determine if these global client vars belong here.
-    int         user_id;
-    int         dst_addr;
-    int         src_addr;
+    int         timeout_ms;
 
 } cliopt_t;
 
@@ -59,13 +56,10 @@ FORMAT_Type cliopt_getformat(void);
 
 INTF_Type cliopt_getintf(void);
 
-int cliopt_getuser(void);
-int cliopt_getdstaddr(void);
-int cliopt_getsrcaddr(void);
+int cliopt_gettimeout(void);
+void cliopt_settimeout(int timeout_ms);
 
-void cliopt_setuser(int user_id);
-void cliopt_setdstaddr(int addr);
-void cliopt_setsrcaddr(int addr);
+
 
 
 

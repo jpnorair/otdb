@@ -5,6 +5,6 @@
         "intf":"socket",
         "socket":"../diagnostic-tool/solpad_inv_ipc",
         "archive":"examples/csip",
-        "devmgr":"../_hbsys/darwin/bin/smut /dev/tty.usbserial-AL01QILF 9600 --pipe"
+        "devmgr":"../_hbsys/darwin/bin/smut /dev/tty.usbserial-AL01QILF 9600 --pipe --fmt=hex"
     }
 }

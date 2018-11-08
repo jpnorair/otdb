@@ -198,7 +198,7 @@ int otdb_newfile(void* handle, uint64_t device_id,
 #### otdb_restore()
 
 Restore a file on a device to its defaults
-  
+
 ```
 int otdb_restore(void* handle, uint64_t device_id, otdb_fblock_enum block, 
                  unsigned int file_id);
@@ -275,7 +275,7 @@ int otdb_readall(void* handle, otdb_filehdr_t* output_hdr,
                  otdb_filedata_t* output_data, uint64_t device_id, 
                  otdb_fblock_enum block, unsigned int file_id,
                  unsigned int read_offset, int read_size);
-```        
+```
 
 * handle: (void\*) Handle to otdb client instance
 * output\_hdr: (otdb\_filehdr\_t\*) result parameter for read header
@@ -412,10 +412,12 @@ JSON output: Error-only
 #### save
 
 ```
-save [-jc] outfile
+save [-jc] [IDlist ...] outfile
 ```
 
 -c: Optional argument to compress output.  Compression is 7z type.
+
+IDlist: List of Device IDs to save, as hex, with whitespace between IDs.  Only these IDs will be saved.
 
 outfile: File name of the saved output. If compression is not used, the output will be a directory with this name, with an internal structure of subdirectories and JSON files.
 
@@ -484,8 +486,10 @@ JSON output: Error-only
 #### rp (read permissions of internal file)
 
 ```
-rp [-j] [-i ID] [-b block] file_id
+rp [-j] [-a age] [-i ID] [-b block] file_id
 ```
+
+age: optional argument, specifies the maximum allowable age of the data to be read, in MILLISECONDS.  If cached data is older than this  amount, then OTDB will attempt to refresh the data from the data source.  If age argument is not present, OTDB will always return cached data.
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
 
@@ -500,8 +504,10 @@ JSON output: Returns the file block, id, and permissions, as described in the ex
 #### rh (read header of internal file)
 
 ```
-rh [-j] [-i ID] [-b block] file_id
+rh [-j] [-a age] [-i ID] [-b block] file_id
 ```
+
+age: optional argument, specifies the maximum allowable age of the data to be read, in MILLISECONDS.  If cached data is older than this  amount, then OTDB will attempt to refresh the data from the data source.  If age argument is not present, OTDB will always return cached data.
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
 
@@ -522,8 +528,10 @@ rh -j -i DEADBEEF 17
 #### r (read data from internal file)
 
 ```
-r [-j] [-i ID] [-b block] [-r range] file_id
+r [-j] [-a age] [-i ID] [-b block] [-r range] file_id
 ```
+
+age: optional argument, specifies the maximum allowable age of the data to be read, in MILLISECONDS.  If cached data is older than this  amount, then OTDB will attempt to refresh the data from the data source.  If age argument is not present, OTDB will always return cached data.
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
 
@@ -546,8 +554,10 @@ r -j -i 0F -r 0:4 17
 #### r\* (read header and data from internal file)
 
 ```
-r* [-j] [-i ID] [-b block] [-r range] file_id
+r* [-j] [-a age] [-i ID] [-b block] [-r range] file_id
 ```
+
+age: optional argument, specifies the maximum allowable age of the data to be read, in MILLISECONDS.  If cached data is older than this  amount, then OTDB will attempt to refresh the data from the data source.  If age argument is not present, OTDB will always return cached data.
 
 ID: optional argument, specifies Device ID in HEX.  If unused, the Device ID from the last usage of `dev-set` will be used.
 

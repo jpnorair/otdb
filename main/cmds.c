@@ -373,9 +373,6 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
         if (fileage_opt->count > 0) {
             DEBUGPRINT("Age arg encountered: %i\n", fileblock_opt->sval[0]);
             data->age_ms = fileage_opt->ival[0];
-        else {
-            out_val = -7;
-            goto sub_extract_args_END;
         }
     }
 //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    

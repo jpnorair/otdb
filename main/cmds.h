@@ -409,5 +409,34 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
 
 
 
+/** @brief Publish data to a file on a device
+ * @param dth      (dterm_handle_t*) Controlling interface handle
+ * @param dst      (uint8_t*) Protocol output buffer
+ * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+ * @param src      (uint8_t*) Protocol input buffer
+ * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+ *
+ * Pub operation (publish) is very similar to a write operation, except that it
+ * is designed to be performed from a device data source rather than from an
+ * application.  In other words, it is a push of file data up the data stack.
+ * Unlike writes, pubs will NOT push data to the device.
+ *
+ * Protocol usage: text input
+ * pub [-j] [-i ID] [-b block] [-r range] file_id pubdata
+ *
+ * if -i is missing, it defaults to the active device
+ * if -b is missing, it defaults to isf0
+ *
+ * If range is supplied and if the pubdata goes beyond the range, it will be
+ * clipped to fit within the range.
+ *
+ * If range is not supplied, range will start at 0 and be derived from the
+ * length of the supplied pubdata.
+ *
+ * pubdata is sent as BINTEX.
+ * pubdata must be structured in a certain way, which includes the
+ */
+int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
 
 #endif

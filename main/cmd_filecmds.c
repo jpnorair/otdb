@@ -222,20 +222,20 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     // Convert to binary.
                     // 5 bytes of file header
                     cmdbytes = cmd_hexnread(dst, (const char*)dst, dstmax);
-                    if (cmdbytes <= 5) {
+                    if (cmdbytes <= 6) {
                         ///@todo error code for file error
                         rc = -768 - 1;
                         goto cmd_read_CLOSE;
                     }
                     
                     // Read length value is big endian, bytes 3:4
-                    frlen.ubyte[UPPER] = dst[3];
-                    frlen.ubyte[LOWER] = dst[4];
+                    frlen.ubyte[UPPER] = dst[4];
+                    frlen.ubyte[LOWER] = dst[5];
                     
                     // store new data to the local cache file.
                     // This will also change any file attributes, such as the
                     // file modtime on close
-                    rc = vl_store(fp, frlen.ushort, &dst[5]);
+                    rc = vl_store(fp, frlen.ushort, &dst[6]);
                     if (rc != 0) {
                         ///@todo error code for file error
                         rc = -1024 - 1;
@@ -592,7 +592,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         if (span > (arglist.range_hi-arglist.range_lo)) {
             span = (arglist.range_hi-arglist.range_lo);
         }
-        if (fp->length > (span+arglist.range_lo)) {
+        if (fp->length < (span+arglist.range_lo)) {
             fp->length = (span+arglist.range_lo);
         }
         if (span > 0) {
@@ -750,7 +750,7 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
         if (span > (arglist.range_hi-arglist.range_lo)) {
             span = (arglist.range_hi-arglist.range_lo);
         }
-        if (fp->length > (span+arglist.range_lo)) {
+        if (fp->length < (span+arglist.range_lo)) {
             fp->length = (span+arglist.range_lo);
         }
         if (span > 0) {

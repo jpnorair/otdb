@@ -87,6 +87,8 @@ extern struct arg_end*  end_man;
 int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     struct pollfd fds[1];
     int rc = 0;
+    char* curs;
+    int rbytes;
     
     if (dth == NULL) {
         goto cmd_devmgr_END;
@@ -96,7 +98,10 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     }
     
     /// In verbose mode, Print the devmgr input to stdout
-    VDATA_PRINTF("[out] %*.s\n", *inbytes, (const char*)src);
+    VDATA_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
+
+    fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
+    fds[0].fd       = dth->devmgr->fd_readfrom;
     
     write(dth->devmgr->fd_writeto, src, *inbytes);
     
@@ -111,12 +116,36 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         goto cmd_devmgr_END;
     }
     
-    rc      = (int)read(dth->devmgr->fd_readfrom, dst, dstmax-1);
-    dst[rc] = 0;
-    
+    rc = 0;
+    while (1) {
+        curs    = (char*)&dst[rc];
+        rbytes  = (int)read(dth->devmgr->fd_readfrom, curs, dstmax-rc-1);
+
+        if (rbytes < 0) {
+            rc = -3;
+            goto cmd_devmgr_END;
+        }
+
+        curs[rbytes]= 0;
+        if (rbytes == 0) {
+            break;
+        }
+
+        rc += rbytes;
+        curs = strchr(curs, '\n');
+        if (curs != NULL) {
+            *curs = 0;
+            rc = (int)((void*)curs - (void*)dst);
+            break;
+        }
+
+        if (poll(fds, 1, 2) <= 0) {
+            break;
+        }
+    }
+
     /// In verbose mode, Print the devmgr input to stdout
-    VDATA_PRINTF("[in] %*.s\n", rc, (const char*)dst);
-    
+    VDATA_PRINTF("[in] %.*s\n", rc, (const char*)dst);
     
     cmd_devmgr_END:
     return rc;

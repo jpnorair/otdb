@@ -128,7 +128,7 @@ static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
 }
 
 static void sigint_handler(int sigcode) {
-    cli.exitcode = EXIT_FAILURE;
+    cli.exitcode = EXIT_SUCCESS;
     pthread_cond_signal(&cli.kill_cond);
 }
 

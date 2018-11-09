@@ -358,7 +358,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         
         if (cJSON_IsString(typeobj) && cJSON_IsString(dataobj)) {
             int hdr_sz;
-            VERBOSE_PRINTF("JSON Request (%i bytes): %.*s\n", linelen, linelen, loadbuf);
+            VCLIENT_PRINTF("JSON Request (%i bytes): %.*s\n", linelen, linelen, loadbuf);
             loadbuf = dataobj->valuestring;
             hdr_sz  = snprintf((char*)cursor, bufmax-1, "{\"type\":\"%s\", \"data\":", typeobj->valuestring);
             cursor += hdr_sz;
@@ -421,7 +421,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             // Test only
             
             if (cJSON_IsObject(cmdobj)) {
-                VERBOSE_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
+                VCLIENT_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
                 cursor += bytesout;
                 bufmax -= bytesout;
                 cursor  = (uint8_t*)stpncpy((char*)cursor, "}\f\0", bufmax);

@@ -298,7 +298,7 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
             dup2(otdb_stdout[1], 1);
             execl("/bin/sh", "sh", "-c", otdbcall, NULL);
             perror("execl");
-            exit(1);
+            exit(2);
         }
         
         otdb_stdout_fd = otdb_stdout[0];

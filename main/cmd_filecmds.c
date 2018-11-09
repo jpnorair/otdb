@@ -206,7 +206,9 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             if ((arglist.age_ms >= 0) && (dth->devmgr != NULL)) {
                 uint32_t now        = (uint32_t)time(NULL);
                 uint32_t file_age   = now - vl_getmodtime(fp);
-                arglist.age_ms      = ((arglist.age_ms+999)/1000);
+                arglist.age_ms      = (arglist.age_ms/1000);
+                
+                DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %u\n", now, file_age, arglist.age_ms);
                 
                 if (file_age > arglist.age_ms) {
                     int cmdbytes;
@@ -237,7 +239,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     // file modtime on close
                     rc = vl_store(fp, frlen.ushort, &dst[6]);
                     if (rc != 0) {
-                        ///@todo error code for file error
+                        ///@todo error code for store error (means file write is too big)
                         rc = -1024 - 1;
                         goto cmd_read_CLOSE;
                     }

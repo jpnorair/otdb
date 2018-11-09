@@ -97,9 +97,13 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         goto cmd_devmgr_END;
     }
     
+    /// Purge the read pipe.  This is important to prevent any lingering data
+    /// on the pipe from prepending the protocol response.
+    fpurge(fdopen(dth->devmgr->fd_readfrom, "r"));
+    
     /// In verbose mode, Print the devmgr input to stdout
-    VDATA_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
-
+    VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
+    
     fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
     fds[0].fd       = dth->devmgr->fd_readfrom;
     
@@ -145,7 +149,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     }
 
     /// In verbose mode, Print the devmgr input to stdout
-    VDATA_PRINTF("[in] %.*s\n", rc, (const char*)dst);
+    VDSRC_PRINTF("[in] %.*s\n", rc, (const char*)dst);
     
     cmd_devmgr_END:
     return rc;

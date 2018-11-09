@@ -73,7 +73,7 @@ pid_t popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild) {
         dup2(pipe_stdout[_WRITE], _WRITE);
         
         execl("/bin/sh", "sh", "-c", cmdline, NULL);
-        perror("execl"); 
+        perror("execl");
         exit(1);
     }
     
@@ -99,9 +99,9 @@ void popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild) {
     close(fd_tochild);
     close(fd_fromchild);               // Is this needed?
     
-    kill(pid, 0);
+    kill(pid, SIGINT);
     waitpid(pid, NULL, 0);
-    kill(pid, 0);              // Is this needed?
+    kill(pid, 0);           // returns status, this is technically unnecessary
 }
 
 

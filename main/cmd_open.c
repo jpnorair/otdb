@@ -395,9 +395,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         obj = obj->next;
     }
   
-    ///@todo quitting after exiting at this point leads to a Segfault, although
-    ///      that might not be from this function per-se
-  
     // 4b. Derive Base values from file allocations and write them to table
     if (fshdr.gfb.used > 0) {
         gfbhdr[0].base = fshdr.ftab_alloc;
@@ -540,9 +537,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         obj = obj->next;
     }
 
-///@todo add generic "DEBUG" Macro wrapper
-// TEST PRINT THE HEADER
-//test_dumpbytes(tmpl_fs.base, sizeof(vl_header_t), fshdr.ftab_alloc, "FS TABLE");
+    // TEST PRINT THE HEADER
+    DEBUG_RUN( test_dumpbytes(tmpl_fs.base, sizeof(vl_header_t), fshdr.ftab_alloc, "FS TABLE"); );
 
     // 5. By this point, the default FS is created based on the input 
     // template.  For each device in the imported JSON, we make a copy of
@@ -631,7 +627,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         closedir(devdir);
         devdir = NULL;
         
-        ///@note otfs_new() already sets the fs
+        ///@note otfs_new() already sets the fs, don't need to use otfs_setfs()
         // Set OTFS to reference the current device FS.
         //rc = otfs_setfs(dth->ext, &data_fs.uid.u8[0]);
         //if (rc != 0) {
@@ -669,13 +665,12 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             continue;
         }
         
-///@todo add generic "DEBUG" Macro wrapper
-//{ 
-//void* base = vworm_get(0);
-//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
-//fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base);
-//test_dumpbytes(base, sizeof(vl_header_t), data_fs.alloc, "FS DEFAULT DATA");  
-//}
+        // In Debug, print out the file parameters and default data
+        DEBUG_RUN(  void* base = vworm_get(0); \
+                    fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc); \
+                    fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base); \
+                    test_dumpbytes(base, sizeof(vl_header_t), data_fs.alloc, "FS DEFAULT DATA");
+        );
 
         // Correlate elements from data files with their metadata from the
         // template.  For each data element, we need the following 
@@ -684,13 +679,23 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         // per-device data.
         for (dataobj=data->child; dataobj!=NULL; dataobj=dataobj->next) {
             cJSON* fileobj;
+            cJSON* datacontent;
             vlFILE* fp;
             uint8_t* fdat;
             uint8_t block, file;
             content_type_enum ctype;
             uint16_t max;
             bool stock;
-
+            
+            ///@todo check that dataobj "_meta" object matches tmpl
+            
+            
+            // If there's no data "_content" field, skip this file.
+            datacontent = cJSON_GetObjectItemCaseSensitive(dataobj, "_content");
+            if (cJSON_IsObject(dataobj) == false) {
+                continue;
+            }
+            
             fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
             //DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
             if (cJSON_IsObject(fileobj) == false) {
@@ -732,18 +737,18 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             if (ctype == CONTENT_hex) {
                 //DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
-                fp->length = cmd_hexnread(fdat, dataobj->valuestring, (size_t)max);
+                fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)max);
             }
             else if (ctype == CONTENT_array) {
                 int items;
                 //DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
-                items = cJSON_GetArraySize(dataobj);
+                items = cJSON_GetArraySize(datacontent);
                 if (items > max) {
                     items = max;
                 }
                 fp->length = items;
                 for (int i=0; i<items; i++) {
-                    cJSON* array_i  = cJSON_GetArrayItem(dataobj, i);
+                    cJSON* array_i  = cJSON_GetArrayItem(datacontent, i);
                     fdat[i]         = (uint8_t)(255 & array_i->valueint);
                 }
             }
@@ -761,11 +766,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     // Make sure object is in both data and tmpl.
                     // If object yields another object, we need to drill 
                     // into the hierarchy
-                    d_elem  = cJSON_GetObjectItemCaseSensitive(dataobj, obj->string);
+                    d_elem  = cJSON_GetObjectItemCaseSensitive(datacontent, obj->string);
                     if (d_elem != NULL) {
                         t_meta      = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
                         t_content   = cJSON_GetObjectItemCaseSensitive(obj, "_content");
-                        if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(dataobj)) {
+                        if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(datacontent)) {
                             bytepos     = (int)jst_extract_pos(t_meta);
                             bytesout    = (int)jst_extract_size(t_meta);
 

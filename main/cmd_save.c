@@ -113,7 +113,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     otfs_t* devfs;
     otfs_id_union uid;
     
-
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDLIST | ARGFIELD_COMPRESS | ARGFIELD_ARCHIVE,
     };
@@ -188,7 +187,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
 
     while (devtest == 0) {
-        char*   dev_rtpath;
+        char* dev_rtpath;
         
         /// Create new directory for the device
         dev_rtpath  = rtpath;
@@ -243,7 +242,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
           
             /// Create JSON object top level depth, for output
-            /// output
             head = cJSON_CreateObject();
             if (head == NULL) {
                 goto cmd_save_LOOPCLOSE;
@@ -252,11 +250,40 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             if (head == NULL) {
                 goto cmd_save_LOOPFREE;
             }
-         
-            /// Drill into contents
-            c_type = jst_extract_type(meta);
             
-            /// Hex output option: just a hex string
+            /// Add modtime to the metadata, and copy all metadata to output
+            {   cJSON* outmeta;
+                cJSON* tmp;
+                outmeta = cJSON_CreateObject();
+                
+                cJSON_AddItemReferenceToObject(outmeta, "block", cJSON_GetObjectItemCaseSensitive(meta, "block"));
+                
+                tmp = cJSON_CreateNumber((double)file_id);
+                cJSON_AddItemReferenceToObject(outmeta, "id", tmp);
+                
+                tmp = cJSON_CreateNumber((double)output_sz);
+                cJSON_AddItemReferenceToObject(outmeta, "length", tmp);
+                
+                tmp = cJSON_CreateNumber((double)fp->alloc);
+                cJSON_AddItemReferenceToObject(outmeta, "size", tmp);
+                
+                cJSON_AddItemReferenceToObject(outmeta, "type", cJSON_GetObjectItemCaseSensitive(meta, "type"));
+                
+                tmp = cJSON_CreateNumber((double)vl_getmodtime(fp));
+                cJSON_AddItemReferenceToObject(outmeta, "modtime", tmp);
+                
+                
+            }
+            
+
+            /// Add _content to output.  Content Data will get stored in here.
+            output = cJSON_AddObjectToObject(output, "_content");
+         
+            /// Drill into contents -- three types
+            /// 1. Hex output option: just a hex string
+            /// 2. Array output option: integer for each byte
+            /// 3. Struct output option: structured data elements based on template
+            c_type = jst_extract_type(meta);
             if (c_type == CONTENT_hex) {
                 char* hexstr = malloc((2*output_sz) + 1);
                 if (hexstr == NULL) {
@@ -270,8 +297,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     goto cmd_save_LOOPFREE;
                 }
             }
-            
-            /// Array output option: integer for each byte
             else if (c_type == CONTENT_array) {
                 int* intarray = malloc(sizeof(int)*output_sz);
                 if (intarray == NULL) {
@@ -288,8 +313,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 }
                 cJSON_AddItemReferenceToObject(output, obj->string, cursor);
             }
-            
-            /// Struct output option: structured data elements based on template
             else { 
                 // In struct type, the "_content" field must be an object.
                 content = cJSON_GetObjectItemCaseSensitive(obj, "_content");

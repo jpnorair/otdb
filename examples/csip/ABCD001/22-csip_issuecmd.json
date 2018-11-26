@@ -1,10 +1,13 @@
 {
     "csip_issuecmd": {
-        "incurve":0,
-        "modena":0,
-        "modtype":0,
-        "wintm":0,
-        "rvrttms":0,
-        "rmptms":0
+    	"_meta":{"block":"isf", "id":22, "mod":52, "size":24, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+			"incurve":0,
+			"modena":0,
+			"modtype":0,
+			"wintm":0,
+			"rvrttms":0,
+			"rmptms":0
+		}
     }
 }

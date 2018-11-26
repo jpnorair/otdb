@@ -1,5 +1,8 @@
 {
     "csip_issuecontrol": {
-        "pos":0
+    	"_meta":{"block":"isf", "id":24, "mod":52, "size":4, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+        	"pos":0
+    	}
     }
 }

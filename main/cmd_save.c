@@ -82,8 +82,9 @@ static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char**
     int devtest = 1;
 
     for (; (devtest!=0) && (*devid_i<listsz); (*devid_i)++) {
+        DEBUGPRINT("%s %d :: devid[%i] = %s\n", __FUNCTION__, __LINE__, *devid_i, strlist[*devid_i]);
         memset(uid, 0, 8);
-        cmd_hexnread(uid, strlist[*devid_i], 8);
+        *((uint64_t*)uid) = strtoull(strlist[*devid_i], NULL, 16);
         devtest = otfs_setfs(handle, uid);
     }
     

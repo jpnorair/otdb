@@ -96,8 +96,8 @@ cli_struct cli;
   */
   
 static void sub_json_loadargs(  cJSON* json, 
-                                bool* verbose_val, 
-                                bool* debug_val, 
+                                int* verbose_val,
+                                int* debug_val,
                                 int* intf_val, 
                                 char** socket, 
                                 char** archive, 
@@ -324,9 +324,11 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "JSON parsing failed.  Exiting.\n");
             goto main_FINISH;
         }
-        {   int tmp_intf;
-            sub_json_loadargs(json, &verbose_val, &debug_val, &tmp_intf, &socket_val, &archive_val, &devmgr_val, &xpath_val);
-            intf_val = tmp_intf;
+        {   int tmp_intf, tmp_verbose, tmp_debug;
+            sub_json_loadargs(json, &tmp_debug, &tmp_verbose, &tmp_intf, &socket_val, &archive_val, &devmgr_val, &xpath_val);
+            intf_val    = tmp_intf;
+            verbose_val = (bool)tmp_verbose;
+            debug_val   = (bool)tmp_debug;
         }
     }
 
@@ -562,7 +564,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, bool* debug_val, bool* verbose_val, int* intf_val, char** socket, char** archive, char** devmgr, char** xpath) {
+void sub_json_loadargs(cJSON* json, int* debug_val, int* verbose_val, int* intf_val, char** socket, char** archive, char** devmgr, char** xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \

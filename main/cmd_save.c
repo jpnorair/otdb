@@ -188,10 +188,11 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
     while (devtest == 0) {
         char* dev_rtpath;
+        char hexuid[17];
         
         /// Create new directory for the device
-        dev_rtpath  = rtpath;
-        dev_rtpath += snprintf(rtpath, 17, "%016llX", uid.u64);
+        snprintf(hexuid, 17, "%016llX", uid.u64);
+        dev_rtpath  = stpcpy(rtpath, hexuid);
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
             rc = -8;
@@ -252,32 +253,22 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             /// Add modtime to the metadata, and copy all metadata to output
-            {   cJSON* outmeta;
-                cJSON* tmp;
-                outmeta = cJSON_CreateObject();
-                
-                cJSON_AddItemReferenceToObject(outmeta, "block", cJSON_GetObjectItemCaseSensitive(meta, "block"));
-                
-                tmp = cJSON_CreateNumber((double)file_id);
-                cJSON_AddItemReferenceToObject(outmeta, "id", tmp);
-                
-                tmp = cJSON_CreateNumber((double)output_sz);
-                cJSON_AddItemReferenceToObject(outmeta, "length", tmp);
-                
-                tmp = cJSON_CreateNumber((double)fp->alloc);
-                cJSON_AddItemReferenceToObject(outmeta, "size", tmp);
-                
-                cJSON_AddItemReferenceToObject(outmeta, "type", cJSON_GetObjectItemCaseSensitive(meta, "type"));
-                
-                tmp = cJSON_CreateNumber((double)vl_getmodtime(fp));
-                cJSON_AddItemReferenceToObject(outmeta, "modtime", tmp);
-                
-                
+            {   cJSON *outmeta, *outtime, *outcontent, *outdevid;
+                outmeta     = cJSON_Duplicate(meta, true);
+                outdevid    = cJSON_CreateString(hexuid);
+                outtime     = cJSON_GetObjectItemCaseSensitive(outmeta, "time");
+                cJSON_SetIntValue(outtime, vl_getmodtime(fp));
+                cJSON_AddItemReferenceToObject(outmeta, "devid", outdevid);
+                cJSON_AddItemReferenceToObject(output, "_meta", outmeta);
+                outcontent  = cJSON_CreateObject();
+                cJSON_AddItemReferenceToObject(output, "_content", outcontent);
             }
-            
 
             /// Add _content to output.  Content Data will get stored in here.
-            output = cJSON_AddObjectToObject(output, "_content");
+            output = cJSON_GetObjectItemCaseSensitive(output, "_content");
+            if (output == NULL) {
+                goto cmd_save_LOOPFREE;
+            }
          
             /// Drill into contents -- three types
             /// 1. Hex output option: just a hex string

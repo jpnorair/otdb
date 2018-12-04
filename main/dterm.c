@@ -48,12 +48,24 @@
 
 #include <ctype.h>
 
+typedef struct ptlist {
+    pthread_t client;
+    struct ptlist* prev;
+    struct ptlist* next;
+} clithread_item_t;
+
+typedef struct {
+    int fd_in;
+    int fd_out;
+    dterm_handle_t* dth;
+} clithread_args_t;
 
 // Dterm variables
 static const char prompt_root[]     = PROMPT;
 static const char* prompt_str[]     = {
     prompt_root
 };
+static clithread_item_t* clithread_list   = NULL;
 
 
 
@@ -102,7 +114,7 @@ void dterm_remln(dterm_t *dt);
 
 
 // DTerm threads called in main.  
-// One one should be started.  
+// Only one should be started.
 // Piper is for usage with stdin/stdout pipes, via another process.
 // Prompter is for usage with user console I/O.
 void* dterm_piper(void* args);
@@ -110,7 +122,57 @@ void* dterm_prompter(void* args);
 void* dterm_socketer(void* args);
 
 
+/** Local Subrountines <BR>
+  * ========================================================================<BR>
+  */
+static clithread_item_t* sub_clithread_add(void);
+static void sub_clithread_del(clithread_item_t* item);
+static void sub_clithread_free(void);
 
+
+static clithread_item_t* sub_clithread_add(void) {
+    clithread_item_t* newitem;
+    
+    newitem = malloc(sizeof(clithread_item_t));
+    if (newitem != NULL) {
+        newitem->prev           = NULL;
+        newitem->next           = clithread_list;
+        clithread_list->prev    = newitem;
+        clithread_list          = newitem;
+    }
+    
+    return newitem;
+}
+
+static void sub_clithread_del(clithread_item_t* item) {
+    clithread_item_t* previtem;
+    clithread_item_t* nextitem;
+    
+    if (item != NULL) {
+        previtem = item->prev;
+        nextitem = item->next;
+        free(item);
+        
+        if (previtem != NULL) {
+            previtem->next = nextitem;
+        }
+        if (nextitem != NULL) {
+            nextitem->prev = previtem;
+        }
+    }
+}
+
+static void sub_clithread_free(void) {
+    clithread_item_t* item;
+    
+    item = clithread_list;
+    while (item != NULL) {
+        clithread_item_t* lastitem;
+        lastitem    = item;
+        item        = item->next;
+        free(lastitem);
+    }
+}
 
 
 
@@ -441,6 +503,62 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
 }
 
 
+
+void* dterm_socket_clithread(void* args) {
+/// Thread that:
+/// <LI> Listens to stdin via read() pipe </LI>
+/// <LI> Processes each LINE and takes action accordingly. </LI>
+    dterm_handle_t* dth     = ((clithread_args_t*)args)->dth;
+    int             fd_in   = ((clithread_args_t*)args)->fd_in;
+    int             fd_out  = ((clithread_args_t*)args)->fd_out;
+    
+    char databuf[1024];
+    
+    // Initial state = off
+    dth->dt->state = prompt_off;
+    
+    /// Get a packet from the Socket
+    while (1) {
+        int linelen;
+        int loadlen;
+        char* loadbuf = databuf;
+        
+        VERBOSE_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
+        loadlen = (int)read(fd_out, loadbuf, LINESIZE);
+        if (loadlen > 0) {
+            sub_str_sanitize(loadbuf, (size_t)loadlen);
+            
+            pthread_mutex_lock(&dth->dtwrite_mutex);
+            do {
+                int dataout;
+            
+                // Burn whitespace ahead of command.
+                while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+                linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+                
+                // Process the line-input command
+                dth->dt->fd_in  = fd_in;
+                dth->dt->fd_out = fd_out;
+                dataout = sub_proc_lineinput(dth, loadbuf, linelen);
+
+                // +1 eats the terminator
+                loadlen -= (linelen + 1);
+                loadbuf += (linelen + 1);
+            
+            } while (loadlen > 0);
+            pthread_mutex_unlock(&dth->dtwrite_mutex);
+            
+        }
+        else {
+            // After servicing the client socket, it is important to close it.
+            close(fd_out);
+            break;
+        }
+    }
+    
+    /// End of thread
+    return NULL;
+}
 
 
 

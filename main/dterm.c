@@ -125,30 +125,40 @@ void* dterm_socketer(void* args);
 /** Local Subrountines <BR>
   * ========================================================================<BR>
   */
-static clithread_item_t* sub_clithread_add(void);
+static clithread_item_t* sub_clithread_add(const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg);
 static void sub_clithread_del(clithread_item_t* item);
 static void sub_clithread_free(void);
 
 
-static clithread_item_t* sub_clithread_add(void) {
+static clithread_item_t* sub_clithread_add(const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg) {
     clithread_item_t* newitem;
     
     newitem = malloc(sizeof(clithread_item_t));
     if (newitem != NULL) {
-        newitem->prev           = NULL;
-        newitem->next           = clithread_list;
-        clithread_list->prev    = newitem;
-        clithread_list          = newitem;
+        if (pthread_create(&newitem->client, attr, start_routine, arg) != 0) {
+            free(newitem);
+            newitem = NULL;
+        }
+        else {
+            newitem->prev           = NULL;
+            newitem->next           = clithread_list;
+            clithread_list->prev    = newitem;
+            clithread_list          = newitem;
+        }
     }
     
     return newitem;
 }
+
 
 static void sub_clithread_del(clithread_item_t* item) {
     clithread_item_t* previtem;
     clithread_item_t* nextitem;
     
     if (item != NULL) {
+        pthread_detach(item->client);
+        pthread_cancel(item->client);
+    
         previtem = item->prev;
         nextitem = item->next;
         free(item);
@@ -162,15 +172,10 @@ static void sub_clithread_del(clithread_item_t* item) {
     }
 }
 
+
 static void sub_clithread_free(void) {
-    clithread_item_t* item;
-    
-    item = clithread_list;
-    while (item != NULL) {
-        clithread_item_t* lastitem;
-        lastitem    = item;
-        item        = item->next;
-        free(lastitem);
+    while (clithread_list != NULL) {
+        sub_clithread_del(clithread_list);
     }
 }
 

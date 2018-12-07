@@ -127,7 +127,7 @@ void* dterm_socketer(void* args);
   */
 static clithread_item_t* sub_clithread_add(const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg);
 static void sub_clithread_del(clithread_item_t* item);
-static void sub_clithread_free(void);
+static void sub_clithread_deinit(void);
 
 
 static clithread_item_t* sub_clithread_add(const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg) {
@@ -140,6 +140,7 @@ static clithread_item_t* sub_clithread_add(const pthread_attr_t* attr, void* (*s
             newitem = NULL;
         }
         else {
+            //pthread_detach(newitem->client);
             newitem->prev           = NULL;
             newitem->next           = clithread_list;
             clithread_list->prev    = newitem;
@@ -155,6 +156,11 @@ static void sub_clithread_del(clithread_item_t* item) {
     clithread_item_t* previtem;
     clithread_item_t* nextitem;
     
+    /// Use a detached thread: This is an unblocking way to have pthread_cancel
+    /// kill the thread AND free the resources.  But we don't wait for thread
+    /// to exit the way a pthread_join call would do.
+    
+    /// Delete the item and link together its previous and next items.
     if (item != NULL) {
         pthread_detach(item->client);
         pthread_cancel(item->client);
@@ -163,7 +169,11 @@ static void sub_clithread_del(clithread_item_t* item) {
         nextitem = item->next;
         free(item);
         
-        if (previtem != NULL) {
+        /// If previtem==NULL, this item is the head (clithread_list)
+        if (previtem == NULL) {
+            clithread_list = NULL;
+        }
+        else {
             previtem->next = nextitem;
         }
         if (nextitem != NULL) {
@@ -173,10 +183,33 @@ static void sub_clithread_del(clithread_item_t* item) {
 }
 
 
-static void sub_clithread_free(void) {
-    while (clithread_list != NULL) {
-        sub_clithread_del(clithread_list);
+static void sub_clithread_deinit(void) {
+    clithread_item_t* item;
+    clithread_item_t* lastitem;
+    
+    /// Go to end of the list
+    lastitem    = NULL;
+    item        = clithread_list;
+    while (item != NULL) {
+        lastitem    = item;
+        item        = item->next;
     }
+    
+    /// Cancel Threads from back to front, and free list items
+    /// pthread_join() is used instead of pthread_detach(), because the deinit
+    /// operation should block until the clithread system is totally
+    /// deinitialized.
+    while (lastitem != NULL) {
+        item        = lastitem;
+        lastitem    = lastitem->prev;
+        
+        pthread_cancel(item->client);
+        pthread_join(item->client, NULL);
+        free(item);
+    }
+    
+    /// Set static reference to NULL, because it's totally empty.
+    clithread_list = NULL;
 }
 
 
@@ -518,6 +551,10 @@ void* dterm_socket_clithread(void* args) {
     int             fd_out  = ((clithread_args_t*)args)->fd_out;
     
     char databuf[1024];
+    
+    // Deferred cancellation: will wait until the blocking read() call is in
+    // idle before killing the thread.
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Initial state = off
     dth->dt->state = prompt_off;

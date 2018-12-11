@@ -38,6 +38,12 @@
 #include <dirent.h>
 #include <poll.h>
 
+#ifdef __linux__
+#   include <stdio_ext.h>
+#   define FPURGE   __fpurge
+#else
+#   define FPURGE   fpurge
+#endif
 
 
 // used by DB manipulation commands
@@ -99,7 +105,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// Purge the read pipe.  This is important to prevent any lingering data
     /// on the pipe from prepending the protocol response.
-    fpurge(fdopen(dth->devmgr->fd_readfrom, "r"));
+    FPURGE(fdopen(dth->devmgr->fd_readfrom, "r"));
     
     /// In verbose mode, Print the devmgr input to stdout
     VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);

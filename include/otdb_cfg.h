@@ -17,6 +17,9 @@
 #ifndef otdb_cfg_h
 #define otdb_cfg_h
 
+/// inttypes.h includes format strings for special integer types
+#include <inttypes.h>
+
 #ifndef ENABLED
 #   define ENABLED  1
 #endif

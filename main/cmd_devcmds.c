@@ -138,7 +138,7 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        DEBUGPRINT("cmd_devdel():\n  device_id=%016llX\n", arglist.devid);
+        DEBUGPRINT("cmd_devdel():\n  device_id=%016"PRIx64"\n", arglist.devid);
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);
@@ -169,7 +169,7 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// On successful extraction, create a new device in the database
     if (rc == 0) {
-        DEBUGPRINT("cmd_devset():\n  device_id=%016llX\n", arglist.devid);
+        DEBUGPRINT("cmd_devset():\n  device_id=%016"PRIx64"\n", arglist.devid);
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext, (uint8_t*)&arglist.devid);

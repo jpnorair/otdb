@@ -336,7 +336,7 @@ int jst_extract_typesize(typeinfo_enum* type, cJSON* meta) {
 int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* type, cJSON* value) {
     typeinfo_t typeinfo;
     int bytesout;
-    DEBUGPRINT("%s %d :: dst=%016llX, limit=%i, bitpos=%u, type=%s, value=%016llX\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
+    DEBUGPRINT("%s %d :: dst=%016%"PRIx64", limit=%i, bitpos=%u, type=%s, value=%016%"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
     if ((dst==NULL) || (limit<=0) || (type==NULL) || (value==NULL)) {
         return 0;
     }

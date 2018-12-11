@@ -454,7 +454,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
 //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
     /// Filedata field is converted from bintex and stored to data->filedata
     if (data->fields & ARGFIELD_FILEDATA) {
-        DEBUGPRINT("DataCount=%i, Filedata=%016llX\n", filedata_man->count, (uint64_t)data->filedata);
+        DEBUGPRINT("DataCount=%i, Filedata=%016%"PRIx64"\n", filedata_man->count, (uint64_t)data->filedata);
     
         if ((filedata_man->count > 0) && (data->filedata != NULL)) {
             DEBUGPRINT("Filedata arg encountered: %s\n", filedata_man->sval[0]);

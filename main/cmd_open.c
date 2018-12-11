@@ -587,7 +587,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         memcpy(data_fs.base, tmpl_fs.base, tmpl_fs.alloc);
         
         // Create new FS based on device id and template FS
-        DEBUGPRINT("%s %d :: ID=%llu\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
+        DEBUGPRINT("%s %d :: ID=%"PRIx64"\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
         rc = otfs_new(dth->ext, &data_fs);
         if (rc != 0) {
             rc = ERRCODE(otfs, otfs_new, rc);
@@ -596,8 +596,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
 //{ 
 //void* base = vworm_get(0);
-//fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
-//fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base);
+//fprintf(stderr, "LOCAL: base=%016"PRIx64", alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
+//fprintf(stderr, "VWORM: base=%016"PRIx64"\n", (uint64_t)base);
 //}
         
         // Enter Device Directory: max is 16 hex chars long (8 bytes)
@@ -643,7 +643,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         if (fp != NULL) {
             uint16_t* cursor = (uint16_t*)vl_memptr(fp);
             if (cursor != NULL) {
-                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016llX]\n", __FUNCTION__, __LINE__, (uint16_t)(data_fs.uid.u64 & 65535), data_fs.uid.u64);
+                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016"PRIx64"]\n", __FUNCTION__, __LINE__, (uint16_t)(data_fs.uid.u64 & 65535), data_fs.uid.u64);
                 cursor[0] = (uint16_t)(data_fs.uid.u64 & 65535);
             }
             vl_close(fp);
@@ -654,7 +654,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             uint8_t* cursor = vl_memptr(fp);
             if (cursor != NULL) {
                 ///@todo make sure endian gets sorted
-                DEBUGPRINT("%s %d :: write UID [%016llX]\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
+                DEBUGPRINT("%s %d :: write UID [%016"PRIx64"]\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
                 memcpy(cursor, &data_fs.uid.u8[0], 8);
             }
             vl_close(fp);
@@ -667,8 +667,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // In Debug, print out the file parameters and default data
         DEBUG_RUN(  void* base = vworm_get(0); \
-                    fprintf(stderr, "LOCAL: base=%016llX, alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc); \
-                    fprintf(stderr, "VWORM: base=%016llX\n", (uint64_t)base); \
+                    fprintf(stderr, "LOCAL: base=%016"PRIx64", alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc); \
+                    fprintf(stderr, "VWORM: base=%016"PRIx64"\n", (uint64_t)base); \
                     test_dumpbytes(base, sizeof(vl_header_t), data_fs.alloc, "FS DEFAULT DATA");
         );
 
@@ -724,7 +724,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             fdat = vl_memptr(fp);
-            //DEBUGPRINT("%s %d :: File Data at: %016llX\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
+            //DEBUGPRINT("%s %d :: File Data at: %016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
             //DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
             //DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
             if (fdat == NULL) {
@@ -806,7 +806,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
         // Save copy of JSON to local stash
         {   char local_path[64];
-            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016llX", data_fs.uid.u64);
+            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016"PRIx64, data_fs.uid.u64);
             if (mkdir(local_path, 0700) == 0) {
                 strcat(local_path, "/data.json");
                 jst_writeout(data, local_path);

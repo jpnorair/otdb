@@ -280,7 +280,7 @@ int otdb_newdevice(void* handle, uint64_t device_id, const char* tmpl_path) {
     
     if (device_id != 0) {
         int printsz;
-        printsz = snprintf(cursor, 3+16+2, "-i %16llX ", device_id);
+        printsz = snprintf(cursor, 3+16+2, "-i %"PRIx64" ", device_id);
         limit  -= printsz;
         cursor += printsz;
     }
@@ -312,7 +312,7 @@ int otdb_deldevice(void* handle, uint64_t device_id) {
     int cpylen;
     
     cursor      = stpcpy(argstring, "dev-del ");
-    cpylen      = snprintf(cursor, 16+2, "%16llX", device_id);
+    cpylen      = snprintf(cursor, 16+2, "%"PRIx64, device_id);
     cursor     += cpylen;
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
@@ -330,7 +330,7 @@ int otdb_setdevice(void* handle, uint64_t device_id) {
     int cpylen;
     
     cursor      = stpcpy(argstring, "dev-set ");
-    cpylen      = snprintf(cursor, 16+2, "%16llX", device_id);
+    cpylen      = snprintf(cursor, 16+2, "%"PRIx64, device_id);
     cursor     += cpylen;
     *cursor++   = 0;
     rc          = sub_docmd(handle, (const char*)argstring, (size_t)(cursor-argstring));
@@ -423,7 +423,7 @@ int otdb_delfile(void* handle, uint64_t device_id, otdb_fblock_enum block, unsig
     limit   = sizeof(argstring) - 1 - 4;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -462,7 +462,7 @@ int otdb_newfile(   void* handle, uint64_t device_id, otdb_fblock_enum block, un
     limit   = sizeof(argstring) - 1 - 4;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -511,7 +511,7 @@ int otdb_read(void* handle, otdb_filedata_t* output_data,
     limit   = sizeof(argstring) - 1 - 2;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -575,7 +575,7 @@ int otdb_readall(void* handle, otdb_filehdr_t* output_hdr, otdb_filedata_t* outp
     limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -656,7 +656,7 @@ int otdb_restore(void* handle, uint64_t device_id, otdb_fblock_enum block, unsig
     limit   = sizeof(argstring) - 1 - 2;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -696,7 +696,7 @@ int otdb_readhdr(void* handle, otdb_filehdr_t* output_hdr, uint64_t device_id, o
     limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -755,7 +755,7 @@ int otdb_readperms(void* handle, unsigned int* output_perms, uint64_t device_id,
     limit   = sizeof(argstring) - 1 - 3;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -807,7 +807,7 @@ int otdb_writedata(void* handle, uint64_t device_id, otdb_fblock_enum block, uns
     limit   = limit - 1 - 2;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }
@@ -856,7 +856,7 @@ int otdb_writeperms(void* handle, uint64_t device_id, otdb_fblock_enum block, un
     limit   = sizeof(argstring) - 1 - 4;
     
     if (device_id != 0) {
-        cpylen  = snprintf(cursor, limit, "-i %16llX ", device_id);
+        cpylen  = snprintf(cursor, limit, "-i %"PRIx64" ", device_id);
         cursor += cpylen;
         limit  -= cpylen; 
     }

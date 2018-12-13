@@ -352,7 +352,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             /// Writeout JSON 
-            snprintf(dev_rtpath, 31, "/%s.json", obj->string);
+            snprintf(dev_rtpath, 31, "/%u-%s.json", file_id, obj->string);
             DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, &dev_rtpath[1]);
             if (jst_writeout(head, pathbuf) != 0) {
                 goto cmd_save_LOOPCLOSE;

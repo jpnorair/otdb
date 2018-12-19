@@ -30,8 +30,12 @@ ifeq ($(THISSYSTEM),Darwin)
 	LIBBSD :=
 else ifeq ($(THISSYSTEM),Linux)
 #	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
-    PRODUCTS := otdb.$(THISSYSTEM).a
+    PRODUCTS := otdb.POSIX.a
 	LIBBSD := -lbsd
+	
+else ifeq ($(THISSYSTEM),CYGWIN_NT-10.0)
+	PRODUCTS := otdb.POSIX.a
+	LIBBSD :=
 else
 	error "THISSYSTEM set to unknown value: $(THISSYSTEM)"
 endif
@@ -112,7 +116,7 @@ cleaner:
 otdb.Darwin.a: $(OBJECTS)
 	libtool -o $(APPDIR)/libotdb.a -static $(OBJECTS)
 
-otdb.Linux.a: $(OBJECTS)
+otdb.POSIX.a: $(OBJECTS)
 	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
 	ar rcs -o $(APPDIR)/libotdb.a $(OBJECTS)
 

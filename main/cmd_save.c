@@ -150,7 +150,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -4;
         goto cmd_save_END;
     }
-     
+    
     /// Try to create a directory at the archive path.
     ///@todo error reporting for inability to create the directory.
     if (mkdir(pathbuf, 0700) != 0) {
@@ -191,9 +191,13 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         char* dev_rtpath;
         char hexuid[17];
         
-        /// Create new directory for the device
-        snprintf(hexuid, 17, "%016llX", uid.u64);
+        /// Create new directory for the device.
+        /// New directory does not use leading zeros, but for implantation into
+        /// files, it must have leading zeros.
+        snprintf(hexuid, 17, "%16llX", uid.u64);
         dev_rtpath  = stpcpy(rtpath, hexuid);
+        snprintf(hexuid, 17, "%016llX", uid.u64);
+        
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
             rc = -8;

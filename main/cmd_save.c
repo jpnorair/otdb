@@ -150,7 +150,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -4;
         goto cmd_save_END;
     }
-     
+    
     /// Try to create a directory at the archive path.
     ///@todo error reporting for inability to create the directory.
     if (mkdir(pathbuf, 0700) != 0) {
@@ -191,9 +191,13 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         char* dev_rtpath;
         char hexuid[17];
         
-        /// Create new directory for the device
-        snprintf(hexuid, 17, "%016"PRIx64, uid.u64);
+        /// Create new directory for the device.
+        /// New directory does not use leading zeros, but for implantation into
+        /// files, it must have leading zeros.
+        snprintf(hexuid, 17, "%16"PRIx64, uid.u64);
         dev_rtpath  = stpcpy(rtpath, hexuid);
+        snprintf(hexuid, 17, "%016"PRIx64, uid.u64);
+        
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {
             rc = -8;
@@ -352,7 +356,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             /// Writeout JSON 
-            snprintf(dev_rtpath, 31, "/%s.json", obj->string);
+            snprintf(dev_rtpath, 31, "/%u-%s.json", file_id, obj->string);
             DEBUGPRINT("%s %d :: new json file at %s\n", __FUNCTION__, __LINE__, &dev_rtpath[1]);
             if (jst_writeout(head, pathbuf) != 0) {
                 goto cmd_save_LOOPCLOSE;

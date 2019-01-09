@@ -548,7 +548,7 @@ JSON output: Returns the file block, id, offset, bytes, and data fields to descr
 r -j -i 0F -r 0:4 17
 
 # Output
-{"cmd":"r*", "block":3, "id":17, "offset":0, "bytes":4, "data":"01020304"}
+{"cmd":"r", "block":3, "id":17, "offset":0, "bytes":4, "data":"01020304"}
 ```
 
 #### r\* (read header and data from internal file)

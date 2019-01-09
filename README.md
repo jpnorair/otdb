@@ -45,3 +45,9 @@ $ make install
 **\_hbpkg** is where all headers, libraries, and binaries are copied, on a per-project organization model.
 
 **\_hbsys** is what you should use during linking, including, and to put in your `$PATH`.  `_hbsys/${MACHINE_TYPE}/bin` can be put in your `$PATH` to simplify running OTDB (and other tools) from the command line.
+
+## Running OTDB
+
+### TODO
+
+TODO

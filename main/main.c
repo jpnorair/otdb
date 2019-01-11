@@ -64,7 +64,6 @@
 
 
 // Client Data type
-///@todo some of this should get merged into MPipe data type
 
 static cliopt_t cliopts;
 

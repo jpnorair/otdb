@@ -569,7 +569,7 @@ int otdb_readall(void* handle, otdb_filehdr_t* output_hdr, otdb_filedata_t* outp
     int cpylen;
     int limit;
     
-    ///@todo this is almost identical to read (r*)
+    ///@todo this is almost identical to read (r)
     
     cursor  = stpcpy(argstring, "r* ");
     limit   = sizeof(argstring) - 1 - 3;

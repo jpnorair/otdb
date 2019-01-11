@@ -83,6 +83,22 @@ extern struct arg_end*  end_man;
 
 
 
+///@todo this function is replicated in cmd_save.c, and ideally we can use a
+///      single function accessible to both.
+static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char** strlist, size_t listsz) {
+    int devtest = 1;
+
+    for (; (devtest!=0) && (*devid_i<listsz); (*devid_i)++) {
+        memset(uid, 0, 8);
+        *((uint64_t*)uid) = strtoull(strlist[*devid_i], NULL, 16);
+        devtest = otfs_setfs(handle, uid);
+    }
+    
+    return devtest;
+}
+
+
+
 
 
 int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
@@ -594,12 +610,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             goto cmd_open_CLOSE;
         }
         
-//{ 
-//void* base = vworm_get(0);
-//fprintf(stderr, "LOCAL: base=%016"PRIx64", alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc);
-//fprintf(stderr, "VWORM: base=%016"PRIx64"\n", (uint64_t)base);
-//}
-        
         // Enter Device Directory: max is 16 hex chars long (8 bytes)
         snprintf(rtpath, 16, "/%s", ent->d_name);
         DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
@@ -852,4 +862,386 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cmd_open_END:
     return cmd_jsonout_err((char*)dst, dstmax, (bool)arglist.jsonout_flag, rc, "open");
 }
+
+
+
+
+
+static bool uid_in_list(const char** uidlist, size_t listsize, uint64_t cmp) {
+    uint64_t devid;
+    bool test = false;
+    
+    for (int i=0; i<listsize; i++) {
+        char* endptr;
+        endptr  = NULL;
+        devid   = strtoull(uidlist[i], &endptr, 16);
+
+        if ((*endptr == '\0') && (uidlist[i][0] != '\0') && (devid == cmp)) {
+            test = true;
+            break;
+        }
+    }
+    
+    return true;
+}
+
+
+
+
+
+static int sub_datafile(DIR* devdir, const char* pathbuf, uint64_t uid, cJSON* tmpl) {
+    int rc                  = 0;
+    struct dirent *devent   = NULL;
+    cJSON* data             = NULL;
+    cJSON* dataobj;
+    vlFILE* fp;
+    
+
+    // Loop through files in the device directory, and aggregate them.
+    while (1) {
+        devent = readdir(devdir);
+        if (devent == NULL) {
+            break;
+        }
+        if (devent->d_type == DT_REG) {
+            DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, pathbuf, devent->d_name);
+            rc = jst_aggregate_json(&data, pathbuf, devent->d_name);
+            if (rc != 0) {
+                rc = -9;
+                goto sub_datafile_CLOSE;
+            }
+        }
+    }
+    
+    ///@note Prior to this function being called, otfs_new() or otfs_setfs()
+    /// must be used in the calling function to select the device fs.
+    
+    
+    // Write the default device ID to the standardized locations.
+    // This may be overwritten later, by supplied JSON data.
+    // - UID64 to ISF1 0:8
+    // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
+    fp = ISF_open_su(0);
+    if (fp != NULL) {
+        uint16_t* cursor = (uint16_t*)vl_memptr(fp);
+        if (cursor != NULL) {
+            DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016"PRIx64"]\n", __FUNCTION__, __LINE__, (uint16_t)(uid & 65535), uid);
+            cursor[0] = (uint16_t)(uid & 65535);
+        }
+        vl_close(fp);
+    }
+
+    fp = ISF_open_su(1);
+    if (fp != NULL) {
+        uint8_t* cursor = vl_memptr(fp);
+        if (cursor != NULL) {
+            ///@todo make sure endian gets sorted
+            DEBUGPRINT("%s %d :: write UID [%016"PRIx64"]\n", __FUNCTION__, __LINE__, uid);
+            memcpy(cursor, (uint8_t*)&uid, 8);
+        }
+        vl_close(fp);
+    }
+    
+    // If there's no custom data to write, move on
+    if (data == NULL) {
+        rc = 0;
+        goto sub_datafile_CLOSE;
+    }
+
+    // Correlate elements from data files with their metadata from the
+    // template.  For each data element, we need the following
+    // attributes: (1) Block ID, (2) File ID, (3) Data range, (4) Data
+    // value.  With this information it is possible to write all the
+    // per-device data.
+    for (dataobj=data->child; dataobj!=NULL; dataobj=dataobj->next) {
+        cJSON* obj;
+        cJSON* fileobj;
+        cJSON* datacontent;
+        vlFILE* fp;
+        uint8_t* fdat;
+        uint8_t block, file;
+        content_type_enum ctype;
+        uint16_t max;
+        bool stock;
+        
+        ///@todo check that dataobj "_meta" object matches tmpl
+        
+        // If there's no data "_content" field, skip this file.
+        datacontent = cJSON_GetObjectItemCaseSensitive(dataobj, "_content");
+        if (cJSON_IsObject(dataobj) == false) {
+            continue;
+        }
+        
+        fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
+        //DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
+        if (cJSON_IsObject(fileobj) == false) {
+            continue;
+        }
+        
+        obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
+        //DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+        if (cJSON_IsObject(obj) == false) {
+            continue;
+        }
+        block   = jst_extract_blockid(obj);
+        file    = jst_extract_id(obj);
+        ctype   = jst_extract_type(obj);
+        max     = jst_extract_size(obj);
+        stock   = jst_extract_stock(obj);
+        obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
+        
+        //DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+        if (cJSON_IsObject(obj) == false) {
+            continue;
+        }
+        fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
+        if (fp == NULL) {
+            continue;
+        }
+        
+        fdat = vl_memptr(fp);
+        //DEBUGPRINT("%s %d :: File Data at: %016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
+        //DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
+        //DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
+        if (fdat == NULL) {
+            vl_close(fp);
+            continue;
+        }
+        if (fp->alloc < max) {
+            max = fp->alloc;
+        }
+        
+        if (ctype == CONTENT_hex) {
+            //DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
+            fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)max);
+        }
+        else if (ctype == CONTENT_array) {
+            int items;
+            //DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
+            items = cJSON_GetArraySize(datacontent);
+            if (items > max) {
+                items = max;
+            }
+            fp->length = items;
+            for (int i=0; i<items; i++) {
+                cJSON* array_i  = cJSON_GetArrayItem(datacontent, i);
+                fdat[i]         = (uint8_t)(255 & array_i->valueint);
+            }
+        }
+        // CONTENT_struct
+        ///@todo might benefit from recursive treatment
+        else {  // CONTENT_struct
+            for (obj=obj->child; obj!=NULL; obj=obj->next) {
+                cJSON*  d_elem;
+                cJSON*  t_meta;
+                cJSON*  t_content;
+                int     bytepos;
+                int     bytesout;
+                //DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
+                
+                // Make sure object is in both data and tmpl.
+                // If object yields another object, we need to drill
+                // into the hierarchy
+                d_elem  = cJSON_GetObjectItemCaseSensitive(datacontent, obj->string);
+                if (d_elem != NULL) {
+                    t_meta      = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
+                    t_content   = cJSON_GetObjectItemCaseSensitive(obj, "_content");
+                    if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(datacontent)) {
+                        bytepos     = (int)jst_extract_pos(t_meta);
+                        bytesout    = (int)jst_extract_size(t_meta);
+
+                        for (t_content=t_content->child; t_content!=NULL; t_content=t_content->next) {
+                            cJSON* d_subelem;
+                            d_subelem  = cJSON_GetObjectItemCaseSensitive(d_elem, t_content->string);
+                            if (d_subelem != NULL) {
+                                jst_load_element( &fdat[bytepos],
+                                    bytesout,
+                                    (unsigned int)jst_extract_bitpos(t_content),
+                                    jst_extract_string(t_content, "type"),
+                                    d_subelem);
+                            }
+                        }
+                    }
+                    else {
+                        bytepos = (int)jst_extract_pos(obj);
+                        bytesout = jst_load_element( &fdat[bytepos],
+                                        (int)max - bytepos,
+                                        (unsigned int)jst_extract_bitpos(obj),
+                                        jst_extract_string(obj, "type"),
+                                        d_elem);
+                    }
+                    
+                    fp->length = bytepos + bytesout;
+                }
+            }
+        }
+        // end of CONTENT_struct
+        vl_close(fp);
+        
+        ///@todo synchronize this file against the target
+        
+    }
+    // end of data file interator
+    
+    ///@note tmp only gets stored on OPEN or save operations
+//    // Save copy of JSON to local stash
+//    {   char local_path[64];
+//        snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016"PRIx64, uid);
+//
+//        ///@todo check if dir already exists, if not, make it
+//        if (mkdir(local_path, 0700) == 0) {
+//            strcat(local_path, "/data.json");
+//            jst_writeout(data, local_path);
+//        }
+//    }
+
+    sub_datafile_CLOSE:
+    cJSON_Delete(data);
+
+    return rc;
+}
+
+
+
+
+
+
+
+
+
+int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    int rc;
+    
+    // POSIX Filesystem and JSON handles
+    DIR* dir            = NULL;
+    DIR* devdir         = NULL;
+    struct dirent *ent  = NULL;
+    char* endptr;
+    
+    otfs_id_union active_id;
+    
+    cmd_arglist_t arglist = {
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDLIST | ARGFIELD_ARCHIVE,
+    };
+    void* args[] = {help_man, jsonout_opt, devidlist_opt, end_man};
+    
+    ///@todo do input checks!!!!!!
+    
+    /// Make sure there is something to load
+    if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
+        return -1;
+    }
+    
+    /// Extract arguments into arglist struct
+    rc = cmd_extract_args(&arglist, args, "load", (const char*)src, inbytes);
+    if (rc != 0) {
+        rc = -2;
+        goto cmd_load_END;
+    }
+    DEBUGPRINT("cmd_load():\n  devid_list=(%d items)\n  archive=%s\n", arglist.devid_strlist_size, arglist.archive_path);
+    
+    /// 1. Determine how to use the command line input to update the database
+    /// 2. ...
+    
+    // 1. Determine how to use the command line input to update the database
+    // There are several possibilities
+    // A. The input folder can specify a device.
+    // B. The input folder can contain subfolders, each specifying a device
+    // C. The input device list can be empty
+    // D. The input device list can specify devices
+    //
+    // If the device list is empty, OTDB will implicitly use all the devices
+    // specified by archive input folders
+    
+    
+    
+    dir = opendir(arglist.archive_path);
+    if (dir == NULL) {
+        rc = -3;
+        goto cmd_load_CLOSE;
+    }
+    
+    endptr = NULL;
+    active_id.u64 = strtoull(arglist.archive_path, &endptr, 16);
+    if ((*endptr == '\0') && (*arglist.archive_path != '\0')) {
+        // the input archive folder is a hex number
+        if (arglist.devid_strlist_size > 0) {
+            if (uid_in_list(arglist.devid_strlist, arglist.devid_strlist_size, active_id.u64) == false) {
+                rc = -4;
+                goto cmd_load_CLOSE;
+            }
+        }
+        
+        // Activate the chosen ID.  If it is not in the database, skip it.
+        if (otfs_setfs(dth->ext, &active_id.u8[0]) == 0) {
+            rc = sub_datafile(devdir, arglist.archive_path, active_id.u64, dth->tmpl);
+        }
+        
+        
+    }
+    else {
+        char pathbuf[256];
+        char* rtpath;
+    
+        // the input archive folder is not a hex number: must contain subfolders
+        
+        // Go into each directory that isn't "_TMPL"
+        // The pathbuf already contains the root directory, from step 2, but we
+        // need to clip the _TMPL part.
+        rtpath  = stpncpy(pathbuf, arglist.archive_path, (sizeof(pathbuf) - (32+1)) );
+        *rtpath = 0;
+        
+        while (1) {
+            ent = readdir(dir);
+            if (ent == NULL) {
+                break;
+            }
+            
+            // If entity is not a Directory, go to next entity in the dir
+            DEBUGPRINT("%s %d :: d_name=%s\n", __FUNCTION__, __LINE__, ent->d_name);
+            if (ent->d_type != DT_DIR) {
+                continue;
+            }
+            
+            // Name of directory should be a pure hex number.  It must also
+            // be present in the device list (or, no device list)
+            endptr          = NULL;
+            active_id.u64   = strtoull(ent->d_name, &endptr, 16);
+            if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
+                continue;
+            }
+            if (arglist.devid_strlist_size > 0) {
+                if (uid_in_list(arglist.devid_strlist, arglist.devid_strlist_size, active_id.u64) == false) {
+                    continue;
+                }
+            }
+            
+            // Enter Device Directory: max is 16 hex chars long (8 bytes)
+            snprintf(rtpath, 16, "/%s", ent->d_name);
+            DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
+            devdir = opendir(pathbuf);
+            if (devdir == NULL) {
+                rc = -8;
+                goto cmd_load_CLOSE;
+            }
+        
+            // Activate the chosen ID.  If it is not in the database, skip it.
+            if (otfs_setfs(dth->ext, &active_id.u8[0]) != 0) {
+                continue;
+            }
+            
+            rc = sub_datafile(devdir, pathbuf, active_id.u64, dth->tmpl);
+        }
+    }
+    
+    // 7. Close and Free all dangling memory elements
+    cmd_load_CLOSE:
+    if (devdir != NULL) closedir(devdir);
+    if (dir != NULL)    closedir(dir);
+    
+    cmd_load_END:
+    return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "load");
+}
+
+
 

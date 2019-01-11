@@ -110,7 +110,7 @@ typedef struct {
     // Externally initialized
     cmdtab_t*           cmdtab;
     childproc_t*        devmgr;
-    void*               ext;        ///@todo change to otfs
+    void*               ext;
     cJSON*              tmpl;
 } dterm_handle_t;
 

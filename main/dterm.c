@@ -297,10 +297,7 @@ int dterm_close(dterm_t* dt) {
     int retcode = 0;
     
     if (dt->intf == INTF_interactive) {
-        ///@todo implement dterm_setcan right here
-        //if (fcntl(fd, F_GETFD) != -1) { //|| errno != EBADF;
-            retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
-        //}
+        retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
     }
     
     return retcode;
@@ -534,9 +531,6 @@ void* dterm_socketer(void* args) {
     clithread.fd_in = dth->dt->fd_in;
     
     /// Get a packet from the Socket
-    /// @todo multi-thread this in order to allow socket to remain open on the
-    ///       client, but add mutex in the sub-thread in order to prevent 
-    ///       concurrent access to the underlying filesystem.
     while (1) {
         VERBOSE_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
         clithread.fd_out = accept(dth->dt->fd_in, NULL, NULL);
@@ -1068,8 +1062,6 @@ void dterm_remln(dterm_t *dt) {
 void dterm_reset(dterm_t *dt) {
     dt->cline = dt->linebuf;
     
-    //int i = LINESIZE;
-    //while (--i >= 0) {                            ///@todo this way is the preferred way
     while (dt->cline < (dt->linebuf + LINESIZE)) {
         *dt->cline++ = 0;  
     }

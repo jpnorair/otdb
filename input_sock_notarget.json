@@ -1,0 +1,9 @@
+{
+    "arguments": {
+        "verbose":1,
+        "debug":1,
+        "intf":"socket",
+        "socket":"./otdb.sock",
+        "archive":"examples/csip"
+    }
+}

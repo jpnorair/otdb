@@ -471,13 +471,15 @@ void* dterm_socket_clithread(void* args) {
     // Initial state = off
     dth->dt->state = prompt_off;
     
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", fd_out);
+    
     /// Get a packet from the Socket
     while (1) {
         int linelen;
         int loadlen;
         char* loadbuf = databuf;
         
-        VERBOSE_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
+        VERBOSE_PRINTF("Waiting for read on socket:fd=%i\n", fd_out);
         loadlen = (int)read(fd_out, loadbuf, LINESIZE);
         if (loadlen > 0) {
             sub_str_sanitize(loadbuf, (size_t)loadlen);
@@ -494,6 +496,10 @@ void* dterm_socket_clithread(void* args) {
                 dth->dt->fd_in  = fd_in;
                 dth->dt->fd_out = fd_out;
                 dataout = sub_proc_lineinput(dth, loadbuf, linelen);
+                // If there's meaningful output, add a linebreak
+                if (dataout > 0) {
+                    dterm_puts(dth->dt, "\n");
+                }
 
                 // +1 eats the terminator
                 loadlen -= (linelen + 1);
@@ -511,6 +517,7 @@ void* dterm_socket_clithread(void* args) {
     }
     
     /// End of thread
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", fd_out);
     return NULL;
 }
 

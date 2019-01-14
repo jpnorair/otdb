@@ -51,7 +51,7 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
     if (handle == NULL) {
         return NULL;
     }
-    
+
     newitem = malloc(sizeof(clithread_item_t));
     if (newitem != NULL) {
         if (pthread_create(&newitem->client, attr, start_routine, arg) != 0) {
@@ -63,11 +63,13 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
             head            = *(clithread_item_t**)handle;
             newitem->prev   = NULL;
             newitem->next   = head;
-            head->prev      = newitem;
+            if (head != NULL) {
+                head->prev  = newitem;
+            }
             head            = newitem;
         }
     }
-    
+
     return newitem;
 }
 

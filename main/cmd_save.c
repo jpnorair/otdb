@@ -194,9 +194,9 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         /// Create new directory for the device.
         /// New directory does not use leading zeros, but for implantation into
         /// files, it must have leading zeros.
-        snprintf(hexuid, 17, "%16llX", uid.u64);
+        snprintf(hexuid, 17, "%16"PRIx64, uid.u64);
         dev_rtpath  = stpcpy(rtpath, hexuid);
-        snprintf(hexuid, 17, "%016llX", uid.u64);
+        snprintf(hexuid, 17, "%016"PRIx64, uid.u64);
         
         DEBUGPRINT("%s %d :: new dir at %s\n", __FUNCTION__, __LINE__, rtpath);
         if (mkdir(pathbuf, 0700) != 0) {

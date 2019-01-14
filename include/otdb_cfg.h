@@ -17,6 +17,9 @@
 #ifndef otdb_cfg_h
 #define otdb_cfg_h
 
+/// inttypes.h includes format strings for special integer types
+#include <inttypes.h>
+
 #ifndef ENABLED
 #   define ENABLED  1
 #endif
@@ -41,13 +44,12 @@
 #endif
 
 /// Parameter configurations
-///@todo redefine 
 #define OTDB_PARAM(VAL)             OTDB_PARAM_##VAL
 #ifndef OTDB_PARAM_NAME
 #   define OTDB_PARAM_NAME          "otdb"
 #endif
 #ifndef OTDB_PARAM_VERSION 
-#   define OTDB_PARAM_VERSION       "0.1.0"
+#   define OTDB_PARAM_VERSION       "0.2.0"
 #endif
 #ifndef OTDB_PARAM_DATE
 #   define OTDB_PARAM_DATE          __DATE__

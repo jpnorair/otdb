@@ -46,6 +46,7 @@ static const cmd_t otdb_commands[] = {
     { "dev-del",    &cmd_devdel },
     { "dev-new",    &cmd_devnew },
     { "dev-set",    &cmd_devset },
+    { "load",       &cmd_load },
     { "open",       &cmd_open },
     { "new",        &cmd_new },
     { "pub",        &cmd_pub },
@@ -63,9 +64,9 @@ static const cmd_t otdb_commands[] = {
 
 
 
-///@todo Make this thread safe by adding a mutex here.
-///      It's not technically required yet becaus only one thread in otdb uses
-///      cmdsearch, but we should put it in soon, just in case.
+///@todo OTDB currently has a mutex to ensure that only one client is able to
+///      do a command at a time.  If that ever changes, the cmd search and
+///      command execution process needs a mutex instead.
 static cmdtab_t cmdtab_default = {
     .cmd    = NULL,
     .size   = 0,
@@ -106,7 +107,6 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
         int test;
         
         if (xpath_len > 0) { 
-            ///@todo make this find call work properly on mac and linux.
 #           if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
             snprintf(buffer, 256, "find %s -perm +111 -type f", xpath);
             stream = popen(buffer, "r");

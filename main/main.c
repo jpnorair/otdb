@@ -64,7 +64,6 @@
 
 
 // Client Data type
-///@todo some of this should get merged into MPipe data type
 
 static cliopt_t cliopts;
 
@@ -528,7 +527,9 @@ int otdb_main(  INTF_Type intf_val,
     pthread_mutex_lock(&cli.kill_mutex);
     pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
     
+    ///@todo clump this with dterm_deinit()
     DEBUG_PRINTF("Cancelling Theads\n");
+    pthread_detach(thr_dterm);
     pthread_cancel(thr_dterm);
    
     otdb_main_TERM1:

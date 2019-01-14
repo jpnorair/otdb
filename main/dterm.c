@@ -16,6 +16,7 @@
 
 // Application Headers
 #include "cliopt.h"
+#include "clithread.h"
 #include "cmds.h"
 #include "cmdhistory.h"
 #include "cmdsearch.h"
@@ -47,7 +48,6 @@
 
 
 #include <ctype.h>
-
 
 // Dterm variables
 static const char prompt_root[]     = PROMPT;
@@ -102,14 +102,12 @@ void dterm_remln(dterm_t *dt);
 
 
 // DTerm threads called in main.  
-// One one should be started.  
+// Only one should be started.
 // Piper is for usage with stdin/stdout pipes, via another process.
 // Prompter is for usage with user console I/O.
 void* dterm_piper(void* args);
 void* dterm_prompter(void* args);
 void* dterm_socketer(void* args);
-
-
 
 
 
@@ -144,17 +142,30 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
             goto dterm_init_TERM;
         }
     }
-
-    if (pthread_mutex_init(&dth->dtwrite_mutex, NULL) != 0 ) {
+    
+    dth->clithread = clithread_init();
+    if (dth->clithread == NULL) {
         rc = -4;
+        goto dterm_init_TERM;
+    }
+    
+    if (pthread_mutex_init(&dth->dtwrite_mutex, NULL) != 0 ) {
+        rc = -5;
         goto dterm_init_TERM;
     }
     
     return 0;
     
     dterm_init_TERM:
-    if (dth->dt != NULL)    free(dth->dt);
-    if (dth->ch != NULL)    free(dth->ch);
+    clithread_deinit(dth->clithread);
+    
+    if (dth->dt != NULL) {
+        free(dth->dt);
+    }
+    if (dth->ch != NULL) {
+        free(dth->ch);
+    }
+    
     return rc;
 }
 
@@ -177,7 +188,9 @@ void dterm_deinit(dterm_handle_t* dth) {
     } 
     if (dth->tmpl != NULL) {
         cJSON_Delete(dth->tmpl);
-    } 
+    }
+    
+    clithread_deinit(dth->clithread);
     
     pthread_mutex_unlock(&dth->dtwrite_mutex); 
     pthread_mutex_destroy(&dth->dtwrite_mutex);
@@ -284,19 +297,11 @@ int dterm_close(dterm_t* dt) {
     int retcode = 0;
     
     if (dt->intf == INTF_interactive) {
-        ///@todo implement dterm_setcan right here
-        //if (fcntl(fd, F_GETFD) != -1) { //|| errno != EBADF;
-            retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
-        //}
+        retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
     }
-    
     
     return retcode;
 }
-
-
-
-
 
 
 
@@ -444,59 +449,103 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
 
 
 
-void* dterm_socketer(void* args) {
+
+
+
+
+
+void* dterm_socket_clithread(void* args) {
 /// Thread that:
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
-    dterm_handle_t* dth     = (dterm_handle_t*)args;
-    int             loadlen;
-    char*           loadbuf = dth->dt->linebuf;
+    dterm_handle_t* dth     = ((clithread_args_t*)args)->ext;
+    int             fd_in   = ((clithread_args_t*)args)->fd_in;
+    int             fd_out  = ((clithread_args_t*)args)->fd_out;
+    
+    char databuf[1024];
+    
+    // Deferred cancellation: will wait until the blocking read() call is in
+    // idle before killing the thread.
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Initial state = off
     dth->dt->state = prompt_off;
     
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", fd_out);
+    
     /// Get a packet from the Socket
-    /// @todo multi-thread this in order to allow socket to remain open on the
-    ///       client, but add mutex in the sub-thread in order to prevent 
-    ///       concurrent access to the underlying filesystem.
+    while (1) {
+        int linelen;
+        int loadlen;
+        char* loadbuf = databuf;
+        
+        VERBOSE_PRINTF("Waiting for read on socket:fd=%i\n", fd_out);
+        loadlen = (int)read(fd_out, loadbuf, LINESIZE);
+        if (loadlen > 0) {
+            sub_str_sanitize(loadbuf, (size_t)loadlen);
+            
+            pthread_mutex_lock(&dth->dtwrite_mutex);
+            do {
+                int dataout;
+            
+                // Burn whitespace ahead of command.
+                while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
+                linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
+                
+                // Process the line-input command
+                dth->dt->fd_in  = fd_in;
+                dth->dt->fd_out = fd_out;
+                dataout = sub_proc_lineinput(dth, loadbuf, linelen);
+                // If there's meaningful output, add a linebreak
+                if (dataout > 0) {
+                    dterm_puts(dth->dt, "\n");
+                }
+
+                // +1 eats the terminator
+                loadlen -= (linelen + 1);
+                loadbuf += (linelen + 1);
+            
+            } while (loadlen > 0);
+            pthread_mutex_unlock(&dth->dtwrite_mutex);
+            
+        }
+        else {
+            // After servicing the client socket, it is important to close it.
+            close(fd_out);
+            break;
+        }
+    }
+    
+    /// End of thread
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", fd_out);
+    return NULL;
+}
+
+
+
+void* dterm_socketer(void* args) {
+/// Thread that:
+/// <LI> Listens to stdin via read() pipe </LI>
+/// <LI> Processes each LINE and takes action accordingly. </LI>
+    dterm_handle_t* dth = (dterm_handle_t*)args;
+    clithread_args_t clithread;
+    
+    // Initial state = off
+    dth->dt->state  = prompt_off;
+
+    ///@todo make sure this fd_in works out
+    clithread.ext   = dth;
+    clithread.fd_in = dth->dt->fd_in;
+    
+    /// Get a packet from the Socket
     while (1) {
         VERBOSE_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
-        dth->dt->fd_out = accept(dth->dt->fd_in, NULL, NULL);
-        if (dth->dt->fd_out < 0) {
+        clithread.fd_out = accept(dth->dt->fd_in, NULL, NULL);
+        if (clithread.fd_out < 0) {
             perror("Server Socket accept() failed");
-            continue;
         }
-            
-        ///@todo could spawn a thread here and use mutexes to block concurrent access
-        while (1) { 
-            int linelen;
-            
-            VERBOSE_PRINTF("Waiting for read on socket fd=%i\n", dth->dt->fd_in);
-            loadlen = (int)read(dth->dt->fd_out, loadbuf, LINESIZE);
-            if (loadlen > 0) {
-                sub_str_sanitize(loadbuf, (size_t)loadlen);
-                
-                do {
-                    int dataout;
-                
-                    // Burn whitespace ahead of command.
-                    while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
-                    linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
-                    
-                    // Process the line-input command
-                    dataout = sub_proc_lineinput(dth, loadbuf, linelen);
-
-                    // +1 eats the terminator
-                    loadlen -= (linelen + 1);
-                    loadbuf += (linelen + 1);
-                
-                } while (loadlen > 0);
-            }
-            else {
-                // After servicing the client socket, it is important to close it.
-                close(dth->dt->fd_out);
-                break;
-            }
+        else {
+            clithread_add(dth->clithread, NULL, &dterm_socket_clithread, (void*)&clithread);
         }
     }
     
@@ -559,8 +608,7 @@ void* dterm_prompter(void* args) {
 /// <LI> Prints to the output while the prompt is active. </LI>
 /// <LI> Sends signal (and the accompanied input) to dterm_parser() when a new
 ///          input is entered. </LI>
-/// 
-    
+///
     //uint8_t protocol_buf[1024];
     
     static const cmdtype npcodes[32] = {
@@ -1021,8 +1069,6 @@ void dterm_remln(dterm_t *dt) {
 void dterm_reset(dterm_t *dt) {
     dt->cline = dt->linebuf;
     
-    //int i = LINESIZE;
-    //while (--i >= 0) {                            ///@todo this way is the preferred way
     while (dt->cline < (dt->linebuf + LINESIZE)) {
         *dt->cline++ = 0;  
     }

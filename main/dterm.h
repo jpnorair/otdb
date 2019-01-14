@@ -20,6 +20,7 @@
 // Configuration Header
 #include "otdb_cfg.h"
 #include "cliopt.h"
+#include "clithread.h"
 #include "cmdhistory.h"
 #include "popen2.h"
 
@@ -102,12 +103,14 @@ typedef struct {
     // Intrinsic
     dterm_t*            dt;
     cmdhist*            ch;
+    clithread_handle_t  clithread;
     pthread_mutex_t     dtwrite_mutex;
+    
     
     // Externally initialized
     cmdtab_t*           cmdtab;
     childproc_t*        devmgr;
-    void*               ext;        ///@todo change to otfs
+    void*               ext;
     cJSON*              tmpl;
 } dterm_handle_t;
 

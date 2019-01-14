@@ -168,7 +168,6 @@ int main(int argc, char* argv[]) {
 
     /// special case: '--version' takes precedence error reporting 
     if (version->count > 0) {
-        ///@todo change to new info format
         printf("%s -- %s\n", OTDB_PARAM_VERSION, OTDB_PARAM_DATE);
         printf("Designed by JP Norair (jpnorair@indigresso.com)\n");
         exitcode = 0;
@@ -342,10 +341,10 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
         case 4: rc = otdb_read(otdb, otdb_filedata_t* output_data, 1, BLOCK_isf, 0, 2, -1);
                 break;
                 
-        case 5: rc = 
+        case 5: //rc =
                 break;
                 
-        case 6: rc = 
+        case 6: //rc = 
                 break;
                 
         case 7:

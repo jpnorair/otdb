@@ -1,0 +1,27 @@
+{
+    "csip_setarray": {
+    	"_meta":{"block":"isf", "id":21, "mod":52, "size":80, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+			"pair_x0":0,
+			"pair_y0":0,
+			"pair_x1":1,
+			"pair_y1":1,
+			"pair_x2":2,
+			"pair_y2":2,
+			"pair_x3":3,
+			"pair_y3":3,
+			"pair_x4":4,
+			"pair_y4":4,
+			"pair_x5":5,
+			"pair_y5":5,
+			"indpunits":1,
+			"deptref":2,
+			"rmppt1tms":3,
+			"rmpdectmm":4,
+			"rmpinctmm":5,
+			"rmprsup":6,
+			"deptrefstr":7,
+			"deptrefstop":8
+		}
+    }
+}

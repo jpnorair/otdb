@@ -1,0 +1,8 @@
+{
+    "user_auth_key": {
+    	"_meta":{"block":"isf", "id":15, "mod":48, "size":22, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+        	"key":"AABBCCDDEEFF00010203040506070809"
+        }
+    }
+}

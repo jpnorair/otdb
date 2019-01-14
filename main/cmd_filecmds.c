@@ -203,6 +203,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Check if age parameter is in acceptable range.
             
             ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
+            ///@todo this section could be broken-out into its own function
             if ((arglist.age_ms >= 0) && (dth->devmgr != NULL)) {
                 uint32_t now        = (uint32_t)time(NULL);
                 uint32_t file_age   = now - vl_getmodtime(fp);
@@ -601,22 +602,29 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
         }
         
-        ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
+        ///@todo Re-implement this via devmgr
+        ///@todo this should be a callable function, if possible.
         if (dth->devmgr != NULL) {
-            int inbytes;
+            int cmdbytes;
             char outbuf[576];
-            //uint8_t inbuf[256];
-            //cmd_devmgr(dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+//            cmdbytes = snprintf(outbuf, 576-512-2, "file w -r %u:%u %u [",
+//                                  arglist.range_lo, arglist.range_hi, arglist.file_id);
+//            cmdbytes+= cmd_hexwrite(&outbuf[cmdbytes], arglist.filedata, span);
+//            outbuf[cmdbytes] = ']';  cmdbytes++;
+//            outbuf[cmdbytes] = 0;    cmdbytes++;
+//            DEBUG_PRINTF("to smut: %.*s\n", cmdbytes, outbuf);
+//            write(dth->devmgr->fd_writeto, outbuf, cmdbytes);
             
-            inbytes  = snprintf(outbuf, 576-512-2, "file w -r %u:%u %u [", arglist.range_lo, arglist.range_hi, arglist.file_id);
-            inbytes += cmd_hexwrite(&outbuf[inbytes], arglist.filedata, span);
-            
-            outbuf[inbytes] = ']';  inbytes++;
-            outbuf[inbytes] = 0;    inbytes++;
-            
-            DEBUG_PRINTF("to smut: %.*s\n", inbytes, outbuf);
-            
-            write(dth->devmgr->fd_writeto, outbuf, inbytes);
+            cmdbytes            = snprintf(outbuf, 576-512-2, "file w -r %u:%u %u [",
+                                        arglist.range_lo, arglist.range_hi, arglist.file_id);
+            cmdbytes           += cmd_hexwrite(&outbuf[cmdbytes], arglist.filedata, span);
+            outbuf[cmdbytes++]  = ']';
+            outbuf[cmdbytes++]  = 0;
+            cmdbytes            = cmd_devmgr(dth, dst, &cmdbytes, (uint8_t*)outbuf, dstmax);
+            if (cmdbytes < 0) {
+                ///@todo this means there's a write error.  Could try again, or
+                /// flag some type of error.
+            }
         }
         
         /// Closing the file will update its modification and access timestamps

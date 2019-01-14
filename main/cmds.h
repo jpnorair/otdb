@@ -186,7 +186,7 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
 
 
 /** @brief Opens a database file and loads into memory
-  * @param dth       (dterm_handle_t*) Controlling interface handle
+  * @param dth      (dterm_handle_t*) Controlling interface handle
   * @param dst      (uint8_t*) Protocol output buffer
   * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
   * @param src      (uint8_t*) Protocol input buffer
@@ -199,6 +199,36 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
   *             depending on the way it is saved (-c option or not).
   */
 int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Loads archive (JSON) delta data into an already open database
+  * @param dth      (dterm_handle_t*) Controlling interface handle
+  * @param dst      (uint8_t*) Protocol output buffer
+  * @param inbytes  (int*) Protocol Input Bytes.  Also outputs adjusted input bytes.
+  * @param src      (uint8_t*) Protocol input buffer
+  * @param dstmax   (size_t) Maximum size of dst (Protocol output buffer)
+  * @sa cmd_open
+  *
+  * Protocol usage: text input
+  * load [-j] infile [IDlist]
+  *
+  * infile:     Input file.  This is either a directory or a compressed archive
+  *             depending on the way it is saved (-c option or not). For load
+  *             operations, template information is ignored.
+  *
+  * IDlist:     Optional list of device IDs available to filter the infile
+  *             archive.  Only devices in the list will be loaded.  If no list
+  *             is specified, all devices will be loaded/re-loaded.
+  *
+  * @note Best Practice is to load only DELTA information.  For example, the
+  * input archive should contain only the devices with new data, and each
+  * device entry (i.e. directory) should contain only the files that have been
+  * modified by the client.  These files may even contain only the fields that
+  * have been changed, ignoring the others.
+  */
+int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
 
 
 

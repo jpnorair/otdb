@@ -13,7 +13,7 @@ EXT_DEF     ?=
 EXT_INC     ?= 
 EXT_LIBFLAGS ?= 
 EXT_LIBS    ?= 
-VERSION     ?= 0.1.0
+VERSION     ?= 0.3.0
 
 
 # Make sure the LD_LIBRARY_PATH includes the _hbsys directory
@@ -21,6 +21,9 @@ ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
 	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
 endif
 
+
+# Try to get git HEAD commit value
+GITHEAD := $(shell git rev-parse --short HEAD)
 
 
 ifeq ($(THISSYSTEM),Darwin)
@@ -40,7 +43,7 @@ else
 	error "THISSYSTEM set to unknown value: $(THISSYSTEM)"
 endif
 
-DEFAULT_DEF := -D__HBUILDER__
+DEFAULT_DEF := -D__HBUILDER__ -DOTDB_PARAM_GITHEAD=\"$(GITHEAD)\"
 LIBMODULES  := argtable cJSON cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIBS)
 #SUBMODULES  := main client test
 SUBMODULES  := main client

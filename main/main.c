@@ -266,7 +266,9 @@ int main(int argc, char* argv[]) {
     if (version->count > 0) {
         ///@todo change to new info format
         printf("%s -- %s\n", OTDB_PARAM_VERSION, OTDB_PARAM_DATE);
+        printf("Commit-ID: %s\n", OTDB_PARAM_GITHEAD);
         printf("Designed by JP Norair (jpnorair@indigresso.com)\n");
+        
         exitcode = 0;
         goto main_FINISH;
     }

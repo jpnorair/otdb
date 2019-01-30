@@ -112,7 +112,7 @@ uint16_t jst_extract_size(cJSON* meta) {
 
 
 uint32_t jst_extract_time(cJSON* meta) {
-    return (uint32_t)(jst_extract_int(meta, "time"));
+    return (uint32_t)(jst_extract_int(meta, "modtime"));
 }
 
 

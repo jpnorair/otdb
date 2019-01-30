@@ -44,6 +44,19 @@
 #include <unistd.h>
 
 
+typedef struct {
+    content_type_enum   ctype;
+    bool                stock;
+    uint8_t             block;
+    uint8_t             fileid;
+    uint8_t             mod;
+    uint16_t            pos;
+    uint16_t            size;
+    unsigned long       modtime;
+} filemeta_t;
+
+
+
 // used by DB manipulation commands
 extern struct arg_str*  devid_man;
 extern struct arg_file* archive_man;
@@ -190,76 +203,101 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         cJSON* fileobj;
         cJSON* datacontent;
         vlFILE* fp;
+        filemeta_t dmeta;
         uint8_t* fdat;
-        uint8_t block, file;
-        content_type_enum ctype;
-        uint16_t max;
-        bool stock;
         int derived_length = 0;
         
-        ///@todo check that dataobj "_meta" object matches tmpl
+        // If there's no "_meta" field, skip this file.
+        // If it exists, copy the meta information locally.
+        // if modtime doesn't exist, or is zero, use time=now
+        obj = cJSON_GetObjectItemCaseSensitive(dataobj, "_meta");
+        DEBUGPRINT("%s %d :: Object \"_meta\" found in DataObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+        if (cJSON_IsObject(obj) == false) {
+            continue;
+        }
+        dmeta.block     = jst_extract_blockid(obj);
+        dmeta.fileid    = jst_extract_id(obj);
+        dmeta.ctype     = jst_extract_type(obj);
+        dmeta.size      = jst_extract_size(obj);
+        dmeta.modtime   = jst_extract_time(obj);
+        if (dmeta.modtime == 0) {
+            dmeta.modtime = time(NULL);
+        }
         
         // If there's no data "_content" field, skip this file.
+        // We will use the datacontent JSON object later
         datacontent = cJSON_GetObjectItemCaseSensitive(dataobj, "_content");
-        if (cJSON_IsObject(dataobj) == false) {
+        if (cJSON_IsObject(datacontent) == false) {
             continue;
         }
         
+        // Get the template meta defaults for this file, matched on the file name
+        // Make sure that template metadata is aligned with file metadata
         fileobj = cJSON_GetObjectItemCaseSensitive(dth->tmpl, dataobj->string);
         DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
         if (cJSON_IsObject(fileobj) == false) {
             continue;
         }
-        
         obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
         DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
         if (cJSON_IsObject(obj) == false) {
             continue;
         }
-        block   = jst_extract_blockid(obj);
-        file    = jst_extract_id(obj);
-        ctype   = jst_extract_type(obj);
-        max     = jst_extract_size(obj);
-        stock   = jst_extract_stock(obj);
-        obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
+
+        // block, fileid, and size must match in template and file
+        if ((dmeta.block != jst_extract_blockid(obj))
+        ||  (dmeta.fileid != jst_extract_id(obj))
+        ||  (dmeta.size != jst_extract_size(obj))) {
+            DEBUGPRINT("%s %d :: Metadata mismatch on %s\n", __FUNCTION__, __LINE__, dataobj->string);
+            continue;
+        }
+    
+        // "stock" parameter must be taken from template only
+        dmeta.stock = jst_extract_stock(obj);
+    
+        // "ctype" parameter is retained from file
+        // "modtime" parameter is retained from file
         
+        // Get the template content, and open
+        obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
         DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
         if (cJSON_IsObject(obj) == false) {
             continue;
         }
-        fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
+        fp = vl_open( (vlBLOCK)dmeta.block, dmeta.fileid, VL_ACCESS_RW, NULL);
         if (fp == NULL) {
             continue;
         }
         
         fdat = vl_memptr(fp);
         DEBUGPRINT("%s %d :: File Data at: %016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
-        DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
+        DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, size=%i, stock=%i\n", __FUNCTION__, __LINE__, dmeta.block, dmeta.fileid, dmeta.ctype, dmeta.size, dmeta.stock);
         DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
         if (fdat == NULL) {
             vl_close(fp);
             continue;
         }
-        if (fp->alloc < max) {
-            max = fp->alloc;
+        if (fp->alloc < dmeta.size) {
+            dmeta.size = fp->alloc;
         }
-        
-        if (ctype == CONTENT_hex) {
+    
+        if (dmeta.ctype == CONTENT_hex) {
             DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
-            derived_length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)max);
+            fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)dmeta.size);
         }
-        else if (ctype == CONTENT_array) {
+        else if (dmeta.ctype == CONTENT_array) {
+            int items;
             DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
-            derived_length = cJSON_GetArraySize(datacontent);
-            if (derived_length > max) {
-                derived_length = max;
+            items = cJSON_GetArraySize(datacontent);
+            if (items > dmeta.size) {
+                items = dmeta.size;
             }
-            for (int i=0; i<derived_length; i++) {
+            derived_length = items;
+            for (int i=0; i<items; i++) {
                 cJSON* array_i  = cJSON_GetArrayItem(datacontent, i);
                 fdat[i]         = (uint8_t)(255 & array_i->valueint);
             }
         }
-        // CONTENT_struct
         ///@todo might benefit from recursive treatment
         else {  // CONTENT_struct
             for (obj=obj->child; obj!=NULL; obj=obj->next) {
@@ -268,6 +306,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
                 cJSON*  t_content;
                 int     bytepos;
                 int     bytesout;
+                
                 DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
                 
                 // Make sure object is in both data and tmpl.
@@ -296,7 +335,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
                     else {
                         bytepos = (int)jst_extract_pos(obj);
                         bytesout = jst_load_element( &fdat[bytepos],
-                                        (int)max - bytepos,
+                                        (int)dmeta.size - bytepos,
                                         (unsigned int)jst_extract_bitpos(obj),
                                         jst_extract_string(obj, "type"),
                                         d_elem);
@@ -320,7 +359,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         if (sync_target && (dth->devmgr != NULL)) {
             int cmdbytes;
             char outbuf[576];
-            cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", file);
+            cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", dmeta.fileid);
             cmdbytes           += cmd_hexwrite(&outbuf[cmdbytes], fdat, fp->length);
             outbuf[cmdbytes++]  = ']';
             outbuf[cmdbytes++]  = 0;
@@ -331,6 +370,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
             }
         }
         
+        vl_setmodtime(fp, (ot_u32)dmeta.modtime);
         vl_close(fp);
     }
     // end of data file interator
@@ -604,6 +644,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     
     // 3b. Add overhead section to the allocation, Malloc the fs data
+    ///@todo check if res_time0 is used correctly -- should it be pulled from
+    /// json input or used like it is here?
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
     tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
@@ -664,6 +706,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         // IDMOD: from already extracted value
         // ALLOC
         // LENGTH: this is derived later, from file contents
+        ///@todo this time field is taken from the template, not the data file.
+        /// That's probably ok as long as time is adjusted later.
         hdr->modtime= jst_extract_time(meta);
         hdr->mirror = 0xFFFF;
         //hdr->base = ... ;
@@ -958,71 +1002,94 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             cJSON* fileobj;
             cJSON* datacontent;
             vlFILE* fp;
+            filemeta_t dmeta;
             uint8_t* fdat;
-            uint8_t block, file;
-            content_type_enum ctype;
-            uint16_t max;
-            bool stock;
             int derived_length = 0;
             
-            ///@todo check that dataobj "_meta" object matches tmpl
-            
+            // If there's no "_meta" field, skip this file.
+            // If it exists, copy the meta information locally.
+            // if modtime doesn't exist, or is zero, use time=now
+            obj = cJSON_GetObjectItemCaseSensitive(dataobj, "_meta");
+            DEBUGPRINT("%s %d :: Object \"_meta\" found in DataObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
+            if (cJSON_IsObject(obj) == false) {
+                continue;
+            }
+            dmeta.block     = jst_extract_blockid(obj);
+            dmeta.fileid    = jst_extract_id(obj);
+            dmeta.ctype     = jst_extract_type(obj);
+            dmeta.size      = jst_extract_size(obj);
+            dmeta.modtime   = jst_extract_time(obj);
+            if (dmeta.modtime == 0) {
+                dmeta.modtime = time(NULL);
+            }
             
             // If there's no data "_content" field, skip this file.
+            // We will use the datacontent JSON object later
             datacontent = cJSON_GetObjectItemCaseSensitive(dataobj, "_content");
-            if (cJSON_IsObject(dataobj) == false) {
+            if (cJSON_IsObject(datacontent) == false) {
                 continue;
             }
             
+            // Get the template meta defaults for this file, matched on the file name
+            // Make sure that template metadata is aligned with file metadata
             fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
             DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
             if (cJSON_IsObject(fileobj) == false) {
                 continue;
             }
-            
             obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
             DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
             if (cJSON_IsObject(obj) == false) {
                 continue;
             }
-            block   = jst_extract_blockid(obj);
-            file    = jst_extract_id(obj);
-            ctype   = jst_extract_type(obj);
-            max     = jst_extract_size(obj);
-            stock   = jst_extract_stock(obj);
-            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
+
+            // block, fileid, and size must match in template and file
+            if ((dmeta.block != jst_extract_blockid(obj))
+            ||  (dmeta.fileid != jst_extract_id(obj))
+            ||  (dmeta.size != jst_extract_size(obj))) {
+                DEBUGPRINT("%s %d :: Metadata mismatch on %s\n", __FUNCTION__, __LINE__, dataobj->string);
+                continue;
+            }
             
+            // "stock" parameter must be taken from template only
+            dmeta.stock = jst_extract_stock(obj);
+            
+            // "ctype" parameter is retained from file
+            // "modtime" parameter is retained from file
+            
+            // Get the template content, and open
+            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
             DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
             if (cJSON_IsObject(obj) == false) {
                 continue;
             }                  
-            fp = vl_open( (vlBLOCK)block, file, VL_ACCESS_RW, NULL);
+            fp = vl_open( (vlBLOCK)dmeta.block, dmeta.fileid, VL_ACCESS_RW, NULL);
             if (fp == NULL) {
                 continue;
             }
             
             fdat = vl_memptr(fp);
             DEBUGPRINT("%s %d :: File Data at: %016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
-            DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, max=%i, stock=%i\n", __FUNCTION__, __LINE__, block, file, ctype, max, stock);
+            DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, size=%i, stock=%i\n", __FUNCTION__, __LINE__, dmeta.block, dmeta.fileid, dmeta.ctype, dmeta.size, dmeta.stock);
             DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
             if (fdat == NULL) {
                 vl_close(fp);
                 continue;
             }
-            if (fp->alloc < max) {
-                max = fp->alloc;
+            if (fp->alloc < dmeta.size) {
+                dmeta.size = fp->alloc;
             }
             
-            if (ctype == CONTENT_hex) {
+            if (dmeta.ctype == CONTENT_hex) {
                 DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
-                fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)max);
+                fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)dmeta.size);
             }
-            else if (ctype == CONTENT_array) {
+            else if (dmeta.ctype == CONTENT_array) {
                 int items;
                 DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
                 items = cJSON_GetArraySize(datacontent);
-                if (items > max) {
-                    items = max;
+                if (items > dmeta.size) {
+                    items = dmeta.size;
                 }
                 derived_length = items;
                 for (int i=0; i<items; i++) {
@@ -1030,7 +1097,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     fdat[i]         = (uint8_t)(255 & array_i->valueint);
                 }
             }
-            // CONTENT_struct
             ///@todo might benefit from recursive treatment
             else {  // CONTENT_struct
                 for (obj=obj->child; obj!=NULL; obj=obj->next) {
@@ -1068,7 +1134,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         else {
                             bytepos = (int)jst_extract_pos(obj);
                             bytesout = jst_load_element( &fdat[bytepos], 
-                                            (int)max - bytepos, 
+                                            (int)dmeta.size - bytepos,
                                             (unsigned int)jst_extract_bitpos(obj), 
                                             jst_extract_string(obj, "type"), 
                                             d_elem);
@@ -1085,9 +1151,10 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 }
                 fp->length = (uint16_t)derived_length;
             }
+            vl_setmodtime(fp, (ot_u32)dmeta.modtime);
             vl_close(fp);
         }
-        // end of data file interator
+        // end of data file iterator
     
         // Save copy of JSON to local stash
         {   char local_path[64];

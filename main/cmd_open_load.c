@@ -414,7 +414,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     DIR* dir                = NULL;
     DIR* devdir             = NULL;
     struct dirent *ent      = NULL;
-    struct dirent *devent   = NULL;
     cJSON* tmpl             = NULL;
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
@@ -880,8 +879,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     while (1) {
         char* endptr;
-        vlFILE* fp;
-        cJSON* dataobj;
   
         ent = readdir(dir);
         if (ent == NULL) {
@@ -927,251 +924,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             goto cmd_open_CLOSE;
         }
         
-        // -------------------------------------------------------------------
-        ///@todo this is the start of where sub_datafile() routine would go
-        
-        // Loop through files in the device directory, and aggregate them.
-        while (1) {
-            devent = readdir(devdir);
-            if (devent == NULL) {
-                break;
-            }
-            if (devent->d_type == DT_REG) {
-                DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, pathbuf, devent->d_name);
-                rc = jst_aggregate_json(&data, pathbuf, devent->d_name);
-                if (rc != 0) {
-                    rc = -9;
-                    goto cmd_open_CLOSE;
-                }
-            }
-        }
-        closedir(devdir);
-        devdir = NULL;
-        
-        ///@note otfs_new() already sets the fs, don't need to use otfs_setfs()
-        // Set OTFS to reference the current device FS.
-        //rc = otfs_setfs(dth->ext, &data_fs.uid.u8[0]);
-        //if (rc != 0) {
-        //    rc = -256 - rc;
-        //    goto cmd_open_CLOSE;
-        //}
-        
-        // Write the default device ID to the standardized locations.
-        // This may be overwritten later, by supplied JSON data.
-        // - UID64 to ISF1 0:8
-        // - VID16 to ISF0 0:2.  Derived from lower 16 bits of UID64.
-        fp = ISF_open_su(0);
-        if (fp != NULL) {
-            uint16_t* cursor = (uint16_t*)vl_memptr(fp);
-            if (cursor != NULL) {
-                DEBUGPRINT("%s %d :: write VID [%04X] to Device [%016"PRIx64"]\n", __FUNCTION__, __LINE__, (uint16_t)(data_fs.uid.u64 & 65535), data_fs.uid.u64);
-                cursor[0] = (uint16_t)(data_fs.uid.u64 & 65535);
-            }
-            vl_close(fp);
-        }
-
-        fp = ISF_open_su(1);
-        if (fp != NULL) {
-            uint8_t* cursor = vl_memptr(fp);
-            if (cursor != NULL) {
-                ///@todo make sure endian gets sorted
-                DEBUGPRINT("%s %d :: write UID [%016"PRIx64"]\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
-                memcpy(cursor, &data_fs.uid.u8[0], 8);
-            }
-            vl_close(fp);
-        }
-        
-        // If there's no custom data to write, move on
-        if (data == NULL) {
-            continue;
-        }
-        
-        // In Debug, print out the file parameters and default data
-        DEBUG_RUN(  void* base = vworm_get(0); \
-                    fprintf(stderr, "LOCAL: base=%016"PRIx64", alloc=%zu\n", (uint64_t)data_fs.base, data_fs.alloc); \
-                    fprintf(stderr, "VWORM: base=%016"PRIx64"\n", (uint64_t)base); \
-                    test_dumpbytes(base, sizeof(vl_header_t), data_fs.alloc, "FS DEFAULT DATA");
-        );
-
-        // Correlate elements from data files with their metadata from the
-        // template.  For each data element, we need the following 
-        // attributes: (1) Block ID, (2) File ID, (3) Data range, (4) Data 
-        // value.  With this information it is possible to write all the
-        // per-device data.
-        for (dataobj=data->child; dataobj!=NULL; dataobj=dataobj->next) {
-            cJSON* fileobj;
-            cJSON* datacontent;
-            vlFILE* fp;
-            filemeta_t dmeta;
-            uint8_t* fdat;
-            int derived_length = 0;
-            
-            // If there's no "_meta" field, skip this file.
-            // If it exists, copy the meta information locally.
-            // if modtime doesn't exist, or is zero, use time=now
-            obj = cJSON_GetObjectItemCaseSensitive(dataobj, "_meta");
-            DEBUGPRINT("%s %d :: Object \"_meta\" found in DataObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
-            if (cJSON_IsObject(obj) == false) {
-                continue;
-            }
-            dmeta.block     = jst_extract_blockid(obj);
-            dmeta.fileid    = jst_extract_id(obj);
-            dmeta.ctype     = jst_extract_type(obj);
-            dmeta.size      = jst_extract_size(obj);
-            dmeta.modtime   = jst_extract_time(obj);
-            if (dmeta.modtime == 0) {
-                dmeta.modtime = time(NULL);
-            }
-            
-            // If there's no data "_content" field, skip this file.
-            // We will use the datacontent JSON object later
-            datacontent = cJSON_GetObjectItemCaseSensitive(dataobj, "_content");
-            if (cJSON_IsObject(datacontent) == false) {
-                continue;
-            }
-            
-            // Get the template meta defaults for this file, matched on the file name
-            // Make sure that template metadata is aligned with file metadata
-            fileobj = cJSON_GetObjectItemCaseSensitive(tmpl, dataobj->string);
-            DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
-            if (cJSON_IsObject(fileobj) == false) {
-                continue;
-            }
-            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_meta");
-            DEBUGPRINT("%s %d :: Object \"_meta\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
-            if (cJSON_IsObject(obj) == false) {
-                continue;
-            }
-
-            // block, fileid, and size must match in template and file
-            if ((dmeta.block != jst_extract_blockid(obj))
-            ||  (dmeta.fileid != jst_extract_id(obj))
-            ||  (dmeta.size != jst_extract_size(obj))) {
-                DEBUGPRINT("%s %d :: Metadata mismatch on %s\n", __FUNCTION__, __LINE__, dataobj->string);
-                continue;
-            }
-            
-            // "stock" parameter must be taken from template only
-            dmeta.stock = jst_extract_stock(obj);
-            
-            // "ctype" parameter is retained from file
-            // "modtime" parameter is retained from file
-            
-            // Get the template content, and open
-            obj = cJSON_GetObjectItemCaseSensitive(fileobj, "_content");
-            DEBUGPRINT("%s %d :: Object \"_content\" found in FileObject = %d\n", __FUNCTION__, __LINE__, (obj!=NULL));
-            if (cJSON_IsObject(obj) == false) {
-                continue;
-            }                  
-            fp = vl_open( (vlBLOCK)dmeta.block, dmeta.fileid, VL_ACCESS_RW, NULL);
-            if (fp == NULL) {
-                continue;
-            }
-            
-            fdat = vl_memptr(fp);
-            DEBUGPRINT("%s %d :: File Data at: %016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)fdat);
-            DEBUGPRINT("%s %d :: block=%i, file=%i, ctype=%i, size=%i, stock=%i\n", __FUNCTION__, __LINE__, dmeta.block, dmeta.fileid, dmeta.ctype, dmeta.size, dmeta.stock);
-            DEBUGPRINT("%s %d :: fp->alloc=%i, fp->length=%i\n", __FUNCTION__, __LINE__, fp->alloc, fp->length);
-            if (fdat == NULL) {
-                vl_close(fp);
-                continue;
-            }
-            if (fp->alloc < dmeta.size) {
-                dmeta.size = fp->alloc;
-            }
-            
-            if (dmeta.ctype == CONTENT_hex) {
-                DEBUGPRINT("%s %d :: Working on Hex\n", __FUNCTION__, __LINE__);
-                fp->length = cmd_hexnread(fdat, datacontent->valuestring, (size_t)dmeta.size);
-            }
-            else if (dmeta.ctype == CONTENT_array) {
-                int items;
-                DEBUGPRINT("%s %d :: Working on Array\n", __FUNCTION__, __LINE__);
-                items = cJSON_GetArraySize(datacontent);
-                if (items > dmeta.size) {
-                    items = dmeta.size;
-                }
-                derived_length = items;
-                for (int i=0; i<items; i++) {
-                    cJSON* array_i  = cJSON_GetArrayItem(datacontent, i);
-                    fdat[i]         = (uint8_t)(255 & array_i->valueint);
-                }
-            }
-            ///@todo might benefit from recursive treatment
-            else {  // CONTENT_struct
-                for (obj=obj->child; obj!=NULL; obj=obj->next) {
-                    cJSON*  d_elem;
-                    cJSON*  t_meta;
-                    cJSON*  t_content;
-                    int     bytepos;
-                    int     bytesout;
-                    
-                    DEBUGPRINT("%s %d :: Working on Struct element=%s\n", __FUNCTION__, __LINE__, obj->string);
-                    
-                    // Make sure object is in both data and tmpl.
-                    // If object yields another object, we need to drill 
-                    // into the hierarchy
-                    d_elem  = cJSON_GetObjectItemCaseSensitive(datacontent, obj->string);
-                    if (d_elem != NULL) {
-                        t_meta      = cJSON_GetObjectItemCaseSensitive(obj, "_meta");
-                        t_content   = cJSON_GetObjectItemCaseSensitive(obj, "_content");
-                        if (cJSON_IsObject(t_meta) && cJSON_IsObject(t_content) && cJSON_IsObject(datacontent)) {
-                            bytepos     = (int)jst_extract_pos(t_meta);
-                            bytesout    = (int)jst_extract_size(t_meta);
-
-                            for (t_content=t_content->child; t_content!=NULL; t_content=t_content->next) {
-                                cJSON* d_subelem;
-                                d_subelem  = cJSON_GetObjectItemCaseSensitive(d_elem, t_content->string);
-                                if (d_subelem != NULL) {
-                                    jst_load_element( &fdat[bytepos], 
-                                        bytesout, 
-                                        (unsigned int)jst_extract_bitpos(t_content), 
-                                        jst_extract_string(t_content, "type"), 
-                                        d_subelem);
-                                }
-                            }
-                        }
-                        else {
-                            bytepos = (int)jst_extract_pos(obj);
-                            bytesout = jst_load_element( &fdat[bytepos], 
-                                            (int)dmeta.size - bytepos,
-                                            (unsigned int)jst_extract_bitpos(obj), 
-                                            jst_extract_string(obj, "type"), 
-                                            d_elem);
-                        }
-                        
-                        derived_length = bytepos + bytesout;
-                    }
-                }
-            } 
-            // end of CONTENT_struct
-            if (derived_length > fp->length) {
-                if (derived_length > fp->alloc) {
-                    derived_length = fp->alloc;
-                }
-                fp->length = (uint16_t)derived_length;
-            }
-            vl_setmodtime(fp, (ot_u32)dmeta.modtime);
-            vl_close(fp);
-        }
-        // end of data file iterator
-    
-        // Save copy of JSON to local stash
-        {   char local_path[64];
-            snprintf(local_path, sizeof(local_path)-10, OTDB_PARAM_SCRATCHDIR"/%016"PRIx64, data_fs.uid.u64);
-            if (mkdir(local_path, 0700) == 0) {
-                strcat(local_path, "/data.json");
-                jst_writeout(data, local_path);
-            }
-        }
-        
-        // Free Data JSON.  
-        // Set to NULL to avoid double-freeing on exception
-        cJSON_Delete(data);
-        data = NULL;
-        
-        ///@todo this is the end of where sub_datafile() routine would go
-        // -------------------------------------------------------------------
+        ///@todo verify that final argument (sync_target=true) is indeed what we want to do
+        rc = sub_datafile(dth, dst, dstmax, devdir, pathbuf, data_fs.uid.u64, true, true);
     }
     closedir(dir);
     dir = NULL;
@@ -1189,17 +943,19 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 //test_dumpbytes(data_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
 //}
     
-    // 6. Save new JSON template to local stash.
-    dth->tmpl   = tmpl;
-    open_valid  = true;
+    // 6. mark that the database opening is valid
+    open_valid = true;
 
-
-    // 7. Close and Free all dangling memory elements
     cmd_open_CLOSE:
-    if ((tmpl != NULL) && (open_valid == false)) {
+    // ------------------------------------------------------------------------
+    // 7. Close and Free all dangling memory elements
+    if (open_valid == false) {
+        if (dth->tmpl == tmpl) {
+            dth->tmpl = NULL;
+        }
         cJSON_Delete(tmpl);
     }
-    if (data != NULL)   cJSON_Delete(data);
+    cJSON_Delete(data);
     if (devdir != NULL) closedir(devdir);
     if (dir != NULL)    closedir(dir);
     

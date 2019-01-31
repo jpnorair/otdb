@@ -23,24 +23,25 @@
 
 #include <pthread.h>
 
-typedef struct ptlist {
-    pthread_t client;
-    struct ptlist* prev;
-    struct ptlist* next;
-} clithread_item_t;
-
 typedef struct {
     int fd_in;
     int fd_out;
     void* ext;
 } clithread_args_t;
 
+typedef struct ptlist {
+    pthread_t           client;
+    clithread_args_t    args;
+    struct ptlist*      prev;
+    struct ptlist*      next;
+} clithread_item_t;
+
 typedef clithread_item_t** clithread_handle_t;
 
 
 clithread_handle_t clithread_init(void);
 
-clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg);
+clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), clithread_args_t* arg);
 
 void clithread_del(clithread_item_t* item);
 

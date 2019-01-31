@@ -44,7 +44,7 @@ clithread_handle_t clithread_init(void) {
 }
 
 
-clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), void* arg) {
+clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), clithread_args_t* arg) {
     clithread_item_t* newitem;
     clithread_item_t* head;
     
@@ -54,7 +54,16 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
 
     newitem = malloc(sizeof(clithread_item_t));
     if (newitem != NULL) {
-        if (pthread_create(&newitem->client, attr, start_routine, arg) != 0) {
+        if (arg == NULL) {
+            newitem->args.ext       = NULL;
+            newitem->args.fd_in     = -1;
+            newitem->args.fd_out    = -1;
+        }
+        else {
+            newitem->args = *arg;
+        }
+        
+        if (pthread_create(&newitem->client, attr, start_routine, (void*)&newitem->args) != 0) {
             free(newitem);
             newitem = NULL;
         }

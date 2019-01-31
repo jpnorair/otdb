@@ -86,11 +86,6 @@ typedef struct {
     struct termios curter;
     
     volatile prompt_state state; // state of the terminal prompt
-    
-    // fd_in, fd_out are used by controlling interface.
-    // Usage will differ in case of interactive, pipe, socket
-    int fd_in;
-    int fd_out;
 
     int linelen;                 // line length
     char *cline;                 // pointer to current position in linebuf
@@ -100,14 +95,31 @@ typedef struct {
 
 
 typedef struct {
-    // Intrinsic
+    // fd_in, fd_out are used by controlling interface.
+    // Usage will differ in case of interactive, pipe, socket
+    int in;
+    int out;
+} dterm_fd_t;
+
+
+typedef struct {
+    // Internally initialized in dterm_init()
+    // Used only by dterm controlling thread.
     dterm_t*            dt;
     cmdhist*            ch;
     clithread_handle_t  clithread;
-    pthread_mutex_t     dtwrite_mutex;
     
+    // Internally initialized in dterm_init()
+    // Used by client threads to prevent more than one command from running in
+    // OTDB engine at any given time.
+    pthread_mutex_t*    dtwrite_mutex;
     
-    // Externally initialized
+    // Client Thread I/O parameters.
+    // Should be altered per client thread in cloned dterm_handle_t
+    dterm_fd_t          fd;
+    
+    // Externally initialized in otdb_main()
+    // Safe for client threads to duplicate/reference because of mutex protection
     cmdtab_t*           cmdtab;
     childproc_t*        devmgr;
     void*               ext;
@@ -141,44 +153,28 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf);
 void dterm_deinit(dterm_handle_t* dth);
 
 
-dterm_thread_t dterm_open(dterm_t* dt, const char* path);
-int dterm_close(dterm_t* dt);
+dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path);
+int dterm_close(dterm_handle_t* dth);
 
 
 
+///@todo refactor these read/write functions
 
+int dterm_put(dterm_fd_t* fd, char *s, int size);
 
+int dterm_puts(dterm_fd_t* fd, char *s);
 
+int dterm_putc(dterm_fd_t* fd, char c);
+
+int dterm_puts2(dterm_fd_t* fd, char *s);
+
+int dterm_putsc(dterm_t *dt, char *s);
+int dterm_putcmd(dterm_t *dt, char *s, int size);
 
 
 // resets command buffer
 void dterm_reset(dterm_t *dt);
 
-
-
-int dterm_putc(dterm_t *dt, char c);
-
-
-// writes c string to stdout
-// retunrns number of bytes written
-int dterm_puts(dterm_t *dt, char *s);
-
-
-// writes size bytes to stdout
-// retunrns number of bytes written
-int dterm_put(dterm_t *dt, char *s, int size);
-
-
-// writes c string to command buffer
-// retunrns number of bytes written
-int dterm_putsc(dterm_t *dt, char *s);
-
-
-// printf for dterm.
-int dterm_printf(dterm_t* dt, const char* format, ...);
-
-// scanf for dterm.  Scans a line
-int dterm_scanf(dterm_t* dt, const char* format, ...);
 
 
 

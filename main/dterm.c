@@ -87,14 +87,9 @@ int dterm_putcmd(dterm_t *dt, char *s, int size);
 int dterm_remc(dterm_t *dt, int count);
 
 
-// reads chunk of bytes from stdin
-// retunrns non-negative number if success
-int dterm_read(dterm_t *dt);
-
-
 // clears current line, resets command buffer
 // return ignored
-void dterm_remln(dterm_t *dt);
+void dterm_remln(dterm_t *dt, dterm_fd_t* fd);
 
 
 
@@ -149,8 +144,14 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
         goto dterm_init_TERM;
     }
     
-    if (pthread_mutex_init(&dth->dtwrite_mutex, NULL) != 0 ) {
+    dth->dtwrite_mutex = malloc(sizeof(pthread_mutex_t));
+    if (dth->dtwrite_mutex == NULL) {
         rc = -5;
+        goto dterm_init_TERM;
+    }
+    
+    if (pthread_mutex_init(dth->dtwrite_mutex, NULL) != 0 ) {
+        rc = -6;
         goto dterm_init_TERM;
     }
     
@@ -172,7 +173,7 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
 
 void dterm_deinit(dterm_handle_t* dth) {
     if (dth->dt != NULL) {
-        dterm_close(dth->dt);
+        dterm_close(dth);
         free(dth->dt);
     } 
     if (dth->ch != NULL) {
@@ -192,46 +193,50 @@ void dterm_deinit(dterm_handle_t* dth) {
     
     clithread_deinit(dth->clithread);
     
-    pthread_mutex_unlock(&dth->dtwrite_mutex); 
-    pthread_mutex_destroy(&dth->dtwrite_mutex);
+    if (dth->dtwrite_mutex != NULL) {
+        pthread_mutex_unlock(dth->dtwrite_mutex);
+        pthread_mutex_destroy(dth->dtwrite_mutex);
+        free(dth->dtwrite_mutex);
+    }
 }
 
 
 
 
-dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
+dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path) {
     dterm_thread_t dt_thread = NULL;
+    dterm_t* dt;
     int retcode;
     
-    if (dt == NULL) {
-        return NULL;
-    }
+    if (dth == NULL)        return NULL;
+    if (dth->dt == NULL)    return NULL;
+    dt = dth->dt;
     
     if (dt->intf == INTF_interactive) {
         /// Need to modify the stdout/stdin attributes in order to work with 
         /// the interactive terminal.  The "oldter" setting saves the original
         /// settings.
-        dt->fd_in   = STDIN_FILENO;
-        dt->fd_out  = STDOUT_FILENO;
+        dth->fd.in  = STDIN_FILENO;
+        dth->fd.out = STDOUT_FILENO;
 
-        retcode = tcgetattr(dt->fd_in, &(dt->oldter));
+        retcode = tcgetattr(dth->fd.in, &(dt->oldter));
         if (retcode < 0) {
             perror(NULL);
-            fprintf(stderr, "Unable to access active termios settings for fd = %d\n", dt->fd_in);
+            fprintf(stderr, "Unable to access active termios settings for fd = %d\n", dth->fd.in);
             goto dterm_open_END;
         }
         
-        retcode = tcgetattr(dt->fd_in, &(dt->curter));
+        retcode = tcgetattr(dth->fd.in, &(dt->curter));
         if (retcode < 0) {
             perror(NULL);
-            fprintf(stderr, "Unable to access application termios settings for fd = %d\n", dt->fd_in);
+            fprintf(stderr, "Unable to access application termios settings for fd = %d\n", dth->fd.in);
             goto dterm_open_END;
         }
         
         dt->curter.c_lflag     &= ~(ICANON | ECHO);
         dt->curter.c_cc[VMIN]   = 1;
         dt->curter.c_cc[VTIME]  = 0;
-        retcode                 = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->curter));
+        retcode                 = tcsetattr(dth->fd.in, TCSAFLUSH, &(dt->curter));
         
         if (retcode == 0) {
             dt_thread = &dterm_prompter;
@@ -240,8 +245,8 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
     
     else if (dt->intf == INTF_pipe) {
         /// Uses canonical stdin/stdout pipes, no manipulation necessary
-        dt->fd_in   = STDIN_FILENO;
-        dt->fd_out  = STDOUT_FILENO;
+        dth->fd.in  = STDIN_FILENO;
+        dth->fd.out = STDOUT_FILENO;
         retcode     = 0;
         dt_thread   = &dterm_piper;
     }
@@ -251,12 +256,12 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         ///@todo have listening queue size be dynamic
         struct sockaddr_un addr;
         
-        dt->fd_in = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (dt->fd_in < 0) {
+        dth->fd.in = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (dth->fd.in < 0) {
             perror("Unable to create a server socket\n");
             goto dterm_open_END;
         }
-        VERBOSE_PRINTF("Socket created on fd=%i\n", dt->fd_in);
+        VERBOSE_PRINTF("Socket created on fd=%i\n", dth->fd.in);
         
         ///@todo make sure this unlinking stage is OK.
         ///      unsure how to unbind the socket when server is finished.
@@ -266,17 +271,17 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
         unlink(path);
         
         VERBOSE_PRINTF("Binding...\n");
-        if (bind(dt->fd_in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        if (bind(dth->fd.in, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             perror("Unable to bind server socket");
             goto dterm_open_END;
         }
-        VERBOSE_PRINTF("Binding Socket fd=%i to %s\n", dt->fd_in, path);
+        VERBOSE_PRINTF("Binding Socket fd=%i to %s\n", dth->fd.in, path);
         
-        if (listen(dt->fd_in, 5) == -1) {
+        if (listen(dth->fd.in, 5) == -1) {
             perror("Unable to enter listen on server socket");
             goto dterm_open_END;
         }
-        VERBOSE_PRINTF("Listening on Socket fd=%i\n", dt->fd_in);
+        VERBOSE_PRINTF("Listening on Socket fd=%i\n", dth->fd.in);
         
         retcode     = 0;
         dt_thread   = &dterm_socketer;
@@ -293,11 +298,17 @@ dterm_thread_t dterm_open(dterm_t* dt, const char* path) {
 
 
 
-int dterm_close(dterm_t* dt) {
-    int retcode = 0;
+int dterm_close(dterm_handle_t* dth) {
+    int retcode;
     
-    if (dt->intf == INTF_interactive) {
-        retcode = tcsetattr(dt->fd_in, TCSAFLUSH, &(dt->oldter));
+    if (dth == NULL)        return -1;
+    if (dth->dt == NULL)    return -1;
+    
+    if (dth->dt->intf == INTF_interactive) {
+        retcode = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->dt->oldter));
+    }
+    else {
+        retcode = 0;
     }
     
     return retcode;
@@ -388,11 +399,10 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
         if (linelen > 0) {
-            //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", cmdname);
             bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", 
                         cmdname);
-            dterm_puts(dth->dt, (char*)protocol_buf);
+            dterm_puts(&dth->fd, (char*)protocol_buf);
         }
     }
     else {
@@ -410,11 +420,10 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         ///@todo spruce-up the command error reporting, maybe even with
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
-            //dterm_printf(dth->dt, "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", cmdname, bytesout);
             bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
                         "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", 
                         cmdname, bytesout);
-            dterm_puts(dth->dt, (char*)protocol_buf);
+            dterm_puts(&dth->fd, (char*)protocol_buf);
         }
         
         // If there are bytes to send to MPipe, do that.
@@ -435,7 +444,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             
             DEBUG_PRINTF("raw output (%i bytes) %.*s\n", bytesout, bytesout, protocol_buf);
             
-            write(dth->dt->fd_out, (char*)protocol_buf, bytesout);
+            write(dth->fd.out, (char*)protocol_buf, bytesout);
         }
     }
     
@@ -458,9 +467,11 @@ void* dterm_socket_clithread(void* args) {
 /// Thread that:
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
-    dterm_handle_t* dth     = ((clithread_args_t*)args)->ext;
-    int             fd_in   = ((clithread_args_t*)args)->fd_in;
-    int             fd_out  = ((clithread_args_t*)args)->fd_out;
+    dterm_handle_t  dts;
+    
+    memcpy(&dts, ((clithread_args_t*)args)->ext, sizeof(dterm_handle_t));
+    dts.fd.in   = ((clithread_args_t*)args)->fd_in;
+    dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     
     char databuf[1024];
     
@@ -469,9 +480,9 @@ void* dterm_socket_clithread(void* args) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Initial state = off
-    dth->dt->state = prompt_off;
+    dts.dt->state = prompt_off;
     
-    VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", fd_out);
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
     /// Get a packet from the Socket
     while (1) {
@@ -479,12 +490,12 @@ void* dterm_socket_clithread(void* args) {
         int loadlen;
         char* loadbuf = databuf;
         
-        VERBOSE_PRINTF("Waiting for read on socket:fd=%i\n", fd_out);
-        loadlen = (int)read(fd_out, loadbuf, LINESIZE);
+        VERBOSE_PRINTF("Waiting for read on socket:fd=%i\n", dts.fd.out);
+        loadlen = (int)read(dts.fd.out, loadbuf, LINESIZE);
         if (loadlen > 0) {
             sub_str_sanitize(loadbuf, (size_t)loadlen);
             
-            pthread_mutex_lock(&dth->dtwrite_mutex);
+            pthread_mutex_lock(dts.dtwrite_mutex);
             do {
                 int dataout;
             
@@ -493,12 +504,10 @@ void* dterm_socket_clithread(void* args) {
                 linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
                 
                 // Process the line-input command
-                dth->dt->fd_in  = fd_in;
-                dth->dt->fd_out = fd_out;
-                dataout = sub_proc_lineinput(dth, loadbuf, linelen);
+                dataout = sub_proc_lineinput(&dts, loadbuf, linelen);
                 // If there's meaningful output, add a linebreak
                 if (dataout > 0) {
-                    dterm_puts(dth->dt, "\n");
+                    dterm_puts(&dts.fd, "\n");
                 }
 
                 // +1 eats the terminator
@@ -506,18 +515,18 @@ void* dterm_socket_clithread(void* args) {
                 loadbuf += (linelen + 1);
             
             } while (loadlen > 0);
-            pthread_mutex_unlock(&dth->dtwrite_mutex);
+            pthread_mutex_unlock(dts.dtwrite_mutex);
             
         }
         else {
             // After servicing the client socket, it is important to close it.
-            close(fd_out);
+            close(dts.fd.out);
             break;
         }
     }
     
     /// End of thread
-    VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", fd_out);
+    VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", dts.fd.out);
     return NULL;
 }
 
@@ -535,12 +544,12 @@ void* dterm_socketer(void* args) {
 
     ///@todo make sure this fd_in works out
     clithread.ext   = dth;
-    clithread.fd_in = dth->dt->fd_in;
+    clithread.fd_in = dth->fd.in;
     
     /// Get a packet from the Socket
     while (1) {
-        VERBOSE_PRINTF("Waiting for client accept on socket fd=%i\n", dth->dt->fd_in);
-        clithread.fd_out = accept(dth->dt->fd_in, NULL, NULL);
+        VERBOSE_PRINTF("Waiting for client accept on socket fd=%i\n", dth->fd.in);
+        clithread.fd_out = accept(dth->fd.in, NULL, NULL);
         if (clithread.fd_out < 0) {
             perror("Server Socket accept() failed");
         }
@@ -576,7 +585,7 @@ void* dterm_piper(void* args) {
         
         if (loadlen <= 0) {
             dterm_reset(dth->dt);
-            loadlen = (int)read(dth->dt->fd_in, loadbuf, 1024);
+            loadlen = (int)read(dth->fd.in, loadbuf, 1024);
             sub_str_sanitize(loadbuf, (size_t)loadlen);
         }
         
@@ -652,7 +661,7 @@ void* dterm_prompter(void* args) {
     char                c           = 0;
     ssize_t             keychars    = 0;
     dterm_handle_t*     dth         = (dterm_handle_t*)args;
-    pthread_mutex_t*    write_mutex = &((dterm_handle_t*)args)->dtwrite_mutex;
+    pthread_mutex_t*    write_mutex = ((dterm_handle_t*)args)->dtwrite_mutex;
     
     // Initialize command history
     ((dterm_handle_t*)args)->ch = ch_init();
@@ -673,7 +682,7 @@ void* dterm_prompter(void* args) {
     /// triple-char keystrokes are for special keys like arrows and control
     /// sequences.
     ///@note dterm_read() will keep the thread asleep, blocking it until data arrives
-    while ((keychars = read(dth->dt->fd_in, dth->dt->readbuf, READSIZE)) > 0) {
+    while ((keychars = read(dth->fd.in, dth->dt->readbuf, READSIZE)) > 0) {
         
         // Default: IGNORE
         cmd = ct_ignore;
@@ -752,7 +761,7 @@ void* dterm_prompter(void* args) {
             }
             
             dterm_reset(dth->dt);
-            dterm_puts(dth->dt, (char*)killstring);
+            dterm_puts(&dth->fd, (char*)killstring);
             raise(sigcode);
             return NULL;
         }
@@ -772,17 +781,17 @@ void* dterm_prompter(void* args) {
                 case ct_key: {       
                     dterm_putcmd(dth->dt, &c, 1);
                     //dterm_put(dt, &c, 1);
-                    dterm_putc(dth->dt, c);
+                    dterm_putc(&dth->fd, c);
                 } break;
                                     
                 // Prompt-Escape is pressed, 
                 case ct_prompt: {    
                     if (dth->dt->state == prompt_on) {
-                        dterm_remln(dth->dt);
+                        dterm_remln(dth->dt, &dth->fd);
                         dth->dt->state = prompt_off;
                     }
                     else {
-                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_puts(&dth->fd, (char*)prompt_str[0]);
                         dth->dt->state = prompt_on;
                     }
                 } break;
@@ -799,7 +808,7 @@ void* dterm_prompter(void* args) {
                     int bytesout;
                     
                     //dterm_put(dt, (char[]){ASCII_NEWLN}, 2);
-                    dterm_putc(dth->dt, '\n');
+                    dterm_putc(&dth->fd, '\n');
                     
                     if (!ch_contains(ch, dth->dt->linebuf)) {
                         ch_add(ch, dth->dt->linebuf);
@@ -812,7 +821,7 @@ void* dterm_prompter(void* args) {
                                     
                     // If there's meaningful output, add a linebreak
                     if (bytesout > 0) {
-                        dterm_puts(dth->dt, "\n");
+                        dterm_puts(&dth->fd, "\n");
                     }
 
                     dterm_reset(dth->dt);
@@ -825,13 +834,13 @@ void* dterm_prompter(void* args) {
                     cmdlen = cmd_getname((char*)cmdname, dth->dt->linebuf, sizeof(cmdname));
                     cmdptr = cmd_subsearch(dth->cmdtab, (char*)cmdname);
                     if ((cmdptr != NULL) && (dth->dt->linebuf[cmdlen] == 0)) {
-                        dterm_remln(dth->dt);
-                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_remln(dth->dt, &dth->fd);
+                        dterm_puts(&dth->fd, (char*)prompt_str[0]);
                         dterm_putsc(dth->dt, (char*)cmdptr->name);
-                        dterm_puts(dth->dt, (char*)cmdptr->name);
+                        dterm_puts(&dth->fd, (char*)cmdptr->name);
                     }
                     else {
-                        dterm_puts(dth->dt, ASCII_BEL);
+                        dterm_puts(&dth->fd, ASCII_BEL);
                     }
                 } break;
                 
@@ -841,10 +850,10 @@ void* dterm_prompter(void* args) {
                     //cmdstr = ch_next(ch);
                     cmdstr = ch_prev(ch);
                     if (ch->count && cmdstr) {
-                        dterm_remln(dth->dt);
-                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_remln(dth->dt, &dth->fd);
+                        dterm_puts(&dth->fd, (char*)prompt_str[0]);
                         dterm_putsc(dth->dt, cmdstr);
-                        dterm_puts(dth->dt, cmdstr);
+                        dterm_puts(&dth->fd, cmdstr);
                     }
                 } break;
                 
@@ -854,10 +863,10 @@ void* dterm_prompter(void* args) {
                     //cmdstr = ch_prev(ch);
                     cmdstr = ch_next(ch);
                     if (ch->count && cmdstr) {
-                        dterm_remln(dth->dt);
-                        dterm_puts(dth->dt, (char*)prompt_str[0]);
+                        dterm_remln(dth->dt, &dth->fd);
+                        dterm_puts(&dth->fd, (char*)prompt_str[0]);
                         dterm_putsc(dth->dt, cmdstr);
-                        dterm_puts(dth->dt, cmdstr);
+                        dterm_puts(&dth->fd, cmdstr);
                     }
                 } break;
                 
@@ -865,7 +874,7 @@ void* dterm_prompter(void* args) {
                 case ct_delete: { 
                     if (dth->dt->linelen > 0) {
                         dterm_remc(dth->dt, 1);
-                        dterm_put(dth->dt, VT100_CLEAR_CH, 4);
+                        dterm_put(&dth->fd, VT100_CLEAR_CH, 4);
                     }
                 } break;
                 
@@ -907,86 +916,26 @@ void* dterm_prompter(void* args) {
   */
 
 
-int dterm_read(dterm_t *dt) {
-    return (int)read(dt->fd_in, dt->readbuf, READSIZE);
+int dterm_put(dterm_fd_t* fd, char *s, int size) {
+    return (int)write(fd->out, s, size);
 }
 
-
-
-int dterm_scanf(dterm_t* dt, const char* format, ...) {
-    int retval;
-    size_t keychars;
-    va_list args;
-    
-    /// Clear linebuf without actually clearing the line, which is probably a
-    /// prompt or similar.  linebuf will hold the rest of the line only
-    dterm_reset(dt);
-    
-    /// Read in a line.  All non-printable characters are ignored.
-    while ((keychars = read(dt->fd_in, dt->readbuf, READSIZE)) > 0) {
-        if (keychars == 1) {
-            if (dt->readbuf[0] == ASCII_NEWLN) {
-                dterm_putc(dt, ASCII_NEWLN);
-                dterm_putlinec(dt, 0);
-            }
-            else if ((dt->linelen < LINESIZE) \
-            && (dt->readbuf[0] > 0x1f) \
-            && (dt->readbuf[0] < 0x7f)) {
-                dterm_putc(dt, dt->readbuf[0]);
-                dterm_putlinec(dt, dt->readbuf[0]);
-            }
-        }
-    }
-    
-    /// Run the line through scanf, wrapping the variadic args
-    va_start(args, format);
-    retval = vsscanf(dt->linebuf, format, args);
-    va_end(args);
-    
-    return retval;
-}
-
-
-
-
-int dterm_printf(dterm_t* dt, const char* format, ...) {
-    FILE* fp;
-    int retval;
-    va_list args;
-    
-    fp = fdopen(dt->fd_out, "w");   //don't close this!  Merely fd --> fp conversion
-    if (fp == NULL) {
-        return -1;
-    }
-    
-    va_start(args, format);
-    retval = vfprintf(fp, format, args);
-    va_end(args);
-    
-    return retval;
-}
-
-
-
-
-int dterm_put(dterm_t *dt, char *s, int size) {
-    return (int)write(dt->fd_out, s, size);    
-}
-
-int dterm_puts(dterm_t *dt, char *s) {
+int dterm_puts(dterm_fd_t* fd, char *s) {
     char* end = s-1;
     while (*(++end) != 0);
         
-    return (int)write(dt->fd_out, s, end-s);
+    return (int)write(fd->out, s, end-s);
 }
 
-int dterm_putc(dterm_t *dt, char c) {        
-    return (int)write(dt->fd_out, &c, 1);
+int dterm_putc(dterm_fd_t* fd, char c) {
+    return (int)write(fd->out, &c, 1);
 }
 
-int dterm_puts2(dterm_t *dt, char *s) {
-    return (int)write(dt->fd_out, s, strlen(s));
+int dterm_puts2(dterm_fd_t* fd, char *s) {
+    return (int)write(fd->out, s, strlen(s));
 }
+
+
 
 int dterm_putsc(dterm_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
@@ -1059,8 +1008,8 @@ int dterm_remc(dterm_t *dt, int count) {
 
 
 
-void dterm_remln(dterm_t *dt) {
-    dterm_put(dt, VT100_CLEAR_LN, 5);
+void dterm_remln(dterm_t *dt, dterm_fd_t* fd) {
+    dterm_put(fd, VT100_CLEAR_LN, 5);
     dterm_reset(dt);
 }
 

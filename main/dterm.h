@@ -161,11 +161,8 @@ int dterm_close(dterm_handle_t* dth);
 ///@todo refactor these read/write functions
 
 int dterm_put(dterm_fd_t* fd, char *s, int size);
-
 int dterm_puts(dterm_fd_t* fd, char *s);
-
 int dterm_putc(dterm_fd_t* fd, char c);
-
 int dterm_puts2(dterm_fd_t* fd, char *s);
 
 int dterm_putsc(dterm_t *dt, char *s);

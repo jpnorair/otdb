@@ -44,6 +44,7 @@ static const cmd_t otdb_commands[] = {
     { "cmdls",      &cmd_cmdlist },
     { "del",        &cmd_del },
     { "dev-del",    &cmd_devdel },
+    { "dev-ls",     &cmd_devls },
     { "dev-new",    &cmd_devnew },
     { "dev-set",    &cmd_devset },
     { "load",       &cmd_load },

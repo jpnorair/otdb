@@ -255,6 +255,9 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
 
 
+///@todo documentation
+int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
 
 
 

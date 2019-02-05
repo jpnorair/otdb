@@ -547,6 +547,32 @@ int cmd_rmdir(const char *dir) {
 
 
 
+AUTH_level cmd_minauth_get(vlFILE* fp, uint8_t modreq) {
+    AUTH_level minauth;
+    ot_uni16 idmod;
+    
+    idmod.ushort = fp->idmod;
+    modreq &= idmod.ubyte[1];
+    
+    if (modreq & 0x03) {
+        minauth = AUTH_guest;
+    }
+    else if (modreq & 0x0C) {
+        minauth = AUTH_user;
+    }
+    else {
+        minauth = AUTH_root;
+    }
+    
+    return minauth;
+}
+
+
+
+
+
+
+
 
 
 /** OTDB Internal Commands

@@ -20,6 +20,9 @@
 // Local Headers
 #include "dterm.h"
 
+// HB libraries
+#include <otfs.h>
+
 // POSIX & Standard C Libraries
 #include <stdint.h>
 #include <stdio.h>
@@ -58,6 +61,14 @@ typedef struct {
     uint16_t        range_hi;
 } cmd_arglist_t;
 
+typedef enum {
+    AUTH_guest  = -1,
+    AUTH_root   = 0,
+    AUTH_user   = 1,
+} AUTH_level;
+
+
+
 
 
 // arg1: dst buffer
@@ -90,8 +101,16 @@ int cmd_jsonout_data(char** dst, size_t* dstmax, bool jsonflag, int errcode, uin
 int cmd_rmdir(const char *dir);
 
 
+AUTH_level cmd_minauth_get(vlFILE* fp, uint8_t modreq);
+
+
 
 int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+
+
 
 
 /** OTDB Internal Commands

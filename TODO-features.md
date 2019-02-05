@@ -8,15 +8,15 @@ Investigate and fix.
 
 ~~load command is not reporting meta time value that's the same as from save command.~~
 
-## List Devices in DB
+## ~~List Devices in DB~~
 
-Output a list of Device IDs (UID) in the database.  The first and next iterator that's used in cmd_save can be used here.
+~~Output a list of Device IDs (UID) in the database.  The first and next iterator that's used in cmd_save can be used here.~~
 
-## Device operations to otter/smut must be addressed
+## ~~Device operations to otter/smut must be addressed~~
 
-* Cmd_devmgr requires a device ID input parameter
-* Cmd_devmgr requires a user parameter (guest, user, root)
-* otter/smut might also have an inline command for pushing an embedded command to an addressed device
+* ~~Cmd_devmgr requires a device ID input parameter~~
+* ~~Cmd_devmgr requires a user parameter (guest, user, root)~~
+* ~~otter/smut might also have an inline command for pushing an embedded command to an addressed device~~
 
 ## Push (upload) Devices in DB to otter/smut
 

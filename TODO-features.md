@@ -18,17 +18,17 @@ Investigate and fix.
 * ~~Cmd_devmgr requires a user parameter (guest, user, root)~~
 * ~~otter/smut might also have an inline command for pushing an embedded command to an addressed device~~
 
-## Push (upload) Devices in DB to otter/smut
+## ~~Push (upload) Devices in DB to otter/smut~~
 
-For each device in the DB, or for a subset of device IDs:
+~~For each device in the DB, or for a subset of device IDs:~~
 
-1. do mknode, adding VID and keys
-2. Write each file as stored in the DB
+1. ~~do mknode, adding VID and keys~~
+2. ~~Write each file as stored in the DB~~
 
-## Pull (download) Devices from otter/smut into DB
+## ~~Pull (download) Devices from otter/smut into DB~~
 
-For each device in the DB, or for a subset of device IDs:
+~~For each device in the DB, or for a subset of device IDs:~~
 
-1. do mknode, adding VID and keys
-2. Write each file as stored in the DB
+1. ~~do mknode, adding VID and keys~~
+2. ~~Write each file as stored in the DB~~
 

@@ -1031,7 +1031,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         
         // Activate the chosen ID.  If it is not in the database, skip it.
-        if (otfs_setfs(dth->ext, &active_id.u8[0]) == 0) {
+        if (otfs_setfs(dth->ext, NULL, &active_id.u8[0]) == 0) {
             rc = sub_datafile(dth, dst, dstmax, devdir, arglist.archive_path, active_id.u64, false, true);
         }
     }
@@ -1082,7 +1082,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
         
             // Activate the chosen ID.  If it is not in the database, skip it.
-            if (otfs_setfs(dth->ext, &active_id.u8[0]) != 0) {
+            if (otfs_setfs(dth->ext, NULL, &active_id.u8[0]) != 0) {
                 continue;
             }
             

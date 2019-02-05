@@ -18,6 +18,7 @@
 #include "cmds.h"
 #include "dterm.h"
 #include "cliopt.h"
+#include "iterator.h"
 #include "otdb_cfg.h"
 #include "json_tools.h"
 
@@ -78,19 +79,20 @@ extern struct arg_end*  end_man;
 #endif
 
 
-static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char** strlist, size_t listsz) {
-    int devtest = 1;
-
-    for (; (devtest!=0) && (*devid_i<listsz); (*devid_i)++) {
-        DEBUGPRINT("%s %d :: devid[%i] = %s\n", __FUNCTION__, __LINE__, *devid_i, strlist[*devid_i]);
-        memset(uid, 0, 8);
-        *((uint64_t*)uid) = strtoull(strlist[*devid_i], NULL, 16);
-        devtest = otfs_setfs(handle, uid);
-    }
+static int devls_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** srcp, size_t dstmax,
+                        int index, cmd_arglist_t* arglist, otfs_t* devfs) {
+    int rc;
     
-    return devtest;
-}
+    if (arglist->jsonout_flag) {
+        rc = snprintf((char*)dst, dstmax, "\"%"PRIx64"\",", devfs->uid.u64);
+    }
+    else {
+        rc = snprintf((char*)dst, dstmax, "%i. %"PRIx64"\n", index, devfs->uid.u64);
+    }
+    DEBUGPRINT("outcurs=%016llX, rc=%i, dstmax=%zu\n", (uint64_t)dst, rc, dstmax);
 
+    return rc;
+}
 
 
 
@@ -99,27 +101,22 @@ static int sub_nextdevice(void* handle, uint8_t* uid, int* devid_i, const char**
 
 int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
-    char* outcurs;
-    int outlimit;
+    uint8_t* dstcurs;
+    int dstlimit;
     int newchars;
-    
-    // Device OTFS
-    int devtest;
-    int devid_i = 0;
-    int count;
-    otfs_t* devfs;
-    otfs_id_union uid;
     
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDLIST,
     };
     void* args[] = {help_man, jsonout_opt, devidlist_opt, end_man};
     
-    ///@todo do input checks!!!!!!
-    
     /// Make sure there is something to save.
     if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
         return -1;
+    }
+    
+    if (dstmax == 0) {
+        return 0;
     }
     
     /// Extract arguments into arglist struct
@@ -131,85 +128,41 @@ int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     DEBUGPRINT("cmd_devls()\n");
     
     /// Start formatting of command output.
-    outcurs = (char*)dst;
-    outlimit = (int)dstmax - 1;     // -1 accounts for null string terminator
+    dstcurs = dst;
+    dstlimit = (int)dstmax - 1;     // -1 accounts for null string terminator
     DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, 0, outlimit);
     
     if (arglist.jsonout_flag) {
-        outlimit   -= 2;  // -2 accounts for JSON termination ("]}")
-        newchars    = snprintf(outcurs, outlimit, "{\"cmd\":\"dev-ls\", \"idlist\":[");
-        outcurs    += newchars;
-        outlimit   -= newchars;
+        dstlimit   -= 2;  // -2 accounts for JSON termination ("]}")
+        newchars    = snprintf((char*)dstcurs, dstlimit, "{\"cmd\":\"dev-ls\", \"idlist\":[");
+        dstcurs    += newchars;
+        dstlimit   -= newchars;
         DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, newchars, outlimit);
         
         if (newchars < 0) {
             rc = -3;        ///@todo change to write error
             goto cmd_devls_END;
         }
-        if (outlimit < 0) {
+        if (dstlimit < 0) {
             rc = -4;        ///@todo change to buffer overflow error
             goto cmd_devls_END;
         }
-        
     }
     
-    ///@todo this iteration pattern is also used in cmd_save(), and perhaps
-    /// there's a way to have an iterator function used by all such commands.
-    
-    /// If there is a list of Device IDs supplied in the command, we use these.
-    /// Else, we dump all the devices present in the OTDB.
-    if (arglist.devid_strlist_size > 0) {
-        devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
-    }
-    else {
-        devtest = otfs_iterator_start(dth->ext, &devfs, &uid.u8[0]);
+    rc = iterator_uids(dth, dstcurs, inbytes, &src, (size_t)dstlimit, &arglist, &devls_action);
+    if (rc < 0) {
+        goto cmd_devls_END;
     }
 
-    count = 0;
-    while (devtest == 0) {
-        // Loop body: put logic in here that needs device IDs from the DB
-        // --------------------------------------------------------------------
-        count++;
-        
-        if (arglist.jsonout_flag) {
-            newchars = snprintf(outcurs, outlimit, "\"%"PRIx64"\",", uid.u64);
-        }
-        else {
-            newchars = snprintf(outcurs, outlimit, "%i. %"PRIx64"\n", count, uid.u64);
-        }
-        
-        outcurs    += newchars;
-        outlimit   -= newchars;
-        DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, newchars, outlimit);
-        
-        if (newchars < 0) {
-            rc = -3;        ///@todo change to write error
-            goto cmd_devls_END;
-        }
-        if (outlimit < 0) {
-            rc = -4;        ///@todo change to buffer overflow error
-            goto cmd_devls_END;
-        }
-        
-        // --------------------------------------------------------------------
-        // End of Loop body: Fetch next device
-        if (arglist.devid_strlist_size > 0) {
-            devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
-        }
-        else {
-            devtest = otfs_iterator_next(dth->ext, &devfs, &uid.u8[0]);
-        }
-    }
-    
     if (arglist.jsonout_flag) {
-        if (count > 0) {
-            outcurs--;  // eat last comma
+        if (rc > 0) {
+            dstcurs--;  // eat last comma
         }
-        outcurs += sprintf(outcurs, "]}");
-        DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, 2, outlimit-2);
+        dstcurs += sprintf((char*)dstcurs, "]}");
+        DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)dstcurs, 2, dstlimit-2);
     }
     
-    rc = outcurs - (char*)dst;
+    rc = (int)(dstcurs - dst);
     
     cmd_devls_END:
     if ((rc < 0) && arglist.jsonout_flag) {

@@ -128,7 +128,6 @@ static vl_header_t* sub_resolveblock(int* num_files, const char** blkstr, cmd_ar
 
 
 
-
 static int push_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** srcp, size_t dstmax,
                         int index, cmd_arglist_t* arglist, otfs_t* devfs) {
     const char* arg_b;
@@ -150,7 +149,6 @@ static int push_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
     
     /// 2. Get file information from the fs header.
     ///    This does some low-level operations on the veelite binary image.
-    ///@todo may be nice to have a veelite function for iterating on file headers
     fhdr = sub_resolveblock(&num_files, &arg_b, arglist, devfs);
     if (fhdr != NULL) {
         /// 3. Write each file to the target.  DO NOT write to files that require
@@ -162,34 +160,22 @@ static int push_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
             vlFILE* fp;
             uint8_t* dptr;
             
-            // File Access Check: no root
+            // File Access Check: no root operation allowed
             idmod.ushort = fhdr[i].idmod;
             if ((idmod.ubyte[1] & 0x12) == 0) {
                 continue;
             }
             
             // Open File pointer and check also that memptr call worked
-            fp = vl_open(arglist->block_id, idmod.ubyte[0], VL_ACCESS_R, NULL);
-            if (fp == NULL) {
-                continue;
+            fp = vl_open(arglist->block_id, idmod.ubyte[0], VL_ACCESS_SU, NULL);
+            if (fp != NULL) {
+                dptr    = vl_memptr(fp);
+                wrbytes = cmd_hexnwrite(outbuf, dptr, fp->length, 512);
+                minauth = (idmod.ubyte[1] & 0x02) ? AUTH_guest : AUTH_user;
+                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file w -b %s %i [%s]", arg_b, idmod.ubyte[0], outbuf);
+                touched+= (wrbytes > 0);
+                vl_close(fp);
             }
-            dptr = vl_memptr(fp);
-            vl_close(fp);
-            if (dptr == NULL) {
-                continue;
-            }
-            
-            // Convert binary to hex
-            ///@todo Probably good to have a function that does all this without
-            /// format string contortions.
-            wrbytes = cmd_hexnwrite(outbuf, dptr, fp->length, 512);
-            minauth = (idmod.ubyte[1] & 0x02) ? AUTH_guest : AUTH_user;
-            wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file w -b %s %i [%s]", arg_b, idmod.ubyte[0], outbuf);
-            if (wrbytes < 0) {
-                break;
-            }
-            
-            touched++;
         }
     }
         
@@ -212,21 +198,13 @@ static int push_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
 
 
 
-
-
-
-
 static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** srcp, size_t dstmax,
                         int index, cmd_arglist_t* arglist, otfs_t* devfs) {
-    static const char* arg_bgfb = "gfb";
-    static const char* arg_biss = "iss";
-    static const char* arg_bisf = "isf";
     const char* arg_b;
     
     int rc = 0;
     int dstlim;
     vl_header_t* fhdr;
-    vlBLOCK block_id;
     int touched=0;
     int num_files=-1;
     
@@ -238,81 +216,41 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
     
     /// 2. Get file information from the fs header.
     ///    This does some low-level operations on the veelite binary image.
-    ///@todo may be nice to have a veelite function for iterating on file headers
-    {   vlFSHEADER* fshdr = devfs->base;
-        vlBLOCKHEADER* fsblk;
-        int tab_offset;
-        block_id = arglist->block_id;
-        switch (block_id) {
-            // GFB
-            case VL_GFB_BLOCKID:
-                tab_offset  = 0;
-                fsblk       = &fshdr->gfb;
-                arg_b       = arg_bgfb;
-                break;
+    fhdr = sub_resolveblock(&num_files, &arg_b, arglist, devfs);
+    if (fhdr != NULL) {
+        /// 3. Read each file from the target.  Use Root if necessary.
+        dstlim = (int)dstmax;
+        for (int i=0; i<num_files; i++) {
+            AUTH_level minauth;
+            ot_uni16 idmod;
+            vlFILE* fp;
+            int wrbytes;
             
-            // ISS
-            case VL_ISS_BLOCKID:
-                tab_offset  = 0 + fshdr->gfb.files;
-                fsblk       = &fshdr->iss;
-                arg_b       = arg_biss;
-                break;
-            
-            // ISF0
-            case VL_ISF_BLOCKID:
-           default: block_id    = VL_ISF_BLOCKID;
-                    tab_offset  = 0 + fshdr->gfb.files + fshdr->iss.files;
-                    fsblk       = &fshdr->isf;
-                    arg_b       = arg_bisf;
-                    break;
-            
-            // ISF1-4:
-            ///@todo not yet supported
+            // Open File pointer and check also that memptr call worked
+            fp = vl_open(arglist->block_id, idmod.ubyte[0], VL_ACCESS_R, NULL);
+            if (fp != NULL) {
+                minauth = cmd_minauth_get(fp, VL_ACCESS_R);
+                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, idmod.ubyte[0]);
+                if (wrbytes >= 0) {
+                    touched++;
+                    vl_store(fp, wrbytes, dst);
+                }
+                vl_close(fp);
+            }
         }
-        if (fsblk == NULL) {
-            goto push_action_END;
-        }
-
-        num_files   = fsblk->used;
-        fhdr        = devfs->base + sizeof(vlFSHEADER) + (sizeof(vl_header_t)*tab_offset);
+    
     }
     
-    /// 3. Read each file from the target.  Use Root if necessary.
-    dstlim = (int)dstmax;
-    for (int i=0; i<num_files; i++) {
-        AUTH_level minauth;
-        ot_uni16 idmod;
-        vlFILE* fp;
-        uint8_t* dptr;
-        int wrbytes;
-        
-        // Open File pointer and check also that memptr call worked
-        fp = vl_open(block_id, idmod.ubyte[0], VL_ACCESS_R, NULL);
-        if (fp == NULL) {
-            continue;
-        }
-        dptr = vl_memptr(fp);
-        if (dptr == NULL) {
-            continue;
-        }
-        minauth = cmd_minauth_get(fp, VL_ACCESS_R);
-        wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, idmod.ubyte[0]);
-        if (wrbytes < 0) {
-            break;
-        }
-        touched++;
-    }
-    
-    push_action_END:
+    pull_action_END:
     /// 4. Add results to output manifest
     ///@todo add hex output option
     if (arglist->jsonout_flag) {
         rc = snprintf((char*)dst, dstmax, "{\"devid\":\"%"PRIx64"\", \"block\":%i, \"files\":%i, \"touched\":%i},",
-                        devfs->uid.u64, block_id, num_files, touched);
+                        devfs->uid.u64, arglist->block_id, num_files, touched);
     }
     else {
         rc = snprintf((char*)dst, dstmax, "devid:%"PRIx64", block:%i, files:%i, touched:%i\n",
-                        devfs->uid.u64, block_id, num_files, touched);
+                        devfs->uid.u64, arglist->block_id, num_files, touched);
     }
     
     return rc;
@@ -371,7 +309,7 @@ static int sub_pushpull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
         }
     }
     
-    rc = iterator_uids(dth, dstcurs, inbytes, &src, (size_t)dstlimit, &arglist, &push_action);
+    rc = iterator_uids(dth, dstcurs, inbytes, &src, (size_t)dstlimit, &arglist, action);
     if (rc < 0) {
         goto sub_pushpull_END;
     }

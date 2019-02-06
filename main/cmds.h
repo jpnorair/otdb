@@ -274,10 +274,10 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
 
 
-///@todo documentation
+///@todo documentation for devls, push, pull
 int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
-
-
+int cmd_push(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+int cmd_pull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
 
 
 /** OTDB Filesystem Commands

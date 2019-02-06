@@ -941,7 +941,7 @@ int dterm_putsc(dterm_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
     while (*(++end) != 0);
     
-    return dterm_putcmd(dt, s, end - (uint8_t*)s);
+    return dterm_putcmd(dt, s, end-(uint8_t*)s);
 }
 
 

@@ -77,16 +77,13 @@ typedef enum {
 } prompt_state;
 
 
-// defines state of dash terminal
+// defines state of data terminal
 typedef struct {
     // old and current terminal settings
     INTF_Type intf;
-    
     struct termios oldter;
     struct termios curter;
-    
     volatile prompt_state state; // state of the terminal prompt
-
     int linelen;                 // line length
     char *cline;                 // pointer to current position in linebuf
     char linebuf[LINESIZE];      // command read buffer

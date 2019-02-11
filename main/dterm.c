@@ -515,6 +515,11 @@ void* dterm_socket_clithread(void* args) {
                 loadbuf += (linelen + 1);
             
             } while (loadlen > 0);
+            
+            ///@todo rearchitect handle passing (separate fds and the other parts)
+            ///For now we keep this copy-back model, which might be dangerous
+            memcpy(((clithread_args_t*)args)->ext, &dts, sizeof(dterm_handle_t));
+            
             pthread_mutex_unlock(dts.dtwrite_mutex);
             
         }

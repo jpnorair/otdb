@@ -26,7 +26,7 @@
 typedef struct {
     int fd_in;
     int fd_out;
-    void* ext;
+    void* app_handle;
 } clithread_args_t;
 
 typedef struct ptlist {

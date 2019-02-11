@@ -233,7 +233,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         
         // Get the template meta defaults for this file, matched on the file name
         // Make sure that template metadata is aligned with file metadata
-        fileobj = cJSON_GetObjectItemCaseSensitive(dth->tmpl, dataobj->string);
+        fileobj = cJSON_GetObjectItemCaseSensitive(dth->ext->tmpl, dataobj->string);
         DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
         if (cJSON_IsObject(fileobj) == false) {
             continue;
@@ -356,7 +356,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         
         ///@todo synchronize this file against the target
         ///@todo this should be a callable function, if possible.
-        if (sync_target && (dth->devmgr != NULL)) {
+        if (sync_target && (dth->ext->devmgr != NULL)) {
             int cmdbytes;
             char outbuf[576];
             cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", dmeta.fileid);
@@ -460,8 +460,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// 3. Do a check to make sure the "_meta" object for each object has
     ///    at least "id" and "size" elements, within template.  Optional 
-    ///    elements are "block", "type", "stock," "mod", and "time".  If these 
-    ///    elements are missing, add defaults.  Default block is "isf". 
+    ///    elements are "block", "type", "stock," "mod", and "modtime".  If
+    ///    these elements are missing, add defaults.  Default block is "isf".
     ///    Default stock is "true".  Default mod is 00110100 (octal 64, decimal 
     ///    52).  Default time is the present epoch seconds since 1.1.1970.
     /// 3b.Save the template to the terminal/user instance.
@@ -603,11 +603,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             
             // Time: optional, default=now() 
-            elem = cJSON_GetObjectItemCaseSensitive(meta, "time");
+            elem = cJSON_GetObjectItemCaseSensitive(meta, "modtime");
             if (cJSON_IsNumber(elem) == false) {
                 unsigned long time_val = time(NULL);
                 elem = cJSON_CreateNumber((double)time_val);
-                cJSON_AddItemToObject(meta, "time", elem);
+                cJSON_AddItemToObject(meta, "modtime", elem);
             }
         }
         obj = obj->next;
@@ -615,20 +615,20 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
  
     // 3b. Template is valid.  This is the point-of-no return.  Clear any old
     // template that may extist on the terminal and assign the new one.
-    if (dth->tmpl != NULL) {
-        cJSON_Delete(dth->tmpl);
+    if (dth->ext->tmpl != NULL) {
+        cJSON_Delete(dth->ext->tmpl);
     }
-    dth->tmpl = tmpl;
+    dth->ext->tmpl = tmpl;
     
     // Delete existing open Database, and create a new one
-    if (dth->ext != NULL) {
-        rc = otfs_deinit(dth->ext, true);
+    if (dth->ext->db != NULL) {
+        rc = otfs_deinit(dth->ext->db, true);
         if (rc != 0) {
             rc = ERRCODE(otfs, otfs_deinit, rc);
             goto cmd_open_CLOSE;
         }
     }
-    rc = otfs_init(&dth->ext);
+    rc = otfs_init(&dth->ext->db);
     if (rc != 0) {
         rc = ERRCODE(otfs, otfs_init, rc);
         goto cmd_open_CLOSE;
@@ -909,7 +909,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // Create new FS based on device id and template FS
         DEBUGPRINT("%s %d :: ID=%"PRIx64"\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
-        rc = otfs_new(dth->ext, &data_fs);
+        rc = otfs_new(dth->ext->db, &data_fs);
         if (rc != 0) {
             rc = ERRCODE(otfs, otfs_new, rc);
             goto cmd_open_CLOSE;
@@ -950,8 +950,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // ------------------------------------------------------------------------
     // 7. Close and Free all dangling memory elements
     if (open_valid == false) {
-        if (dth->tmpl == tmpl) {
-            dth->tmpl = NULL;
+        if (dth->ext->tmpl == tmpl) {
+            dth->ext->tmpl = NULL;
         }
         cJSON_Delete(tmpl);
     }
@@ -988,7 +988,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     ///@todo do input checks!!!!!!
     
     /// Make sure there is something to load
-    if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
+    if ((dth->ext->tmpl == NULL) || (dth->ext->db == NULL)) {
         return -1;
     }
     
@@ -1031,7 +1031,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         
         // Activate the chosen ID.  If it is not in the database, skip it.
-        if (otfs_setfs(dth->ext, NULL, &active_id.u8[0]) == 0) {
+        if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) == 0) {
             rc = sub_datafile(dth, dst, dstmax, devdir, arglist.archive_path, active_id.u64, false, true);
         }
     }
@@ -1082,7 +1082,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
         
             // Activate the chosen ID.  If it is not in the database, skip it.
-            if (otfs_setfs(dth->ext, NULL, &active_id.u8[0]) != 0) {
+            if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) != 0) {
                 continue;
             }
             

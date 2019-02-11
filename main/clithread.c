@@ -55,7 +55,7 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
     newitem = malloc(sizeof(clithread_item_t));
     if (newitem != NULL) {
         if (arg == NULL) {
-            newitem->args.ext       = NULL;
+            newitem->args.app_handle= NULL;
             newitem->args.fd_in     = -1;
             newitem->args.fd_out    = -1;
         }

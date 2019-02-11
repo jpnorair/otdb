@@ -95,7 +95,7 @@ int cmd_del(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
                 arglist.devid, arglist.block_id, arglist.file_id);
                 
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_del_END;
@@ -132,7 +132,7 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms, arglist.file_alloc);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_new_END;
@@ -172,7 +172,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             DEBUG_PRINTF("otfs_setfs() = %i, [id = %016%"PRIx64"]\n", rc, arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
@@ -204,7 +204,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
             ///@todo this section could be broken-out into its own function
-            if ((arglist.age_ms >= 0) && (dth->devmgr != NULL)) {
+            if ((arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
@@ -216,7 +216,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %u\n", now, file_age, arglist.age_ms);
                 
                 if (file_age > arglist.age_ms) {
-                    otfs_activeuid(dth->ext, (uint8_t*)&uid);
+                    otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);
                     cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u\n", arglist.file_id);
                     
@@ -309,7 +309,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_readall_END;
@@ -395,7 +395,7 @@ int cmd_restore(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_restore_END;
@@ -437,7 +437,7 @@ int cmd_readhdr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
         }
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_readhdr_END;
@@ -493,7 +493,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
                 
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_readperms_END;
@@ -550,7 +550,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_write_END;
@@ -606,14 +606,14 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         }
         
         ///@todo Re-implement this via devmgr
-        if (dth->devmgr != NULL) {
+        if (dth->ext->devmgr != NULL) {
             AUTH_level min_auth;
             uint64_t uid = 0;
             int cmdbytes;
             char hexbuf[513];
             
             cmd_hexwrite(hexbuf, arglist.filedata, span);
-            otfs_activeuid(dth->ext, (uint8_t*)&uid);
+            otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
             min_auth = cmd_minauth_get(fp, VL_ACCESS_W);
             cmdbytes = dm_xnprintf(dth, dst, dstmax, min_auth, uid,
                         "file w -r %u:%u %u [%s]", arglist.range_lo, arglist.range_hi, arglist.file_id, hexbuf);
@@ -642,7 +642,7 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
     void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, fileid_man, fileperms_man, end_man};
     
     /// Writeperms requires an initialized OTFS handle
-    if (dth->ext == NULL) {
+    if (dth->ext->db == NULL) {
         rc = -1;
     }
     else {
@@ -656,7 +656,7 @@ int cmd_writeperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src
                     arglist.devid, arglist.block_id, arglist.file_id, arglist.file_perms);
                     
             if (arglist.devid != 0) {
-                rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+                rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
                 if (rc != 0) {
                     rc = -256 + rc;
                     goto cmd_writeperms_END;
@@ -710,7 +710,7 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_pub_END;

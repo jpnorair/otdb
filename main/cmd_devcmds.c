@@ -100,7 +100,7 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         DEBUGPRINT("cmd_devnew():\n  archive=%s\n", arglist.archive_path);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_devnew_END;
@@ -141,7 +141,7 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         DEBUGPRINT("cmd_devdel():\n  device_id=%016"PRIx64"\n", arglist.devid);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_devdel_END;
@@ -172,7 +172,7 @@ int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         DEBUGPRINT("cmd_devset():\n  device_id=%016"PRIx64"\n", arglist.devid);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
             }

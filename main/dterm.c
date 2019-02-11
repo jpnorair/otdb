@@ -59,37 +59,37 @@ static const char* prompt_str[]     = {
 
 // switches terminal to punctual input mode
 // returns 0 if success, -1 - fail
-int dterm_setnoncan(dterm_t *dt);
+int dterm_setnoncan(dterm_intf_t *dt);
 
 
 // switches terminal to canonical input mode
 // returns 0 if success, -1 - fail
-int dterm_setcan(dterm_t *dt);
+int dterm_setcan(dterm_intf_t *dt);
 
 
 // reads command from stdin
 // returns command type
-cmdtype dterm_readcmd(dterm_t *dt);
+cmdtype dterm_readcmd(dterm_intf_t *dt);
 
 
 
 
 
-int dterm_putlinec(dterm_t *dt, char c);
+int dterm_putlinec(dterm_intf_t *dt, char c);
 
 
 // writes size bytes to command buffer
 // retunrns number of bytes written
-int dterm_putcmd(dterm_t *dt, char *s, int size);
+int dterm_putcmd(dterm_intf_t *dt, char *s, int size);
 
 
 // removes count characters from linebuf
-int dterm_remc(dterm_t *dt, int count);
+int dterm_remc(dterm_intf_t *dt, int count);
 
 
 // clears current line, resets command buffer
 // return ignored
-void dterm_remln(dterm_t *dt, dterm_fd_t* fd);
+void dterm_remln(dterm_intf_t *dt, dterm_fd_t* fd);
 
 
 
@@ -111,25 +111,24 @@ void* dterm_socketer(void* args);
   * ========================================================================<BR>
   */
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
+int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
     int rc = 0;
 
-    if (dth == NULL) {
+    ///@todo ext data should be handled as its own module, but we can accept
+    /// that it must be non-null.
+    if ((dth == NULL) || (ext_data == NULL)) {
         return -1;
     }
     
-    dth->tmpl   = NULL;
+    dth->ext    = ext_data;
     dth->ch     = NULL;
-    dth->devmgr = NULL;
-    dth->ext    = NULL;
-
-    dth->dt     = malloc(sizeof(dterm_t));
-    if (dth->dt == NULL) {
+    dth->intf   = malloc(sizeof(dterm_intf_t));
+    if (dth->intf == NULL) {
         rc = -2;
         goto dterm_init_TERM;
     }
     
-    dth->dt->intf = intf;
+    dth->intf->type = intf;
     if (intf == INTF_interactive) {
         dth->ch = ch_init();
         if (dth->ch == NULL) {
@@ -144,13 +143,13 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
         goto dterm_init_TERM;
     }
     
-    dth->dtwrite_mutex = malloc(sizeof(pthread_mutex_t));
-    if (dth->dtwrite_mutex == NULL) {
+    dth->iso_mutex = malloc(sizeof(pthread_mutex_t));
+    if (dth->iso_mutex == NULL) {
         rc = -5;
         goto dterm_init_TERM;
     }
     
-    if (pthread_mutex_init(dth->dtwrite_mutex, NULL) != 0 ) {
+    if (pthread_mutex_init(dth->iso_mutex, NULL) != 0 ) {
         rc = -6;
         goto dterm_init_TERM;
     }
@@ -160,8 +159,8 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
     dterm_init_TERM:
     clithread_deinit(dth->clithread);
     
-    if (dth->dt != NULL) {
-        free(dth->dt);
+    if (dth->intf != NULL) {
+        free(dth->intf);
     }
     if (dth->ch != NULL) {
         free(dth->ch);
@@ -172,31 +171,34 @@ int dterm_init(dterm_handle_t* dth, INTF_Type intf) {
 
 
 void dterm_deinit(dterm_handle_t* dth) {
-    if (dth->dt != NULL) {
+    if (dth->intf != NULL) {
         dterm_close(dth);
-        free(dth->dt);
+        free(dth->intf);
     } 
     if (dth->ch != NULL) {
         ch_free(dth->ch);
     }
     
     // Kill devmgr process. popen2_kill_s() does a NULL check internally
-    popen2_kill_s(dth->devmgr);
-    
+    ///@todo the ext data should be handled as its own module
     if (dth->ext != NULL) {
+        popen2_kill_s(dth->ext->devmgr);
+        
+        if (dth->ext->db != NULL) {
         ///@note ext gets free'd externally
-        dth->ext = NULL; 
-    } 
-    if (dth->tmpl != NULL) {
-        cJSON_Delete(dth->tmpl);
+        dth->ext->db = NULL;
+        }
+        if (dth->ext->tmpl != NULL) {
+            cJSON_Delete(dth->ext->tmpl);
+        }
     }
-    
+
     clithread_deinit(dth->clithread);
     
-    if (dth->dtwrite_mutex != NULL) {
-        pthread_mutex_unlock(dth->dtwrite_mutex);
-        pthread_mutex_destroy(dth->dtwrite_mutex);
-        free(dth->dtwrite_mutex);
+    if (dth->iso_mutex != NULL) {
+        pthread_mutex_unlock(dth->iso_mutex);
+        pthread_mutex_destroy(dth->iso_mutex);
+        free(dth->iso_mutex);
     }
 }
 
@@ -205,45 +207,42 @@ void dterm_deinit(dterm_handle_t* dth) {
 
 dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path) {
     dterm_thread_t dt_thread = NULL;
-    dterm_t* dt;
     int retcode;
     
     if (dth == NULL)        return NULL;
-    if (dth->dt == NULL)    return NULL;
-    dt = dth->dt;
+    if (dth->intf == NULL)  return NULL;
     
-    if (dt->intf == INTF_interactive) {
+    if (dth->intf->type == INTF_interactive) {
         /// Need to modify the stdout/stdin attributes in order to work with 
         /// the interactive terminal.  The "oldter" setting saves the original
         /// settings.
         dth->fd.in  = STDIN_FILENO;
         dth->fd.out = STDOUT_FILENO;
 
-        retcode = tcgetattr(dth->fd.in, &(dt->oldter));
+        retcode = tcgetattr(dth->fd.in, &(dth->intf->oldter));
         if (retcode < 0) {
             perror(NULL);
             fprintf(stderr, "Unable to access active termios settings for fd = %d\n", dth->fd.in);
             goto dterm_open_END;
         }
         
-        retcode = tcgetattr(dth->fd.in, &(dt->curter));
+        retcode = tcgetattr(dth->fd.in, &(dth->intf->curter));
         if (retcode < 0) {
             perror(NULL);
             fprintf(stderr, "Unable to access application termios settings for fd = %d\n", dth->fd.in);
             goto dterm_open_END;
         }
         
-        dt->curter.c_lflag     &= ~(ICANON | ECHO);
-        dt->curter.c_cc[VMIN]   = 1;
-        dt->curter.c_cc[VTIME]  = 0;
-        retcode                 = tcsetattr(dth->fd.in, TCSAFLUSH, &(dt->curter));
-        
+        dth->intf->curter.c_lflag      &= ~(ICANON | ECHO);
+        dth->intf->curter.c_cc[VMIN]    = 1;
+        dth->intf->curter.c_cc[VTIME]   = 0;
+        retcode                         = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->intf->curter));
         if (retcode == 0) {
             dt_thread = &dterm_prompter;
         }
     }
     
-    else if (dt->intf == INTF_pipe) {
+    else if (dth->intf->type == INTF_pipe) {
         /// Uses canonical stdin/stdout pipes, no manipulation necessary
         dth->fd.in  = STDIN_FILENO;
         dth->fd.out = STDOUT_FILENO;
@@ -251,7 +250,7 @@ dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path) {
         dt_thread   = &dterm_piper;
     }
     
-    else if ((dt->intf == INTF_socket) && (path != NULL)) {
+    else if ((dth->intf->type == INTF_socket) && (path != NULL)) {
         /// Socket mode opens a listening socket
         ///@todo have listening queue size be dynamic
         struct sockaddr_un addr;
@@ -292,7 +291,7 @@ dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path) {
     }
     
     dterm_open_END:
-    dterm_reset(dt);
+    dterm_reset(dth->intf);
     return dt_thread;
 }
 
@@ -302,10 +301,10 @@ int dterm_close(dterm_handle_t* dth) {
     int retcode;
     
     if (dth == NULL)        return -1;
-    if (dth->dt == NULL)    return -1;
+    if (dth->intf == NULL)    return -1;
     
-    if (dth->dt->intf == INTF_interactive) {
-        retcode = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->dt->oldter));
+    if (dth->intf->type == INTF_interactive) {
+        retcode = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->intf->oldter));
     }
     else {
         retcode = 0;
@@ -388,7 +387,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     // determine length until newline, or null.
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
-    cmdptr  = cmd_search(dth->cmdtab, cmdname);
+    cmdptr  = cmd_search(dth->ext->cmdtab, cmdname);
     
     // Test only
     //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
@@ -469,7 +468,7 @@ void* dterm_socket_clithread(void* args) {
 /// <LI> Processes each LINE and takes action accordingly. </LI>
     dterm_handle_t  dts;
     
-    memcpy(&dts, ((clithread_args_t*)args)->ext, sizeof(dterm_handle_t));
+    memcpy(&dts, ((clithread_args_t*)args)->app_handle, sizeof(dterm_handle_t));
     dts.fd.in   = ((clithread_args_t*)args)->fd_in;
     dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     
@@ -480,7 +479,7 @@ void* dterm_socket_clithread(void* args) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Initial state = off
-    dts.dt->state = prompt_off;
+    dts.intf->state = prompt_off;
     
     VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
@@ -495,7 +494,7 @@ void* dterm_socket_clithread(void* args) {
         if (loadlen > 0) {
             sub_str_sanitize(loadbuf, (size_t)loadlen);
             
-            pthread_mutex_lock(dts.dtwrite_mutex);
+            pthread_mutex_lock(dts.iso_mutex);
             do {
                 int dataout;
             
@@ -518,9 +517,9 @@ void* dterm_socket_clithread(void* args) {
             
             ///@todo rearchitect handle passing (separate fds and the other parts)
             ///For now we keep this copy-back model, which might be dangerous
-            memcpy(((clithread_args_t*)args)->ext, &dts, sizeof(dterm_handle_t));
+            //memcpy(((clithread_args_t*)args)->app_handle, &dts, sizeof(dterm_handle_t));
             
-            pthread_mutex_unlock(dts.dtwrite_mutex);
+            pthread_mutex_unlock(dts.iso_mutex);
             
         }
         else {
@@ -544,12 +543,10 @@ void* dterm_socketer(void* args) {
     dterm_handle_t* dth = (dterm_handle_t*)args;
     clithread_args_t clithread;
     
-    // Initial state = off
-    dth->dt->state  = prompt_off;
-
-    ///@todo make sure this fd_in works out
-    clithread.ext   = dth;
-    clithread.fd_in = dth->fd.in;
+    // Socket operation has no interface prompt
+    dth->intf->state        = prompt_off;
+    clithread.app_handle    = dth;
+    clithread.fd_in         = dth->fd.in;
     
     /// Get a packet from the Socket
     while (1) {
@@ -579,17 +576,17 @@ void* dterm_piper(void* args) {
 /// <LI> Processes each LINE and takes action accordingly. </LI>
     dterm_handle_t* dth     = (dterm_handle_t*)args;
     int             loadlen = 0;
-    char*           loadbuf = dth->dt->linebuf;
+    char*           loadbuf = dth->intf->linebuf;
     
     // Initial state = off
-    dth->dt->state = prompt_off;
+    dth->intf->state = prompt_off;
     
     /// Get each line from the pipe.
     while (1) {
         int linelen;
         
         if (loadlen <= 0) {
-            dterm_reset(dth->dt);
+            dterm_reset(dth->intf);
             loadlen = (int)read(dth->fd.in, loadbuf, 1024);
             sub_str_sanitize(loadbuf, (size_t)loadlen);
         }
@@ -666,7 +663,7 @@ void* dterm_prompter(void* args) {
     char                c           = 0;
     ssize_t             keychars    = 0;
     dterm_handle_t*     dth         = (dterm_handle_t*)args;
-    pthread_mutex_t*    write_mutex = ((dterm_handle_t*)args)->dtwrite_mutex;
+    pthread_mutex_t*    write_mutex = ((dterm_handle_t*)args)->iso_mutex;
     
     // Initialize command history
     ((dterm_handle_t*)args)->ch = ch_init();
@@ -680,14 +677,14 @@ void* dterm_prompter(void* args) {
     ch = ((dterm_handle_t*)args)->ch;
     
     // Initial state = off
-    dth->dt->state = prompt_off;
+    dth->intf->state = prompt_off;
     
     /// Get each keystroke.
     /// A keystoke is reported either as a single character or as three.
     /// triple-char keystrokes are for special keys like arrows and control
     /// sequences.
     ///@note dterm_read() will keep the thread asleep, blocking it until data arrives
-    while ((keychars = read(dth->fd.in, dth->dt->readbuf, READSIZE)) > 0) {
+    while ((keychars = read(dth->fd.in, dth->intf->readbuf, READSIZE)) > 0) {
         
         // Default: IGNORE
         cmd = ct_ignore;
@@ -695,8 +692,8 @@ void* dterm_prompter(void* args) {
         // If dterm state is off, ignore anything except ESCAPE
         ///@todo mutex unlocking on dt->state
         
-        if ((dth->dt->state == prompt_off) && (keychars == 1) && (dth->dt->readbuf[0] <= 0x1f)) {
-            cmd = npcodes[dth->dt->readbuf[0]];
+        if ((dth->intf->state == prompt_off) && (keychars == 1) && (dth->intf->readbuf[0] <= 0x1f)) {
+            cmd = npcodes[dth->intf->readbuf[0]];
             
             // Only valid commands when prompt is OFF are prompt, sigint, sigquit
             // Using prompt (ESC) will open a prompt and ignore the escape
@@ -707,20 +704,20 @@ void* dterm_prompter(void* args) {
             }
         }
         
-        else if (dth->dt->state == prompt_on) {
+        else if (dth->intf->state == prompt_on) {
             if (keychars == 1) {
-                c = dth->dt->readbuf[0];   
+                c = dth->intf->readbuf[0];
                 if (c <= 0x1F)              cmd = npcodes[c];   // Non-printable characters except DELETE
                 else if (c == ASCII_DEL)    cmd = ct_delete;    // Delete (0x7F)
                 else                        cmd = ct_key;       // Printable characters
             }
             
             else if (keychars == 3) {
-                if ((dth->dt->readbuf[0] == VT100_UPARR[0]) && (dth->dt->readbuf[1] == VT100_UPARR[1])) {
-                    if (dth->dt->readbuf[2] == VT100_UPARR[2]) {
+                if ((dth->intf->readbuf[0] == VT100_UPARR[0]) && (dth->intf->readbuf[1] == VT100_UPARR[1])) {
+                    if (dth->intf->readbuf[2] == VT100_UPARR[2]) {
                         cmd = ct_histnext;
                     }
-                    else if (dth->dt->readbuf[2] == VT100_DWARR[2]) {
+                    else if (dth->intf->readbuf[2] == VT100_DWARR[2]) {
                         cmd = ct_histprev;
                     }
                 }
@@ -734,7 +731,7 @@ void* dterm_prompter(void* args) {
         
         // This mutex protects the terminal output from being written-to by
         // this thread and mpipe_parser() at the same time.
-        if (dth->dt->state == prompt_off) {
+        if (dth->intf->state == prompt_off) {
             pthread_mutex_lock(write_mutex);
         }
         
@@ -765,7 +762,7 @@ void* dterm_prompter(void* args) {
                                     break;
             }
             
-            dterm_reset(dth->dt);
+            dterm_reset(dth->intf);
             dterm_puts(&dth->fd, (char*)killstring);
             raise(sigcode);
             return NULL;
@@ -784,20 +781,20 @@ void* dterm_prompter(void* args) {
             switch (cmd) {
                 // A printable key is used
                 case ct_key: {       
-                    dterm_putcmd(dth->dt, &c, 1);
+                    dterm_putcmd(dth->intf, &c, 1);
                     //dterm_put(dt, &c, 1);
                     dterm_putc(&dth->fd, c);
                 } break;
                                     
                 // Prompt-Escape is pressed, 
                 case ct_prompt: {    
-                    if (dth->dt->state == prompt_on) {
-                        dterm_remln(dth->dt, &dth->fd);
-                        dth->dt->state = prompt_off;
+                    if (dth->intf->state == prompt_on) {
+                        dterm_remln(dth->intf, &dth->fd);
+                        dth->intf->state = prompt_off;
                     }
                     else {
                         dterm_puts(&dth->fd, (char*)prompt_str[0]);
-                        dth->dt->state = prompt_on;
+                        dth->intf->state = prompt_on;
                     }
                 } break;
             
@@ -815,13 +812,13 @@ void* dterm_prompter(void* args) {
                     //dterm_put(dt, (char[]){ASCII_NEWLN}, 2);
                     dterm_putc(&dth->fd, '\n');
                     
-                    if (!ch_contains(ch, dth->dt->linebuf)) {
-                        ch_add(ch, dth->dt->linebuf);
+                    if (!ch_contains(ch, dth->intf->linebuf)) {
+                        ch_add(ch, dth->intf->linebuf);
                     }
                     
                     bytesout = sub_proc_lineinput( dth, 
-                                        (char*)dth->dt->linebuf, 
-                                        (int)sub_str_mark((char*)dth->dt->linebuf, 1024)
+                                        (char*)dth->intf->linebuf,
+                                        (int)sub_str_mark((char*)dth->intf->linebuf, 1024)
                                     );
                                     
                     // If there's meaningful output, add a linebreak
@@ -829,19 +826,19 @@ void* dterm_prompter(void* args) {
                         dterm_puts(&dth->fd, "\n");
                     }
 
-                    dterm_reset(dth->dt);
-                    dth->dt->state = prompt_close;
+                    dterm_reset(dth->intf);
+                    dth->intf->state = prompt_close;
                 } break;
                 
                 // TAB presses cause the autofill operation (a common feature)
                 // autofill will try to finish the command input
                 case ct_autofill: {
-                    cmdlen = cmd_getname((char*)cmdname, dth->dt->linebuf, sizeof(cmdname));
-                    cmdptr = cmd_subsearch(dth->cmdtab, (char*)cmdname);
-                    if ((cmdptr != NULL) && (dth->dt->linebuf[cmdlen] == 0)) {
-                        dterm_remln(dth->dt, &dth->fd);
+                    cmdlen = cmd_getname((char*)cmdname, dth->intf->linebuf, sizeof(cmdname));
+                    cmdptr = cmd_subsearch(dth->ext->cmdtab, (char*)cmdname);
+                    if ((cmdptr != NULL) && (dth->intf->linebuf[cmdlen] == 0)) {
+                        dterm_remln(dth->intf, &dth->fd);
                         dterm_puts(&dth->fd, (char*)prompt_str[0]);
-                        dterm_putsc(dth->dt, (char*)cmdptr->name);
+                        dterm_putsc(dth->intf, (char*)cmdptr->name);
                         dterm_puts(&dth->fd, (char*)cmdptr->name);
                     }
                     else {
@@ -855,9 +852,9 @@ void* dterm_prompter(void* args) {
                     //cmdstr = ch_next(ch);
                     cmdstr = ch_prev(ch);
                     if (ch->count && cmdstr) {
-                        dterm_remln(dth->dt, &dth->fd);
+                        dterm_remln(dth->intf, &dth->fd);
                         dterm_puts(&dth->fd, (char*)prompt_str[0]);
-                        dterm_putsc(dth->dt, cmdstr);
+                        dterm_putsc(dth->intf, cmdstr);
                         dterm_puts(&dth->fd, cmdstr);
                     }
                 } break;
@@ -868,31 +865,31 @@ void* dterm_prompter(void* args) {
                     //cmdstr = ch_prev(ch);
                     cmdstr = ch_next(ch);
                     if (ch->count && cmdstr) {
-                        dterm_remln(dth->dt, &dth->fd);
+                        dterm_remln(dth->intf, &dth->fd);
                         dterm_puts(&dth->fd, (char*)prompt_str[0]);
-                        dterm_putsc(dth->dt, cmdstr);
+                        dterm_putsc(dth->intf, cmdstr);
                         dterm_puts(&dth->fd, cmdstr);
                     }
                 } break;
                 
                 // DELETE presses issue a forward-DELETE
                 case ct_delete: { 
-                    if (dth->dt->linelen > 0) {
-                        dterm_remc(dth->dt, 1);
+                    if (dth->intf->linelen > 0) {
+                        dterm_remc(dth->intf, 1);
                         dterm_put(&dth->fd, VT100_CLEAR_CH, 4);
                     }
                 } break;
                 
                 // Every other command is ignored here.
                 default: {
-                    dth->dt->state = prompt_close;
+                    dth->intf->state = prompt_close;
                 } break;
             }
         }
         
         // Unlock Mutex
-        if (dth->dt->state != prompt_on) {
-            dth->dt->state = prompt_off;
+        if (dth->intf->state != prompt_on) {
+            dth->intf->state = prompt_off;
             pthread_mutex_unlock(write_mutex);
         }
         
@@ -942,7 +939,7 @@ int dterm_puts2(dterm_fd_t* fd, char *s) {
 
 
 
-int dterm_putsc(dterm_t *dt, char *s) {
+int dterm_putsc(dterm_intf_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
     while (*(++end) != 0);
     
@@ -951,7 +948,7 @@ int dterm_putsc(dterm_t *dt, char *s) {
 
 
 
-int dterm_putlinec(dterm_t *dt, char c) {
+int dterm_putlinec(dterm_intf_t *dt, char c) {
     int line_delta = 0;
     
     if (c == ASCII_BACKSPC) {
@@ -983,7 +980,7 @@ int dterm_putlinec(dterm_t *dt, char c) {
 
 
 
-int dterm_putcmd(dterm_t *dt, char *s, int size) {
+int dterm_putcmd(dterm_intf_t *dt, char *s, int size) {
     int i;
     
     if ((dt->linelen + size) > LINESIZE) {
@@ -1002,7 +999,7 @@ int dterm_putcmd(dterm_t *dt, char *s, int size) {
 
 
 
-int dterm_remc(dterm_t *dt, int count) {
+int dterm_remc(dterm_intf_t *dt, int count) {
     int cl = dt->linelen;
     while (count-- > 0) {
         *dt->cline-- = 0;
@@ -1013,14 +1010,14 @@ int dterm_remc(dterm_t *dt, int count) {
 
 
 
-void dterm_remln(dterm_t *dt, dterm_fd_t* fd) {
+void dterm_remln(dterm_intf_t *dt, dterm_fd_t* fd) {
     dterm_put(fd, VT100_CLEAR_LN, 5);
     dterm_reset(dt);
 }
 
 
 
-void dterm_reset(dterm_t *dt) {
+void dterm_reset(dterm_intf_t *dt) {
     dt->cline = dt->linebuf;
     
     while (dt->cline < (dt->linebuf + LINESIZE)) {

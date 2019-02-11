@@ -278,7 +278,7 @@ static int sub_pushpull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
     void* args[] = {help_man, jsonout_opt, fileblock_opt, devidlist_opt, end_man};
     
     /// Parameter checks
-    if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
+    if ((dth->ext->tmpl == NULL) || (dth->ext->db == NULL)) {
         return -1;
     }
     if (dstmax == 0) {

@@ -111,7 +111,7 @@ int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     void* args[] = {help_man, jsonout_opt, devidlist_opt, end_man};
     
     /// Make sure there is something to save.
-    if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
+    if ((dth->ext->tmpl == NULL) || (dth->ext->db == NULL)) {
         return -1;
     }
     

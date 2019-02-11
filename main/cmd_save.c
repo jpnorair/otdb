@@ -122,7 +122,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     ///@todo do input checks!!!!!!
     
     /// Make sure there is something to save.
-    if ((dth->tmpl == NULL) || (dth->ext == NULL)) {
+    if ((dth->ext->tmpl == NULL) || (dth->ext->db == NULL)) {
         return -1;
     }
     
@@ -173,7 +173,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     strcpy(rtpath, "_TMPL/tmpl.json");
     DEBUGPRINT("%s %d :: writing tmpl at %s\n", __FUNCTION__, __LINE__, pathbuf);
-    if (jst_writeout(dth->tmpl, pathbuf) != 0) {
+    if (jst_writeout(dth->ext->tmpl, pathbuf) != 0) {
         rc = -7;
         goto cmd_save_END;
     }
@@ -181,10 +181,10 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// If there is a list of Device IDs supplied in the command, we use these.
     /// Else, we dump all the devices present in the OTDB.
     if (arglist.devid_strlist_size > 0) {
-        devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
+        devtest = sub_nextdevice(dth->ext->db, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
     else {
-        devtest = otfs_iterator_start(dth->ext, &devfs, &uid.u8[0]);
+        devtest = otfs_iterator_start(dth->ext->db, &devfs, &uid.u8[0]);
     }
 
     while (devtest == 0) {
@@ -207,7 +207,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         /// Export each file in the Device FS to a JSON file in the dev root.
         /// Only file elements from the tmpl get exported.
-        tmpl    = dth->tmpl;
+        tmpl    = dth->ext->tmpl;
         obj     = tmpl->child;
         while (obj != NULL) {
             cJSON*      meta;
@@ -261,7 +261,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             {   cJSON *outmeta, *outtime, *outcontent, *outdevid;
                 outmeta     = cJSON_Duplicate(meta, true);
                 outdevid    = cJSON_CreateString(hexuid);
-                outtime     = cJSON_GetObjectItemCaseSensitive(outmeta, "time");
+                outtime     = cJSON_GetObjectItemCaseSensitive(outmeta, "modtime");
                 cJSON_SetIntValue(outtime, vl_getmodtime(fp));
                 cJSON_AddItemReferenceToObject(outmeta, "devid", outdevid);
                 cJSON_AddItemReferenceToObject(output, "_meta", outmeta);
@@ -375,10 +375,10 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         /// Fetch next device 
         DEBUGPRINT("%s %d :: fetch next device\n", __FUNCTION__, __LINE__);
         if (arglist.devid_strlist_size > 0) {
-            devtest = sub_nextdevice(dth->ext, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
+            devtest = sub_nextdevice(dth->ext->db, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
         }
         else {
-            devtest = otfs_iterator_next(dth->ext, &devfs, &uid.u8[0]);
+            devtest = otfs_iterator_next(dth->ext->db, &devfs, &uid.u8[0]);
         }
     }
 

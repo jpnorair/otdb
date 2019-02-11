@@ -407,8 +407,15 @@ int otdb_main(  INTF_Type intf_val,
                    
     // Devmgr process
     childproc_t devmgr_proc;
-    childproc_t* devmgr_handle;
     cmdtab_t main_cmdtab;
+    
+    // Application data hooked into dterm (for now)
+    dterm_ext_t appdata = {
+        .cmdtab = NULL,
+        .devmgr = NULL,
+        .db = NULL,
+        .tmpl = NULL
+    };
     
     // DTerm Datastructs
     dterm_handle_t dterm_handle;
@@ -425,7 +432,10 @@ int otdb_main(  INTF_Type intf_val,
     
     /// Initialize command table
     DEBUG_PRINTF("Initializing command table...\n");
-    if (cmdtab_init(&main_cmdtab) != 0) {
+    if (cmdtab_init(&main_cmdtab) == 0) {
+        appdata.cmdtab = &main_cmdtab;
+    }
+    else {
         fprintf(stderr, "Err: command table cannot be initialized.\n");
         cli.exitcode = -2;
         goto otdb_main_TERM3;
@@ -436,26 +446,26 @@ int otdb_main(  INTF_Type intf_val,
     /// If it works, the devmgr command should be added using the name of the
     /// program used for devmgr.
     DEBUG_PRINTF("Initializing devmgr (%s) ...\n", devmgr);
-    if (devmgr == NULL) {
-        devmgr_handle = NULL;
-    }
-    else if (popen2_s(&devmgr_proc, devmgr) == 0) {
-        const char* procname = "smut";
-        ///@todo extract command name from call string.
-        //char procname[32];
-        //cmd_getname(procname, devmgr, 32);
+    if (devmgr != NULL) {
+        if (popen2_s(&devmgr_proc, devmgr) == 0) {
+            const char* procname = "smut";
+            ///@todo extract command name from call string.
+            //char procname[32];
+            //cmd_getname(procname, devmgr, 32);
 
-        if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
-            fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
+            if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
+                fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
+                cli.exitcode = -2;
+                goto otdb_main_TERM2;
+            }
+            
+            appdata.devmgr = &devmgr_proc;
+        }
+        else {
+            fprintf(stderr, "Err: \"%s\" could not be started.\n", devmgr);
             cli.exitcode = -2;
             goto otdb_main_TERM2;
         }
-        devmgr_handle = &devmgr_proc;
-    }
-    else {
-        fprintf(stderr, "Err: \"%s\" could not be started.\n", devmgr);
-        cli.exitcode = -2;
-        goto otdb_main_TERM2;
     }
     DEBUG_PRINTF("--> done\n");
     
@@ -470,13 +480,10 @@ int otdb_main(  INTF_Type intf_val,
     /// Non intrinsic dterm elements (cmdtab, devmgr, ext, tmpl) get attached
     /// following initialization
     DEBUG_PRINTF("Initializing DTerm ...\n");
-    if (dterm_init(&dterm_handle, intf_val) != 0) {
+    if (dterm_init(&dterm_handle, &appdata, intf_val) != 0) {
         cli.exitcode = -2;
         goto otdb_main_TERM2;
     }
-    dterm_handle.devmgr = devmgr_handle;
-    dterm_handle.cmdtab = &main_cmdtab;
-    //dterm_handle.ext    = ;   // done in cmd_open
     DEBUG_PRINTF("--> done\n");
 
     /// Open DTerm interface & Setup DTerm threads

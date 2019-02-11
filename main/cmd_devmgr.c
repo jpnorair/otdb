@@ -100,21 +100,21 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     if (dth == NULL) {
         goto cmd_devmgr_END;
     }
-    if (dth->devmgr == NULL) {
+    if (dth->ext->devmgr == NULL) {
         goto cmd_devmgr_END;
     }
     
     /// Purge the read pipe.  This is important to prevent any lingering data
     /// on the pipe from prepending the protocol response.
-    FPURGE(fdopen(dth->devmgr->fd_readfrom, "r"));
+    FPURGE(fdopen(dth->ext->devmgr->fd_readfrom, "r"));
     
     /// In verbose mode, Print the devmgr input to stdout
     VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
     
     fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
-    fds[0].fd       = dth->devmgr->fd_readfrom;
+    fds[0].fd       = dth->ext->devmgr->fd_readfrom;
     
-    write(dth->devmgr->fd_writeto, src, *inbytes);
+    write(dth->ext->devmgr->fd_writeto, src, *inbytes);
     
     /// wait one second (or configured timeout ms), and then timeout.
     rc = poll(fds, 1, cliopt_gettimeout());
@@ -130,7 +130,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     rc = 0;
     while (1) {
         curs    = (char*)&dst[rc];
-        rbytes  = (int)read(dth->devmgr->fd_readfrom, curs, dstmax-rc-1);
+        rbytes  = (int)read(dth->ext->devmgr->fd_readfrom, curs, dstmax-rc-1);
 
         if (rbytes < 0) {
             rc = -3;

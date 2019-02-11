@@ -62,11 +62,11 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
     int dstlimit;
 
     if (arglist->devid_strlist_size > 0) {
-        devtest = sub_nextdevice(dth->ext, &devfs, &devid_i, arglist->devid_strlist, arglist->devid_strlist_size);
+        devtest = sub_nextdevice(dth->ext->db, &devfs, &devid_i, arglist->devid_strlist, arglist->devid_strlist_size);
     }
     else {
         uint64_t uid = 0;
-        devtest = otfs_iterator_start(dth->ext, &devfs, (uint8_t*)&uid);
+        devtest = otfs_iterator_start(dth->ext->db, &devfs, (uint8_t*)&uid);
     }
     
     dstlimit = (int)dstmax;
@@ -89,11 +89,11 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
         }
         
         if (arglist->devid_strlist_size > 0) {
-            devtest = sub_nextdevice(dth->ext, &devfs, &devid_i, arglist->devid_strlist, arglist->devid_strlist_size);
+            devtest = sub_nextdevice(dth->ext->db, &devfs, &devid_i, arglist->devid_strlist, arglist->devid_strlist_size);
         }
         else {
             uint64_t uid = 0;
-            devtest = otfs_iterator_next(dth->ext, &devfs, (uint8_t*)&uid);
+            devtest = otfs_iterator_next(dth->ext->db, &devfs, (uint8_t*)&uid);
         }
     }
 

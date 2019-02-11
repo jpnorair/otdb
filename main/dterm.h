@@ -78,17 +78,20 @@ typedef enum {
 
 
 // defines state of data terminal
+///@todo the data stored in here should be dynamic based on the type.
 typedef struct {
     // old and current terminal settings
-    INTF_Type intf;
+    INTF_Type type;
+    volatile prompt_state state; // state of the terminal prompt
+    
     struct termios oldter;
     struct termios curter;
-    volatile prompt_state state; // state of the terminal prompt
+    
     int linelen;                 // line length
     char *cline;                 // pointer to current position in linebuf
     char linebuf[LINESIZE];      // command read buffer
     char readbuf[READSIZE];     // character read buffer
-} dterm_t;
+} dterm_intf_t;
 
 
 typedef struct {
@@ -99,29 +102,44 @@ typedef struct {
 } dterm_fd_t;
 
 
+// External data elements
+typedef struct {
+    cmdtab_t*       cmdtab;
+    childproc_t*    devmgr;
+    void*           db;
+    cJSON*          tmpl;
+} dterm_ext_t;
+
+
+
 typedef struct {
     // Internally initialized in dterm_init()
     // Used only by dterm controlling thread.
-    dterm_t*            dt;
+    dterm_intf_t*       intf;
     cmdhist*            ch;
     clithread_handle_t  clithread;
-    
-    // Internally initialized in dterm_init()
-    // Used by client threads to prevent more than one command from running in
-    // OTDB engine at any given time.
-    pthread_mutex_t*    dtwrite_mutex;
     
     // Client Thread I/O parameters.
     // Should be altered per client thread in cloned dterm_handle_t
     dterm_fd_t          fd;
     
-    // Externally initialized in otdb_main()
+    // Isolation Mutex
+    // * Used by client threads to prevent more than one command from running in
+    //   OTDB engine at any given time.
+    // * Initialized by DTerm
+    pthread_mutex_t*    iso_mutex;
+    
+    // Children are externally initialized in otdb_main()
     // Safe for client threads to duplicate/reference because of mutex protection
-    cmdtab_t*           cmdtab;
-    childproc_t*        devmgr;
-    void*               ext;
-    cJSON*              tmpl;
+    dterm_ext_t*        ext;
+    
 } dterm_handle_t;
+
+
+
+
+
+
 
 
 typedef void* (*dterm_thread_t)(void*);
@@ -146,7 +164,7 @@ typedef enum {
 
 
 
-int dterm_init(dterm_handle_t* dth, INTF_Type intf);
+int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf);
 void dterm_deinit(dterm_handle_t* dth);
 
 
@@ -162,12 +180,12 @@ int dterm_puts(dterm_fd_t* fd, char *s);
 int dterm_putc(dterm_fd_t* fd, char c);
 int dterm_puts2(dterm_fd_t* fd, char *s);
 
-int dterm_putsc(dterm_t *dt, char *s);
-int dterm_putcmd(dterm_t *dt, char *s, int size);
+int dterm_putsc(dterm_intf_t *dt, char *s);
+int dterm_putcmd(dterm_intf_t *dt, char *s, int size);
 
 
 // resets command buffer
-void dterm_reset(dterm_t *dt);
+void dterm_reset(dterm_intf_t *dt);
 
 
 

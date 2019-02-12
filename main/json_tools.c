@@ -6,6 +6,7 @@
 //  Copyright © 2018 JP Norair. All rights reserved.
 //
 
+#include "debug.h"
 #include "json_tools.h"
 #include "cmds.h"
 #include "otdb_cfg.h"
@@ -336,7 +337,7 @@ int jst_extract_typesize(typeinfo_enum* type, cJSON* meta) {
 int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* type, cJSON* value) {
     typeinfo_t typeinfo;
     int bytesout;
-    DEBUGPRINT("%s %d :: dst=%016%"PRIx64", limit=%i, bitpos=%u, type=%s, value=%016%"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
+    DEBUGPRINT("%s %d :: dst=%016"PRIx64", limit=%i, bitpos=%u, type=%s, value=%016"PRIx64"\n", __FUNCTION__, __LINE__, (uint64_t)dst, limit, bitpos, type, (uint64_t)value);
     if ((dst==NULL) || (limit<=0) || (type==NULL) || (value==NULL)) {
         return 0;
     }
@@ -584,17 +585,17 @@ cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum typ
 
 
 
-int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname) {
-    FILE*       fp;
-    uint8_t*    fbuf;
-    cJSON*      local = NULL;
+int jst_aggregate_json(cJSON** aggregate, const char* path, const char* fname) {
+    FILE*       fp      = NULL;
+    uint8_t*    fbuf    = NULL;
+    cJSON*      local   = NULL;
     cJSON*      obj;
     long        flen;
     int         rc = 0;
     char        pathbuf[PATH_MAX];
     char*       fname_ext;
     
-    if ((tmpl == NULL) || (fname == NULL)) {
+    if ((aggregate == NULL) || (fname == NULL)) {
         return -1;
     }
 
@@ -618,36 +619,30 @@ int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname) {
     DEBUGPRINT("OPENING FILE %s\n", pathbuf);
     fp = fopen(pathbuf, "r");
     if (fp == NULL) {
-        perror("JSON file error");
+        perror(ERRMARK "Opening JSON File");
         return -2;
     }
+    
     fseek(fp, 0L, SEEK_END);
     flen = ftell(fp);
     rewind(fp);
     fbuf = calloc(1, flen+1);
     if (fbuf == NULL) {
-        fclose(fp);
         rc = -3;
         goto jst_aggregate_json_END;
     }
 
-    // Try reading and parsing the JSON file.
-    if(fread(fbuf, flen, 1, fp) == 1) {
-        local = cJSON_Parse((const char*)fbuf);
-        free(fbuf);
-        fclose(fp);
-    }
-    else {
-        free(fbuf);
-        fclose(fp);
+    // Try reading the JSON file.  Close it on finished
+    rc = !(fread(fbuf, flen, 1, fp) == 1);
+    fclose(fp); fp = NULL;
+    if (rc != 0) {
         DEBUGPRINT("read to %s fails\n", pathbuf);
         rc = -4;
         goto jst_aggregate_json_END;
     }
-
-
-    /// At this point the file is closed and the json is parsed into the
-    /// "local" variable.  Make sure parsing succeeded.
+    
+    /// At this point the file is closed, and file data saved to fbufMake sure parsing succeeded.
+    local = cJSON_Parse((const char*)fbuf);
     if (local == NULL) {
         DEBUGPRINT("JSON parsing failed on %s.  Exiting.\n", pathbuf);
         rc = -5;
@@ -658,16 +653,19 @@ int jst_aggregate_json(cJSON** tmpl, const char* path, const char* fname) {
     /// If *tmpl is NULL, the tmpl is empty, and we only need to link the local.
     /// If *tmpl not NULL, we need to move the local children into the tmpl.
     /// The head of the local JSON must be freed without touching the children.
-    if (*tmpl == NULL) {
-        *tmpl = local;
+    if (*aggregate == NULL) {
+        *aggregate = local;
     }
-    else if (cJSON_IsObject(*tmpl)) {
+    else if (cJSON_IsObject(*aggregate)) {
         obj = cJSON_DetachItemFromObject(local, local->child->string);
-        cJSON_AddItemReferenceToObject(*tmpl, obj->string, obj);
+        cJSON_AddItemReferenceToObject(*aggregate, obj->string, obj);
         cJSON_Delete(local);
     }
    
     jst_aggregate_json_END:
+    if (fp != NULL)     fclose(fp);
+    if (fbuf != NULL)   free(fbuf);
+    
     return rc;
 }
 

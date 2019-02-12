@@ -466,20 +466,24 @@ void* dterm_socket_clithread(void* args) {
 /// Thread that:
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
-    dterm_handle_t  dts;
+    dterm_handle_t* dth;
+    dterm_handle_t dts;
+    char databuf[1024];
+
+    if (args == NULL)
+        return NULL;
+    if (((clithread_args_t*)args)->app_handle == NULL)
+        return NULL;
     
-    memcpy(&dts, ((clithread_args_t*)args)->app_handle, sizeof(dterm_handle_t));
+    dth = ((clithread_args_t*)args)->app_handle;
+
+    memcpy(&dts, dth, sizeof(dterm_handle_t));
     dts.fd.in   = ((clithread_args_t*)args)->fd_in;
     dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     
-    char databuf[1024];
-    
     // Deferred cancellation: will wait until the blocking read() call is in
     // idle before killing the thread.
-    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-    
-    // Initial state = off
-    dts.intf->state = prompt_off;
+    //pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
@@ -495,6 +499,8 @@ void* dterm_socket_clithread(void* args) {
             sub_str_sanitize(loadbuf, (size_t)loadlen);
             
             pthread_mutex_lock(dts.iso_mutex);
+            dts.intf->state = prompt_off;
+
             do {
                 int dataout;
             
@@ -514,10 +520,6 @@ void* dterm_socket_clithread(void* args) {
                 loadbuf += (linelen + 1);
             
             } while (loadlen > 0);
-            
-            ///@todo rearchitect handle passing (separate fds and the other parts)
-            ///For now we keep this copy-back model, which might be dangerous
-            //memcpy(((clithread_args_t*)args)->app_handle, &dts, sizeof(dterm_handle_t));
             
             pthread_mutex_unlock(dts.iso_mutex);
             
@@ -663,7 +665,6 @@ void* dterm_prompter(void* args) {
     char                c           = 0;
     ssize_t             keychars    = 0;
     dterm_handle_t*     dth         = (dterm_handle_t*)args;
-    pthread_mutex_t*    write_mutex = ((dterm_handle_t*)args)->iso_mutex;
     
     // Initialize command history
     ((dterm_handle_t*)args)->ch = ch_init();
@@ -732,7 +733,7 @@ void* dterm_prompter(void* args) {
         // This mutex protects the terminal output from being written-to by
         // this thread and mpipe_parser() at the same time.
         if (dth->intf->state == prompt_off) {
-            pthread_mutex_lock(write_mutex);
+            pthread_mutex_lock(dth->iso_mutex);
         }
         
         // These are error conditions
@@ -890,7 +891,7 @@ void* dterm_prompter(void* args) {
         // Unlock Mutex
         if (dth->intf->state != prompt_on) {
             dth->intf->state = prompt_off;
-            pthread_mutex_unlock(write_mutex);
+            pthread_mutex_unlock(dth->iso_mutex);
         }
         
     }

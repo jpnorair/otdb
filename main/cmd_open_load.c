@@ -32,16 +32,20 @@
 #include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
-#include <math.h>
-#include <signal.h>
-#include <stdio.h>
-#include <string.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
-#include <sys/types.h>
+#include <limits.h>
+#include <math.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+
 
 
 typedef struct {
@@ -116,6 +120,47 @@ static bool uid_in_list(const char** uidlist, size_t listsize, uint64_t cmp) {
 }
 
 
+///@note From https://womble.decadent.org.uk/readdir_r-advisory.html
+/* Calculate the required buffer size (in bytes) for directory       *
+ * entries read from the given directory handle.  Return -1 if this  *
+ * this cannot be done.                                              *
+ *                                                                   *
+ * This code does not trust values of NAME_MAX that are less than    *
+ * 255, since some systems (including at least HP-UX) incorrectly    *
+ * define it to be a smaller value.                                  *
+ *                                                                   *
+ * If you use autoconf, include fpathconf and dirfd in your          *
+ * AC_CHECK_FUNCS list.  Otherwise use some other method to detect   *
+ * and use them where available.                                     */
+
+size_t dirent_buf_size(DIR * dirp) {
+    long name_max;
+    size_t name_end;
+#   if defined(HAVE_FPATHCONF) && defined(HAVE_DIRFD) && defined(_PC_NAME_MAX)
+        name_max = fpathconf(dirfd(dirp), _PC_NAME_MAX);
+        if (name_max == -1)
+#           if defined(NAME_MAX)
+                name_max = (NAME_MAX > 255) ? NAME_MAX : 255;
+#           else
+#               warning "readdir_r() requires excessive allocation"
+                return (size_t)(-1);
+#           endif
+#   else
+#       if defined(NAME_MAX)
+            name_max = (NAME_MAX > 255) ? NAME_MAX : 255;
+#       else
+#           error "buffer size for readdir_r cannot be determined"
+#       endif
+#   endif
+
+    name_end = (size_t)offsetof(struct dirent, d_name) + name_max + 1;
+    return (name_end > sizeof(struct dirent)
+            ? name_end : sizeof(struct dirent));
+}
+
+
+
+
 
 
 ///@todo this function is used only by LOAD command at the moment, but in the
@@ -139,13 +184,20 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
                         bool export_tmp, bool sync_target) {
     int rc                  = 0;
     struct dirent *devent   = NULL;
+    struct dirent *entbuf   = NULL;
     cJSON* data             = NULL;
     cJSON* dataobj;
     vlFILE* fp;
     
+    // Allocate directory traversal buffer -- fast exit if fails
+    entbuf = malloc(dirent_buf_size(devdir));
+    if (entbuf == NULL) {
+        return -1;
+    }
+    
     // Loop through files in the device directory, and aggregate them.
     while (1) {
-        devent = readdir(devdir);
+        readdir_r(devdir, entbuf, &devent);
         if (devent == NULL) {
             break;
         }
@@ -389,6 +441,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
     }
 
     sub_datafile_CLOSE:
+    free(entbuf);
     cJSON_Delete(data);
 
     return rc;
@@ -414,6 +467,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     DIR* dir                = NULL;
     DIR* devdir             = NULL;
     struct dirent *ent      = NULL;
+    struct dirent *entbuf   = NULL;
     cJSON* tmpl             = NULL;
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
@@ -431,7 +485,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     };
     void* args[] = {help_man, jsonout_opt, archive_man, end_man};
     
-    ///@todo do input checks!!!!!!
+    ///@todo do more input checks!!!!!!
+
 
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "open", (const char*)src, inbytes);
@@ -495,9 +550,16 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         goto cmd_open_CLOSE;
     }
    
+    // Allocate directory traversal buffer
+    entbuf = malloc(dirent_buf_size(dir));
+    if (entbuf == NULL) {
+        rc = -1;
+        goto cmd_open_CLOSE;
+    }
+   
     // 2. Load all the JSON data (might span multiple files) into tmpl
     while (1) {
-        ent = readdir(dir);
+        readdir_r(dir, entbuf, &ent);
         if (ent == NULL) {
             break;
         }
@@ -510,6 +572,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
     }
     closedir(dir);
+    free(entbuf);
+    entbuf = NULL;
     dir = NULL;
 //{ char* fbuf = cJSON_Print(tmpl);  fputs(fbuf, stderr);  free(fbuf); }
 
@@ -876,11 +940,16 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -6;
         goto cmd_open_CLOSE;
     }
+    entbuf = malloc(dirent_buf_size(dir));
+    if (entbuf == NULL) {
+        rc = -6;
+        goto cmd_open_CLOSE;
+    }
     
     while (1) {
         char* endptr;
   
-        ent = readdir(dir);
+        readdir_r(dir, entbuf, &ent);
         if (ent == NULL) {
             break;
         }
@@ -955,9 +1024,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         cJSON_Delete(tmpl);
     }
+    
     cJSON_Delete(data);
     if (devdir != NULL) closedir(devdir);
     if (dir != NULL)    closedir(dir);
+    if (entbuf != NULL) free(entbuf);
     
     cmd_open_END:
     return cmd_jsonout_err((char*)dst, dstmax, (bool)arglist.jsonout_flag, rc, "open");
@@ -973,9 +1044,10 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     int rc;
     
     // POSIX Filesystem and JSON handles
-    DIR* dir            = NULL;
-    DIR* devdir         = NULL;
-    struct dirent *ent  = NULL;
+    DIR* dir                = NULL;
+    DIR* devdir             = NULL;
+    struct dirent *ent      = NULL;
+    struct dirent *entbuf   = NULL;
     char* endptr;
     
     otfs_id_union active_id;
@@ -1018,6 +1090,11 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -3;
         goto cmd_load_CLOSE;
     }
+    entbuf = malloc(dirent_buf_size(dir));
+    if (entbuf == NULL) {
+        rc = -3;
+        goto cmd_load_CLOSE;
+    }
     
     endptr = NULL;
     active_id.u64 = strtoull(arglist.archive_path, &endptr, 16);
@@ -1048,7 +1125,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         *rtpath = 0;
         
         while (1) {
-            ent = readdir(dir);
+            readdir_r(dir, entbuf, &ent);
             if (ent == NULL) {
                 break;
             }
@@ -1094,6 +1171,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cmd_load_CLOSE:
     if (devdir != NULL) closedir(devdir);
     if (dir != NULL)    closedir(dir);
+    if (entbuf != NULL) free(entbuf);
     
     cmd_load_END:
     return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "load");

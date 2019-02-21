@@ -52,7 +52,8 @@
 
 #else
 #   define DEBUG_RUN(CODE)      do { } while(0)
-#   define DEBUG_PRINTF(...)    do { } while(0)
+#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) fprintf(stderr, _E_YEL "DEBUG: " _E_NRM __VA_ARGS__); } while(0)
+//#   define DEBUG_PRINTF(...)    do { } while(0)
 #   define HEX_DUMP(LABEL, HEX, ...) do { } while(0)
 
 #endif

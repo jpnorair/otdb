@@ -22,6 +22,7 @@
 
 // HB libraries
 #include <otfs.h>
+#include <argtable3.h>
 
 // POSIX & Standard C Libraries
 #include <stdint.h>
@@ -42,6 +43,13 @@
 #define ARGFIELD_FILERANGE      (1<<11)
 #define ARGFIELD_FILEDATA       (1<<12)
 
+
+typedef enum {
+    AUTH_guest  = -1,
+    AUTH_root   = 0,
+    AUTH_user   = 1,
+} AUTH_level;
+
 typedef struct {
     unsigned int    fields;
     const char*     archive_path;
@@ -61,12 +69,28 @@ typedef struct {
     uint16_t        range_hi;
 } cmd_arglist_t;
 
-typedef enum {
-    AUTH_guest  = -1,
-    AUTH_root   = 0,
-    AUTH_user   = 1,
-} AUTH_level;
+typedef struct {
+    // used by DB manipulation commands
+    struct arg_str*     devid_man;
+    struct arg_file*    archive_man;
+    struct arg_lit*     compress_opt;
+    struct arg_lit*     jsonout_opt;
 
+    // used by file commands
+    struct arg_str*     devid_opt;
+    struct arg_str*     devidlist_opt;
+    struct arg_int*     fileage_opt;
+    struct arg_str*     fileblock_opt;
+    struct arg_str*     filerange_opt;
+    struct arg_int*     fileid_man;
+    struct arg_str*     fileperms_man;
+    struct arg_int*     filealloc_man;
+    struct arg_str*     filedata_man;
+
+    // used by all commands
+    struct arg_lit*     help_man;
+    struct arg_end*     end_man;
+} cmd_argtable_t;
 
 
 
@@ -77,8 +101,8 @@ typedef enum {
 typedef int (*cmdaction_t)(dterm_handle_t*, uint8_t*, int*, uint8_t*, size_t);
 
 
-
-void cmd_init_args(void);
+///@todo make this into an object
+void cmd_init_argtable(void);
 
 
 int cmd_hexread(uint8_t* dst, const char* src);

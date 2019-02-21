@@ -27,6 +27,7 @@
 // HB Libraries
 #include <cJSON.h>
 #include <cmdtab.h>
+#include <talloc.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -123,14 +124,20 @@ typedef struct {
     // Should be altered per client thread in cloned dterm_handle_t
     dterm_fd_t          fd;
     
+    // Process Context:
+    TALLOC_CTX*         pctx;
+    
+    // Thread Context: may be null if not using talloc
+    TALLOC_CTX*         tctx;
+    
     // Isolation Mutex
     // * Used by client threads to prevent more than one command from running in
     //   OTDB engine at any given time.
     // * Initialized by DTerm
     pthread_mutex_t*    iso_mutex;
     
-    // Children are externally initialized in otdb_main()
-    // Safe for client threads to duplicate/reference because of mutex protection
+    // Externally Initialized data elements
+    // These should only be used within lock provided by isolation mutex
     dterm_ext_t*        ext;
     
 } dterm_handle_t;

@@ -57,7 +57,9 @@
 #ifndef OTDB_PARAM_DATE
 #   define OTDB_PARAM_DATE          __DATE__
 #endif
-
+#ifndef OTDB_PARAM_MMAP_PAGESIZE
+#   define OTDB_PARAM_MMAP_PAGESIZE (128*1024)
+#endif
 
 /// Automatic Checks
 

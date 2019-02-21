@@ -28,6 +28,7 @@
 #include <cmdtab.h>
 #include <argtable3.h>
 #include <cJSON.h>
+#include <cJSON_blockdup.h>
 #include <otfs.h>
 #include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
@@ -100,6 +101,10 @@ extern struct arg_end*  end_man;
 
 
 
+static void sub_tfree(void* ctx) {
+    talloc_free(ctx);
+}
+
 
 static bool uid_in_list(const char** uidlist, size_t listsize, uint64_t cmp) {
     uint64_t devid;
@@ -170,6 +175,7 @@ size_t dirent_buf_size(DIR * dirp) {
   * @param dth          (dterm_handle_t*) dterm handle
   * @param dst          (uint8_t*) destination buffer -- used only as interim
   * @param dstmax       (size_t) maximum extent of destination buffer
+  * @param fstmpl       (cJSON*) FS template JSON object
   * @param devdir       (DIR*) directory object for device archive directory
   * @param path         (const char*) active path to device directory (or device)
   * @param uid          (uint64_t) 64 bit device id (Unique ID)
@@ -180,7 +186,7 @@ size_t dirent_buf_size(DIR * dirp) {
   * If sync_target == false, dst can be NULL and dstmax is ignored.
   */
 static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
-                        DIR* devdir, const char* path, uint64_t uid,
+                        cJSON* fstmpl, DIR* devdir, const char* path, uint64_t uid,
                         bool export_tmp, bool sync_target) {
     int rc                  = 0;
     struct dirent *devent   = NULL;
@@ -188,9 +194,16 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
     cJSON* data             = NULL;
     cJSON* dataobj;
     vlFILE* fp;
+    TALLOC_CTX* sub_datafile_heap;
+    
+    sub_datafile_heap = talloc_new(dth->tctx);
+    if (sub_datafile_heap == NULL) {
+    ///@todo better error code for out of memory
+        return -1;
+    }
     
     // Allocate directory traversal buffer -- fast exit if fails
-    entbuf = malloc(dirent_buf_size(devdir));
+    entbuf = talloc_size(sub_datafile_heap, dirent_buf_size(devdir));
     if (entbuf == NULL) {
         return -1;
     }
@@ -203,7 +216,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         }
         if (devent->d_type == DT_REG) {
             DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, path, devent->d_name);
-            rc = jst_aggregate_json(&data, path, devent->d_name);
+            rc = jst_aggregate_json(sub_datafile_heap, &data, path, devent->d_name);
             if (rc != 0) {
                 rc = -9;
                 goto sub_datafile_CLOSE;
@@ -285,7 +298,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         
         // Get the template meta defaults for this file, matched on the file name
         // Make sure that template metadata is aligned with file metadata
-        fileobj = cJSON_GetObjectItemCaseSensitive(dth->ext->tmpl, dataobj->string);
+        fileobj = cJSON_GetObjectItemCaseSensitive(fstmpl, dataobj->string);
         DEBUGPRINT("%s %d :: Object \"%s\" found in TMPL = %d\n", __FUNCTION__, __LINE__, dataobj->string, (fileobj!=NULL));
         if (cJSON_IsObject(fileobj) == false) {
             continue;
@@ -441,8 +454,8 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
     }
 
     sub_datafile_CLOSE:
-    free(entbuf);
     cJSON_Delete(data);
+    talloc_free(sub_datafile_heap);
 
     return rc;
 }
@@ -472,6 +485,10 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
     bool open_valid         = false;
+    void* db                = NULL;
+    
+    // Function Heap
+    TALLOC_CTX* cmd_open_heap;
     
     // OTFS data tables and handles
     otfs_t tmpl_fs;
@@ -487,11 +504,16 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     ///@todo do more input checks!!!!!!
 
-
+    cmd_open_heap = talloc_new(dth->tctx);
+    if (cmd_open_heap == NULL) {
+    ///@todo better error code for out of memory
+        return -1;
+    }
+    
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "open", (const char*)src, inbytes);
     if (rc != 0) {
-        goto cmd_open_END;
+        goto cmd_open_CLOSE;
     }
  
     /// On successful extraction, create a new device in the database
@@ -551,7 +573,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
    
     // Allocate directory traversal buffer
-    entbuf = malloc(dirent_buf_size(dir));
+    entbuf = talloc_size(cmd_open_heap, dirent_buf_size(dir));
     if (entbuf == NULL) {
         rc = -1;
         goto cmd_open_CLOSE;
@@ -564,7 +586,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             break;
         }
         if (ent->d_type == DT_REG) {
-            rc = jst_aggregate_json(&tmpl, pathbuf, ent->d_name);
+            rc = jst_aggregate_json(cmd_open_heap, &tmpl, pathbuf, ent->d_name);
             if (rc != 0) { 
                 rc = -256 + rc;
                 goto cmd_open_CLOSE;
@@ -572,11 +594,11 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
     }
     closedir(dir);
-    free(entbuf);
+    talloc_free(entbuf);
     entbuf = NULL;
     dir = NULL;
-//{ char* fbuf = cJSON_Print(tmpl);  fputs(fbuf, stderr);  free(fbuf); }
 
+//{ char* fbuf = cJSON_Print(tmpl);  fputs(fbuf, stderr);  free(fbuf); }
 
     // 3. Big Process of creating the default OTFS data structure based on JSON
     // input files
@@ -677,22 +699,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         obj = obj->next;
     }
  
-    // 3b. Template is valid.  This is the point-of-no return.  Clear any old
-    // template that may extist on the terminal and assign the new one.
-    if (dth->ext->tmpl != NULL) {
-        cJSON_Delete(dth->ext->tmpl);
-    }
-    dth->ext->tmpl = tmpl;
-    
-    // Delete existing open Database, and create a new one
-    if (dth->ext->db != NULL) {
-        rc = otfs_deinit(dth->ext->db, true);
-        if (rc != 0) {
-            rc = ERRCODE(otfs, otfs_deinit, rc);
-            goto cmd_open_CLOSE;
-        }
-    }
-    rc = otfs_init(&dth->ext->db);
+    // 3b. Template is valid.
+    rc = otfs_init(&db);
     if (rc != 0) {
         rc = ERRCODE(otfs, otfs_init, rc);
         goto cmd_open_CLOSE;
@@ -712,7 +720,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
     tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
-    tmpl_fs.base        = calloc(tmpl_fs.alloc, sizeof(uint8_t));
+    tmpl_fs.base        = talloc_zero_size(cmd_open_heap, tmpl_fs.alloc);
     if (tmpl_fs.base == NULL) {
         rc = -5;
         goto cmd_open_CLOSE;
@@ -940,13 +948,13 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -6;
         goto cmd_open_CLOSE;
     }
-    entbuf = malloc(dirent_buf_size(dir));
+    entbuf = talloc_size(cmd_open_heap, dirent_buf_size(dir));
     if (entbuf == NULL) {
         rc = -6;
         goto cmd_open_CLOSE;
     }
     
-    while (1) {
+    while (rc >= 0) {
         char* endptr;
   
         readdir_r(dir, entbuf, &ent);
@@ -968,33 +976,45 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
         
         // Create new FS using defaults from template
+        ///@note data_fs goes on the permanent memory context
         data_fs.alloc   = tmpl_fs.alloc;
-        data_fs.base    = malloc(tmpl_fs.alloc);
+        data_fs.base    = talloc_size(dth->pctx, tmpl_fs.alloc);
         if (data_fs.base == NULL) {
             rc = -7;
-            goto cmd_open_CLOSE;
         }
-        memcpy(data_fs.base, tmpl_fs.base, tmpl_fs.alloc);
+        else {
+            memcpy(data_fs.base, tmpl_fs.base, tmpl_fs.alloc);
         
-        // Create new FS based on device id and template FS
-        DEBUGPRINT("%s %d :: ID=%"PRIx64"\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
-        rc = otfs_new(dth->ext->db, &data_fs);
-        if (rc != 0) {
-            rc = ERRCODE(otfs, otfs_new, rc);
-            goto cmd_open_CLOSE;
+            // Create new FS based on device id and template FS
+            DEBUGPRINT("%s %d :: ID=%"PRIx64"\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
+            rc = otfs_new(db, &data_fs);
+            if (rc != 0) {
+                rc = ERRCODE(otfs, otfs_new, rc);
+            }
+            else {
+                // Enter Device Directory: max is 16 hex chars long (8 bytes)
+                snprintf(rtpath, 16, "/%s", ent->d_name);
+                DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
+                devdir = opendir(pathbuf);
+                if (devdir == NULL) {
+                    rc = -8;
+                }
+                else {
+                    ///@todo verify that final argument (sync_target=true) is indeed what we want to do
+                    rc = sub_datafile(dth, dst, dstmax, tmpl, devdir, pathbuf, data_fs.uid.u64, true, true);
+                    closedir(devdir);
+                    devdir = NULL;
+                }
+            }
+            
+            // free data_fs.base allocation if there's an error
+            if (rc != 0) {
+                DEBUGPRINT("%s %d :: rc=%i\n", __FUNCTION__, __LINE__, rc);
+                otfs_del(db, &data_fs, &sub_tfree);
+                //talloc_free(data_fs.base);    // done by otfs_del() above
+                DEBUGPRINT("%s %d :: otfs_del() passed\n", __FUNCTION__, __LINE__);
+            }
         }
-        
-        // Enter Device Directory: max is 16 hex chars long (8 bytes)
-        snprintf(rtpath, 16, "/%s", ent->d_name);
-        DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
-        devdir = opendir(pathbuf);
-        if (devdir == NULL) {
-            rc = -8;
-            goto cmd_open_CLOSE;
-        }
-        
-        ///@todo verify that final argument (sync_target=true) is indeed what we want to do
-        rc = sub_datafile(dth, dst, dstmax, devdir, pathbuf, data_fs.uid.u64, true, true);
     }
     closedir(dir);
     dir = NULL;
@@ -1012,25 +1032,82 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 //test_dumpbytes(data_fs.base+isfhdr[0].base, 16, fshdr.isf.alloc, "ISF DATA");
 //}
     
-    // 6. mark that the database opening is valid
-    open_valid = true;
-
     cmd_open_CLOSE:
+    DEBUGPRINT("%s %d :: cmd_open_CLOSE\n", __FUNCTION__, __LINE__);
     // ------------------------------------------------------------------------
-    // 7. Close and Free all dangling memory elements
-    if (open_valid == false) {
-        if (dth->ext->tmpl == tmpl) {
-            dth->ext->tmpl = NULL;
+    // 8. Close and Free all dangling memory elements
+    if (rc >= 0) {
+        /// The JSON template is allocated in a local context.  This is usually
+        /// a memory pool that gets overwritten frequently.  We need to copy
+        /// this local template to the permanent context.
+        if (tmpl != NULL) {
+            size_t tmpl_size;
+            void*  tmpl_block;
+            cJSON* tmpl_obj = NULL;
+            
+            DEBUGPRINT("%s %d :: cJSON_GetObjectSize\n", __FUNCTION__, __LINE__);
+            tmpl_size = cJSON_GetObjectSize(tmpl);
+            DEBUGPRINT("%s %d :: tmpl_size=%zu\n", __FUNCTION__, __LINE__, tmpl_size);
+            if (tmpl_size != 0) {
+                tmpl_block = talloc_size(dth->pctx, tmpl_size);
+                if (tmpl_block == NULL) {
+                    ///@todo error code
+                    rc = -9;
+                    goto cmd_open_FLUSH;
+                }
+                
+                DEBUGPRINT("%s %d :: cJSON_BlockDup\n", __FUNCTION__, __LINE__);
+                tmpl_obj = cJSON_BlockDup(tmpl_block, tmpl_size, tmpl);
+                DEBUGPRINT("%s %d :: tmpl_obj=%016llx\n", __FUNCTION__, __LINE__, (uint64_t)tmpl_obj);
+                if (tmpl_obj == NULL) {
+                    ///@todo error code
+                    rc = -10;
+                    goto cmd_open_FLUSH;
+                }
+                
+                talloc_free(dth->ext->tmpl);
+                dth->ext->tmpl = tmpl_obj;
+            }
+            
+            DEBUGPRINT("%s %d :: cJSON_Delete\n", __FUNCTION__, __LINE__);
+            cJSON_Delete(tmpl);
+            tmpl = tmpl_obj;
         }
+        
+        /// Delete the existing database if one exists.  Then link the newly
+        /// opened database to the global context.
+        if (dth->ext->db != NULL) {
+            DEBUGPRINT("%s %d :: otfs_deinit\n", __FUNCTION__, __LINE__);
+            rc = otfs_deinit(dth->ext->db, &sub_tfree);
+            if (rc != 0) {
+                rc = ERRCODE(otfs, otfs_deinit, rc);
+            }
+        }
+    }
+    
+    cmd_open_FLUSH:
+    DEBUGPRINT("%s %d :: cmd_open_FLUSH\n", __FUNCTION__, __LINE__);
+    // Database open operation failed.  Wipe the data we created.  These
+    // data elements are part of the talloc context, and they will get
+    // free'd in any case, but for completeness they are deallocated here.
+    if (rc >= 0) {
+        ///@todo OTFS data is talloc'ed (on "pctx" permanent context), but Judy
+        ///      is not.  Make Judy also talloc'ed.  Until then, just copy the
+        ///      db pointer (Judy object) to the global dth handle.
+        dth->ext->db    = db;
+        dth->ext->tmpl  = tmpl;
+    }
+    else {
         cJSON_Delete(tmpl);
+        otfs_deinit(db, &sub_tfree);
     }
     
     cJSON_Delete(data);
     if (devdir != NULL) closedir(devdir);
     if (dir != NULL)    closedir(dir);
-    if (entbuf != NULL) free(entbuf);
     
-    cmd_open_END:
+    talloc_free(cmd_open_heap);
+    
     return cmd_jsonout_err((char*)dst, dstmax, (bool)arglist.jsonout_flag, rc, "open");
 }
 
@@ -1049,6 +1126,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     struct dirent *ent      = NULL;
     struct dirent *entbuf   = NULL;
     char* endptr;
+    TALLOC_CTX* cmd_load_heap;
     
     otfs_id_union active_id;
     
@@ -1061,6 +1139,12 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     /// Make sure there is something to load
     if ((dth->ext->tmpl == NULL) || (dth->ext->db == NULL)) {
+        return -1;
+    }
+    
+    cmd_load_heap = talloc_new(dth->tctx);
+    if (cmd_load_heap == NULL) {
+    ///@todo better error code for out of memory
         return -1;
     }
     
@@ -1090,7 +1174,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rc = -3;
         goto cmd_load_CLOSE;
     }
-    entbuf = malloc(dirent_buf_size(dir));
+    entbuf = talloc_size(cmd_load_heap, dirent_buf_size(dir));
     if (entbuf == NULL) {
         rc = -3;
         goto cmd_load_CLOSE;
@@ -1109,7 +1193,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // Activate the chosen ID.  If it is not in the database, skip it.
         if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) == 0) {
-            rc = sub_datafile(dth, dst, dstmax, devdir, arglist.archive_path, active_id.u64, false, true);
+            rc = sub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, arglist.archive_path, active_id.u64, false, true);
         }
     }
     else {
@@ -1124,7 +1208,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         rtpath  = stpncpy(pathbuf, arglist.archive_path, (sizeof(pathbuf) - (32+1)) );
         *rtpath = 0;
         
-        while (1) {
+        while (rc == 0) {
             readdir_r(dir, entbuf, &ent);
             if (ent == NULL) {
                 break;
@@ -1136,34 +1220,37 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 continue;
             }
             
-            // Name of directory should be a pure hex number.  It must also
-            // be present in the device list (or, no device list)
+            // Name of directory must be a pure hex number.
             endptr          = NULL;
             active_id.u64   = strtoull(ent->d_name, &endptr, 16);
             if (((*ent->d_name != '\0') && (*endptr == '\0')) == 0) {
                 continue;
             }
+            
+            // If there is a device ID list, we need to make sure the UID of the
+            // input folder is in the list.  If there is no device ID list, we
+            // use all input folders.
             if (arglist.devid_strlist_size > 0) {
                 if (uid_in_list(arglist.devid_strlist, arglist.devid_strlist_size, active_id.u64) == false) {
                     continue;
                 }
             }
             
-            // Enter Device Directory: max is 16 hex chars long (8 bytes)
+            // - Enter Device Directory: max is 16 hex chars long (8 bytes)
+            // - Activate the chosen ID.  If it is not in the database, skip it.
             snprintf(rtpath, 16, "/%s", ent->d_name);
             DEBUGPRINT("%s %d :: devdir=%s\n", __FUNCTION__, __LINE__, pathbuf);
             devdir = opendir(pathbuf);
             if (devdir == NULL) {
                 rc = -8;
-                goto cmd_load_CLOSE;
             }
-        
-            // Activate the chosen ID.  If it is not in the database, skip it.
-            if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) != 0) {
-                continue;
+            else {
+                if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) == 0) {
+                    rc = sub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, pathbuf, active_id.u64, false, true);
+                }
+                closedir(devdir);
+                devdir = NULL;
             }
-            
-            rc = sub_datafile(dth, dst, dstmax, devdir, pathbuf, active_id.u64, false, true);
         }
     }
     
@@ -1171,9 +1258,9 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cmd_load_CLOSE:
     if (devdir != NULL) closedir(devdir);
     if (dir != NULL)    closedir(dir);
-    if (entbuf != NULL) free(entbuf);
     
     cmd_load_END:
+    talloc_free(cmd_load_heap);
     return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "load");
 }
 

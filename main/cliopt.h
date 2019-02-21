@@ -42,6 +42,8 @@ typedef struct {
     FORMAT_Type format;
     INTF_Type   intf;
     
+    size_t      mempool_size;
+    
     int         timeout_ms;
 
 } cliopt_t;
@@ -56,8 +58,12 @@ FORMAT_Type cliopt_getformat(void);
 
 INTF_Type cliopt_getintf(void);
 
+int cliopt_getpoolsize(void);
+void cliopt_setpoolsize(size_t poolsize);
+
 int cliopt_gettimeout(void);
 void cliopt_settimeout(int timeout_ms);
+
 
 
 

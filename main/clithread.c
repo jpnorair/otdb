@@ -58,58 +58,98 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
             newitem->args.app_handle= NULL;
             newitem->args.fd_in     = -1;
             newitem->args.fd_out    = -1;
+            newitem->args.tctx      = NULL;
         }
         else {
             newitem->args = *arg;
         }
         
-        if (pthread_create(&newitem->client, attr, start_routine, (void*)&newitem->args) != 0) {
-            free(newitem);
-            newitem = NULL;
-        }
-        else {
-            //pthread_detach(newitem->client);
-            head            = *(clithread_item_t**)handle;
-            newitem->prev   = NULL;
-            newitem->next   = head;
-            if (head != NULL) {
-                head->prev  = newitem;
+        // This self linkage enables the thread to use:
+        // pthread_cleanup_push(&clithread_selfclean, args->clithread_self);
+        // To cleanup after itself
+        newitem->args.clithread_self = (void*)newitem;
+        
+        // If a talloc context is not provided explicitly, create one
+        if (newitem->args.tctx == NULL) {
+            newitem->args.tctx = talloc_pool(NULL, cliopt_getpoolsize());
+            if (newitem->args.tctx == NULL) {
+                goto clithread_add_ERR;
             }
-            head            = newitem;
         }
+        
+        if (pthread_create(&newitem->client, attr, start_routine, (void*)&newitem->args) != 0) {
+            goto clithread_add_ERR;
+        }
+        
+        //pthread_detach(newitem->client);
+        head            = *(clithread_item_t**)handle;
+        newitem->prev   = NULL;
+        newitem->next   = head;
+        if (head != NULL) {
+            head->prev  = newitem;
+        }
+        head            = newitem;
     }
 
     return newitem;
+    
+    clithread_add_ERR:
+    free(newitem);
+    return NULL;
 }
 
 
-void clithread_del(clithread_item_t* item) {
+
+static void sub_clithread_free(void* self) {
+    clithread_item_t* item = (clithread_item_t*)self;
     clithread_item_t* previtem;
     clithread_item_t* nextitem;
     
-    /// Use a detached thread: This is an unblocking way to have pthread_cancel
-    /// kill the thread AND free the resources.  But we don't wait for thread
-    /// to exit the way a pthread_join call would do.
-    if (item != NULL) {
+    previtem = item->prev;
+    nextitem = item->next;
     
-        /// Delete the item and link together its previous and next items.
-        pthread_detach(item->client);
-        pthread_cancel(item->client);
+    // This will free all data allocated on this context via talloc
+    talloc_free(item->args.tctx);
     
-        previtem = item->prev;
-        nextitem = item->next;
-        free(item);
-        
-        /// If previtem==NULL, this item is the head
-        /// If nextitem==NULL, this item is the end
-        if (previtem != NULL) {
-            previtem->next = nextitem;
-        }
-        if (nextitem != NULL) {
-            nextitem->prev = previtem;
-        }
+    free(item);
+
+    /// If previtem==NULL, this item is the head
+    /// If nextitem==NULL, this item is the end
+    if (previtem != NULL) {
+        previtem->next = nextitem;
+    }
+    if (nextitem != NULL) {
+        nextitem->prev = previtem;
     }
 }
+
+
+
+void clithread_exit(void* self) {
+///@note to be used at the end of a thread that's created by clithread_add()
+    clithread_item_t* item = (clithread_item_t*)self;
+    
+    // Thread will detach itself, meaning that no other thread needs to join it
+    pthread_detach(item->client);
+    
+    // This is a cleanup handler that will free the thread from the clithread
+    // list, after the thread terminates.
+    pthread_cleanup_push(&sub_clithread_free, item);
+    pthread_exit(NULL);
+    pthread_cleanup_pop(1);
+}
+
+
+
+void clithread_del(clithread_item_t* item) {
+    if (item != NULL) {
+        pthread_cancel(item->client);
+        pthread_join(item->client, NULL);
+        sub_clithread_free(item);
+    }
+}
+
+
 
 
 void clithread_deinit(clithread_handle_t handle) {
@@ -135,6 +175,7 @@ void clithread_deinit(clithread_handle_t handle) {
             
             pthread_cancel(head->client);
             pthread_join(head->client, NULL);
+            talloc_free(head->args.tctx);
             free(head);
         }
         

@@ -21,12 +21,18 @@
 #include "otdb_cfg.h"
 #include "cliopt.h"
 
+// talloc library from /usr/local/include
+#include <talloc.h>
+
 #include <pthread.h>
+
 
 typedef struct {
     int fd_in;
     int fd_out;
+    void* clithread_self;
     void* app_handle;
+    TALLOC_CTX* tctx;
 } clithread_args_t;
 
 typedef struct ptlist {
@@ -42,6 +48,19 @@ typedef clithread_item_t** clithread_handle_t;
 clithread_handle_t clithread_init(void);
 
 clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), clithread_args_t* arg);
+
+
+/** @brief Client thread must call this upon exit or return
+  * @param self     (void*) Must be the clithread_self arg element
+  * @retval None
+  *
+  * Rather than use pthread_exit() or return(), any client thread created by
+  * clithread_add() must use clithread_exit() instead.
+  *
+  * clithread_exit() should not be used by a supervisory thread, or any other
+  * thread except the client thread itself.
+  */
+void clithread_exit(void* self);
 
 void clithread_del(clithread_item_t* item);
 

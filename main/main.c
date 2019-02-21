@@ -48,6 +48,7 @@
 #include <cJSON.h>
 #include <cmdtab.h>
 #include <otfs.h>
+#include <talloc.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -93,7 +94,11 @@ cli_struct cli;
   * and then send them to otdb_main(), which deals with program setup and
   * management.
   */
-  
+
+static void sub_tfree(void* ctx) {
+    talloc_free(ctx);
+}
+
 static void sub_json_loadargs(  cJSON* json, 
                                 int* verbose_val,
                                 int* debug_val,
@@ -204,14 +209,6 @@ static int sub_copy_stringarg(char** dststring, int argcount, const char* argstr
 
 
 int main(int argc, char* argv[]) {
-#   define FILL_STRINGARG(ARGITEM, VAR)   do { \
-        size_t str_sz = strlen(ARGITEM->filename[0]) + 1;   \
-        if (VAR != NULL) free(VAR);                         \
-        VAR = malloc(str_sz);                               \
-        if (VAR == NULL) goto main_FINISH;                  \
-        memcpy(VAR, ARGITEM->filename[0], str_sz);          \
-    } while(0);
-
     struct arg_file *config  = arg_file0("c", "config", "<file.json>",  "JSON based configuration file.");
     struct arg_lit  *verbose = arg_lit0("v","verbose",                  "use verbose mode");
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
@@ -242,7 +239,12 @@ int main(int argc, char* argv[]) {
     bool verbose_val    = false;
     bool debug_val      = false;
     
-
+    /// Initialize allocators in argtable lib to defaults
+    arg_set_allocators(NULL, NULL);
+    
+    /// Initialize allocators in CJSON lib to defaults
+    cJSON_InitHooks(NULL);
+    
     if (arg_nullcheck(argtable) != 0) {
         /// NULL entries were detected, some allocations must have failed 
         fprintf(stderr, "%s: insufficient memory\n", progname);
@@ -311,6 +313,8 @@ int main(int argc, char* argv[]) {
         if(fread(buffer, lSize, 1, fp) == 1) {
             json = cJSON_Parse(buffer);
             fclose(fp);
+            free(buffer);
+            buffer = NULL;
         }
         else {
             fclose(fp);
@@ -383,7 +387,8 @@ int main(int argc, char* argv[]) {
                                 json    );
     }
 
-    if (json != NULL)           cJSON_Delete(json);
+    cJSON_Delete(json);
+    
     if (buffer != NULL)         free(buffer);
     if (socket_val != NULL)     free(socket_val);
     if (archive_val != NULL)    free(archive_val);
@@ -512,7 +517,7 @@ int otdb_main(  INTF_Type intf_val,
     /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
     /// i.e. raise(SIGINT).
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
-    DEBUG_PRINTF("Finished creating theads\n");
+    DEBUG_PRINTF("Finished creating threads\n");
    
     /// Threads are now running.  
     /// If there is an archive supplied as argument, open it.
@@ -544,8 +549,8 @@ int otdb_main(  INTF_Type intf_val,
     otdb_main_TERM1:
     ///@todo OTFS freeing procedure might be best to do internally... hard to say
     DEBUG_PRINTF("Freeing OTFS\n");
-    if (dterm_handle.ext != NULL) {
-        otfs_deinit(dterm_handle.ext, true);
+    if (dterm_handle.ext->db != NULL) {
+        otfs_deinit(dterm_handle.ext->db, &sub_tfree);
     }
     
     DEBUG_PRINTF("Freeing dterm\n");

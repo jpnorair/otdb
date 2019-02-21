@@ -14,6 +14,8 @@
 #include <otfs.h>
 #include <cJSON.h>
 
+#include <talloc.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -462,6 +464,7 @@ int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* t
 cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned long bitpos, int bits) {
     cJSON* newitem;
     double number;
+    char hexbuf[512];
     
     if ((parent==NULL) || (bits<=0) || (src==NULL)) {
         return 0;
@@ -508,11 +511,12 @@ cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum typ
         case TYPE_hex: {
             int bytes   = bits/8;
             int end     = bits/4;
-            char* buf   = malloc(end+1);
-            buf[end]    = 0;
-            cmd_hexwrite(buf, src, bytes);
-            newitem     = cJSON_AddStringToObject(parent, name, buf);
-            free(buf);
+            if (end > (sizeof(hexbuf)-1)) {
+                end = sizeof(hexbuf)-1;
+            }
+            hexbuf[end] = 0;
+            cmd_hexwrite(hexbuf, src, bytes);
+            newitem     = cJSON_AddStringToObject(parent, name, hexbuf);
         } break;
     
         // Fixed length data types
@@ -585,7 +589,7 @@ cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum typ
 
 
 
-int jst_aggregate_json(cJSON** aggregate, const char* path, const char* fname) {
+int jst_aggregate_json(void* memctx, cJSON** aggregate, const char* path, const char* fname) {
     FILE*       fp      = NULL;
     uint8_t*    fbuf    = NULL;
     cJSON*      local   = NULL;
@@ -626,7 +630,7 @@ int jst_aggregate_json(cJSON** aggregate, const char* path, const char* fname) {
     fseek(fp, 0L, SEEK_END);
     flen = ftell(fp);
     rewind(fp);
-    fbuf = calloc(1, flen+1);
+    fbuf = talloc_zero_size(memctx, flen+1);
     if (fbuf == NULL) {
         rc = -3;
         goto jst_aggregate_json_END;
@@ -664,7 +668,7 @@ int jst_aggregate_json(cJSON** aggregate, const char* path, const char* fname) {
    
     jst_aggregate_json_END:
     if (fp != NULL)     fclose(fp);
-    if (fbuf != NULL)   free(fbuf);
+    if (fbuf != NULL)   talloc_free(fbuf);
     
     return rc;
 }

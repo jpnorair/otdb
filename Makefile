@@ -57,7 +57,7 @@ CFLAGS      := -std=gnu99 -O3 -pthread
 INC         := -I. -I./include -I./$(SYSDIR)/include
 INCDEP      := -I.
 LIBINC      := -L./$(SYSDIR)/lib
-LIB         := -largtable -lbintex -lcJSON -lcmdtab -lhbuilder -lotfs -loteax -ljudy -lm -lc $(LIBBSD)
+LIB         := -largtable -lbintex -lcJSON -lcmdtab -lhbuilder -lotfs -loteax -ljudy -ltalloc -lm -lc $(LIBBSD)
 
 
 # Makesystem variables

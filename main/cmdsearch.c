@@ -151,7 +151,7 @@ int cmd_init(cmdtab_t* init_table, const char* xpath) {
     }
   
     /// Initialize the arguments used by commands
-    cmd_init_args();
+    cmd_init_argtable();
 
     return 0;
 }

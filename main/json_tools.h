@@ -101,7 +101,7 @@ int jst_load_element(uint8_t* dst, int limit, unsigned int bitpos, const char* t
 
 cJSON* jst_store_element(cJSON* parent, char* name, void* src, typeinfo_enum type, unsigned long bitpos, int bits);
 
-int jst_aggregate_json(cJSON** aggregate, const char* path, const char* fname);
+int jst_aggregate_json(void* memctx, cJSON** aggregate, const char* path, const char* fname);
 
 int jst_writeout(cJSON* json_obj, const char* filepath);
 

@@ -94,7 +94,7 @@ struct arg_end*     end_man;
 
 
 
-void cmd_init_args(void) {
+void cmd_init_argtable(void) {
     /// Initialize the argtable structs
     devid_man       = arg_str1(NULL,NULL,"DeviceID",    "Device ID as HEX");
     archive_man     = arg_file1(NULL,NULL,"file",       "Archive file or directory");
@@ -110,7 +110,7 @@ void cmd_init_args(void) {
     filealloc_man   = arg_int1(NULL,NULL,"Alloc",       "Allocation bytes for file");
     filedata_man    = arg_str1(NULL,NULL,"Bintex",      "File data supplied as Bintex");
     help_man        = arg_lit0("h","help",              "Print this help and exit");
-    end_man         = arg_end(10);
+    end_man         = arg_end(20);
 }
 
 
@@ -300,7 +300,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
 
     nerrors = arg_parse(argc, argv, args);
-  
+
     /// Print command specific help
     /// @todo this is currently just generic help
     if (help_man->count > 0) {

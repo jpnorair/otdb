@@ -26,6 +26,8 @@ cliopt_t* cliopt_init(cliopt_t* new_master) {
     //master->verbose_on  = false;
     //master->debug_on    = false;
     
+    master->mempool_size = (512 * 1024);
+    
     master->timeout_ms  = 1000;
     
     return master;
@@ -45,6 +47,13 @@ FORMAT_Type cliopt_getformat(void) {
 
 INTF_Type cliopt_getintf(void) {
     return master->intf;
+}
+
+int cliopt_getpoolsize(void) {
+    return master->mempool_size;
+}
+void cliopt_setpoolsize(size_t poolsize) {
+    master->mempool_size = poolsize;
 }
 
 int cliopt_gettimeout(void) {

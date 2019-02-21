@@ -106,7 +106,8 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// Purge the read pipe.  This is important to prevent any lingering data
     /// on the pipe from prepending the protocol response.
-    FPURGE(fdopen(dth->ext->devmgr->fd_readfrom, "r"));
+    ///@todo make sure this doesn't create dangling FILE pointers
+    //FPURGE(fdopen(dth->ext->devmgr->fd_readfrom, "r"));
     
     /// In verbose mode, Print the devmgr input to stdout
     VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);

@@ -143,14 +143,21 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         goto dterm_init_TERM;
     }
     
-    dth->iso_mutex = malloc(sizeof(pthread_mutex_t));
-    if (dth->iso_mutex == NULL) {
+    dth->pctx = talloc_new(NULL);
+    dth->tctx = dth->pctx;
+    if (dth->pctx == NULL) {
         rc = -5;
         goto dterm_init_TERM;
     }
     
-    if (pthread_mutex_init(dth->iso_mutex, NULL) != 0 ) {
+    dth->iso_mutex = malloc(sizeof(pthread_mutex_t));
+    if (dth->iso_mutex == NULL) {
         rc = -6;
+        goto dterm_init_TERM;
+    }
+    
+    if (pthread_mutex_init(dth->iso_mutex, NULL) != 0 ) {
+        rc = -7;
         goto dterm_init_TERM;
     }
     
@@ -348,6 +355,15 @@ static size_t sub_str_mark(char* str, size_t max) {
 }
 
 
+static void iso_free(void* ctx) {
+    talloc_free(ctx);
+}
+
+static TALLOC_CTX* iso_ctx;
+static void* iso_malloc(size_t size) {
+    return talloc_size(iso_ctx, size);
+}
+
 
 static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     uint8_t     protocol_buf[1024];
@@ -360,11 +376,26 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     const cmdtab_item_t* cmdptr;
     
     DEBUG_PRINTF("raw input (%i bytes) %.*s\n", linelen, linelen, loadbuf);
+
+    // Isolation memory context
+    iso_ctx = dth->tctx;
+
+    // cJSON malloc and free can be set to use talloc for this thread context
+    {   cJSON_Hooks hooks;
+        hooks.free_fn   = &iso_free;
+        hooks.malloc_fn = &iso_malloc;
+        cJSON_InitHooks(&hooks);
+    }
+    
+    // Set allocators for argtable
+    arg_set_allocators(&iso_malloc, &iso_free);
+    
+    ///@todo set context for other data systems
     
     /// The input can be JSON of the form:
     /// { "type":"${cmd_type}", data:"${cmd_data}" }
     /// where we only truly care about the data object, which must be a string.
-    cmdobj  = cJSON_Parse(loadbuf);
+    cmdobj = cJSON_Parse(loadbuf);
     if (cJSON_IsObject(cmdobj)) {
         cJSON* dataobj;
         cJSON* typeobj;
@@ -389,11 +420,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
     cmdptr  = cmd_search(dth->ext->cmdtab, cmdname);
     
-    // Test only
-    //fprintf(stderr, "\nlinebuf=%s\nlinelen=%d\ncmdname=%s, len=%d, ptr=%016X\n", loadbuf, linelen, cmdname, cmdlen, cmdptr);
-    //fflush(stderr);
-    // Test only
-    
     if (cmdptr == NULL) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
@@ -407,14 +433,8 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     else {
         int bytesin = linelen;
 
-        //fprintf(stderr, "bytesin=%d\nloadlen=%d\n", bytesin, (char*)loadbuf);
-        //fflush(stderr);
         bytesout = cmd_run(cmdptr, dth, cursor, &bytesin, (uint8_t*)(loadbuf+cmdlen), bufmax);
-        
-        // Test only
-        //fprintf(stderr, "\noutput\nloadbuf=%s\nloadlen=%d\n", loadbuf, loadlen);
-        //fflush(stderr);
-        // Test only
+        //bytesout = -1;
         
         ///@todo spruce-up the command error reporting, maybe even with
         ///      a cursor showing where the first error was found.
@@ -429,10 +449,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         // If bytesout == 0, there is no error, but also nothing
         // to send to MPipe.
         else if (bytesout > 0) {
-            // Test only
-            //test_dumpbytes(protocol_buf, bytesout, "TX Packet Add");
-            // Test only
-            
             if (cJSON_IsObject(cmdobj)) {
                 VCLIENT_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
                 cursor += bytesout;
@@ -450,11 +466,12 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     sub_proc_lineinput_FREE:
     cJSON_Delete(cmdobj);
     
+    // Return cJSON and argtable to generic context allocators
+    cJSON_InitHooks(NULL);
+    arg_set_allocators(NULL, NULL);
+    
     return bytesout;
 }
-
-
-
 
 
 
@@ -466,25 +483,29 @@ void* dterm_socket_clithread(void* args) {
 /// Thread that:
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
+
     dterm_handle_t* dth;
     dterm_handle_t dts;
+    clithread_args_t* ct_args;
     char databuf[1024];
-
+    
+    ct_args = (clithread_args_t*)args;
     if (args == NULL)
         return NULL;
-    if (((clithread_args_t*)args)->app_handle == NULL)
+    if ((ct_args->app_handle == NULL) || (ct_args->tctx == NULL))
         return NULL;
-    
-    dth = ((clithread_args_t*)args)->app_handle;
-
-    memcpy(&dts, dth, sizeof(dterm_handle_t));
-    dts.fd.in   = ((clithread_args_t*)args)->fd_in;
-    dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     
     // Deferred cancellation: will wait until the blocking read() call is in
     // idle before killing the thread.
-    //pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
+    // Thread-local memory elements
+    dth = ((clithread_args_t*)args)->app_handle;
+    memcpy(&dts, dth, sizeof(dterm_handle_t));
+    dts.fd.in   = ((clithread_args_t*)args)->fd_in;
+    dts.fd.out  = ((clithread_args_t*)args)->fd_out;
+    dts.tctx    = ct_args->tctx;
+
     VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
     /// Get a packet from the Socket
@@ -500,14 +521,14 @@ void* dterm_socket_clithread(void* args) {
             
             pthread_mutex_lock(dts.iso_mutex);
             dts.intf->state = prompt_off;
-
+            
             do {
                 int dataout;
-            
+
                 // Burn whitespace ahead of command.
                 while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
                 linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
-                
+
                 // Process the line-input command
                 dataout = sub_proc_lineinput(&dts, loadbuf, linelen);
                 // If there's meaningful output, add a linebreak
@@ -518,9 +539,9 @@ void* dterm_socket_clithread(void* args) {
                 // +1 eats the terminator
                 loadlen -= (linelen + 1);
                 loadbuf += (linelen + 1);
-            
+
             } while (loadlen > 0);
-            
+
             pthread_mutex_unlock(dts.iso_mutex);
             
         }
@@ -530,9 +551,11 @@ void* dterm_socket_clithread(void* args) {
             break;
         }
     }
-    
-    /// End of thread
+
     VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", dts.fd.out);
+    
+    /// End of thread: it *must* call clithread_exit() before exiting
+    clithread_exit( ((clithread_args_t*)args)->clithread_self );
     return NULL;
 }
 
@@ -597,8 +620,14 @@ void* dterm_piper(void* args) {
         while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
         linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
 
+        // Create temporary context as a memory pool
+        dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+
         // Process the line-input command
         sub_proc_lineinput(dth, loadbuf, linelen);
+        
+        // Free temporary memory pool context
+        talloc_free(dth->tctx);
         
         // +1 eats the terminator
         loadlen -= (linelen + 1);
@@ -817,11 +846,18 @@ void* dterm_prompter(void* args) {
                         ch_add(ch, dth->intf->linebuf);
                     }
                     
+                    // Create temporary context as a memory pool
+                    dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+                    
+                    // Run command(s) from line input
                     bytesout = sub_proc_lineinput( dth, 
                                         (char*)dth->intf->linebuf,
                                         (int)sub_str_mark((char*)dth->intf->linebuf, 1024)
                                     );
-                                    
+                    
+                    // Free temporary memory pool context
+                    talloc_free(dth->tctx);
+                    
                     // If there's meaningful output, add a linebreak
                     if (bytesout > 0) {
                         dterm_puts(&dth->fd, "\n");

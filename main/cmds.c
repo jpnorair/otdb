@@ -295,16 +295,9 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     char**  argv;
     int     nerrors;
     
-fprintf(stderr, "Args: %s\n", (char*)src);
-    
     /// First, create an argument vector from the input string.
     /// hb_tools_parsestring will treat all bintex containers as whitespace-safe.
     argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
-
-for (int i=0; i<argc; i++) {
-    fprintf(stderr, "Arg %i: %s\n", i, argv[i]);
-}
-
     nerrors = arg_parse(argc, argv, args);
 
     /// Print command specific help

@@ -10,10 +10,32 @@ OTDB has a command-line style interface that can work interactively, over a pipe
 
 OTDB has two kinds of dependencies
 
-* Local Dependencies
-* External Dependencies
+* Local Dependencies: **You only need to worry about these with source distributions of OTDB**
+* External Dependencies: **If you receive a binary distribution, you still need to install talloc.**
 
-External Dependencies are packages of commony distributed libraries.  At this time, OTDB requires only libraries that are required by POSIX.  So if you are building OTDB on a POSIX system, no additional external libraries are required.
+#### External Dependencies
+
+External Dependencies are packages of commony distributed libraries.  For licensing or practical reasons, they need to be installed separately from OTDB.
+
+1. talloc
+
+**Mac, via Homebrew:**
+
+```
+brew install talloc
+```
+
+**Ubuntu, via apt-get**:
+
+```
+sudo apt-get install libtalloc-dev
+```
+
+**Source Download (use 2.1.14 or later)**
+
+https://www.samba.org/ftp/talloc/
+
+#### Local Dependencies
 
 Local Dependencies are libraries that are curated and distributed together with OTDB.  These libraries may be downloaded from the Git Repository system (e.g. Bitbucket Project Directory) that OTDB also exists inside.  Here is a list of these repositories you'll need to download.  They should be stored in the same parent directory as OTDB (just like the way they are arranged as repositories).
 

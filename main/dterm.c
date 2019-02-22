@@ -45,9 +45,20 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
-
-
 #include <ctype.h>
+
+
+#if 0 //OTDB_FEATURE_DEBUG
+#   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
+#   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
+#else
+#   define PRINTLINE()     do { } while(0)
+#   define DEBUGPRINT(...) do { } while(0)
+#endif
+
+
+
+
 
 // Dterm variables
 static const char prompt_root[]     = PROMPT;
@@ -103,6 +114,56 @@ void dterm_remln(dterm_intf_t *dt, dterm_fd_t* fd);
 void* dterm_piper(void* args);
 void* dterm_prompter(void* args);
 void* dterm_socketer(void* args);
+
+
+
+
+
+
+static void sub_str_sanitize(char* str, size_t max) {
+    while ((*str != 0) && (max != 0)) {
+        if (*str == '\r') {
+            *str = '\n';
+        }
+        str++;
+        max--;
+    }
+}
+
+static size_t sub_str_mark(char* str, size_t max) {
+    char* s1 = str;
+    while ((*str!=0) && (*str!='\n') && (max!=0)) {
+        max--;
+        str++;
+    }
+    if (*str=='\n') *str = 0;
+    
+    return (str - s1);
+}
+
+
+static void iso_free(void* ctx) {
+    talloc_free(ctx);
+}
+
+static TALLOC_CTX* iso_ctx;
+static void* iso_malloc(size_t size) {
+    return talloc_size(iso_ctx, size);
+}
+
+static void cjson_iso_allocators(void) {
+    cJSON_Hooks hooks;
+    hooks.free_fn   = &iso_free;
+    hooks.malloc_fn = &iso_malloc;
+    cJSON_InitHooks(&hooks);
+}
+
+static void cjson_std_allocators(void) {
+    cJSON_InitHooks(NULL);
+}
+
+
+
 
 
 
@@ -192,12 +253,13 @@ void dterm_deinit(dterm_handle_t* dth) {
         popen2_kill_s(dth->ext->devmgr);
         
         if (dth->ext->db != NULL) {
-        ///@note ext gets free'd externally
-        dth->ext->db = NULL;
+            ///@note ext gets free'd externally
+            //dth->ext->db = NULL;
         }
-        if (dth->ext->tmpl != NULL) {
-            cJSON_Delete(dth->ext->tmpl);
-        }
+
+        // Cannot use cJSON_Delete() here because the tmpl is stored as a
+        // contiguous block.
+        talloc_free(dth->ext->tmpl);
     }
 
     clithread_deinit(dth->clithread);
@@ -333,36 +395,6 @@ int dterm_close(dterm_handle_t* dth) {
   * reads stdin pipe as an atomic line read.  Prompter requires character by
   * character input and analysis, and it enables shell-like features.
   */
-static void sub_str_sanitize(char* str, size_t max) {
-    while ((*str != 0) && (max != 0)) {
-        if (*str == '\r') {
-            *str = '\n';
-        }
-        str++;
-        max--;
-    }
-}
-
-static size_t sub_str_mark(char* str, size_t max) {
-    char* s1 = str;
-    while ((*str!=0) && (*str!='\n') && (max!=0)) {
-        max--;
-        str++;
-    }
-    if (*str=='\n') *str = 0;
-    
-    return (str - s1);
-}
-
-
-static void iso_free(void* ctx) {
-    talloc_free(ctx);
-}
-
-static TALLOC_CTX* iso_ctx;
-static void* iso_malloc(size_t size) {
-    return talloc_size(iso_ctx, size);
-}
 
 
 static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
@@ -380,14 +412,8 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     // Isolation memory context
     iso_ctx = dth->tctx;
 
-    // cJSON malloc and free can be set to use talloc for this thread context
-    {   cJSON_Hooks hooks;
-        hooks.free_fn   = &iso_free;
-        hooks.malloc_fn = &iso_malloc;
-        cJSON_InitHooks(&hooks);
-    }
-    
-    // Set allocators for argtable
+    // Set allocators for cJSON, argtable
+    cjson_iso_allocators();
     arg_set_allocators(&iso_malloc, &iso_free);
     
     ///@todo set context for other data systems
@@ -467,7 +493,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     cJSON_Delete(cmdobj);
     
     // Return cJSON and argtable to generic context allocators
-    cJSON_InitHooks(NULL);
+    cjson_std_allocators();
     arg_set_allocators(NULL, NULL);
     
     return bytesout;
@@ -513,6 +539,8 @@ void* dterm_socket_clithread(void* args) {
         int linelen;
         int loadlen;
         char* loadbuf = databuf;
+        
+        bzero(databuf, sizeof(databuf));
         
         VERBOSE_PRINTF("Waiting for read on socket:fd=%i\n", dts.fd.out);
         loadlen = (int)read(dts.fd.out, loadbuf, LINESIZE);

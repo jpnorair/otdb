@@ -49,7 +49,7 @@ INTF_Type cliopt_getintf(void) {
     return master->intf;
 }
 
-int cliopt_getpoolsize(void) {
+size_t cliopt_getpoolsize(void) {
     return master->mempool_size;
 }
 void cliopt_setpoolsize(size_t poolsize) {

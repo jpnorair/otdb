@@ -1064,9 +1064,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     rc = -10;
                     goto cmd_open_FLUSH;
                 }
-                
-                talloc_free(dth->ext->tmpl);
-                dth->ext->tmpl = tmpl_obj;
             }
             
             DEBUGPRINT("%s %d :: cJSON_Delete\n", __FUNCTION__, __LINE__);
@@ -1094,8 +1091,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         ///@todo OTFS data is talloc'ed (on "pctx" permanent context), but Judy
         ///      is not.  Make Judy also talloc'ed.  Until then, just copy the
         ///      db pointer (Judy object) to the global dth handle.
-        dth->ext->db    = db;
-        dth->ext->tmpl  = tmpl;
+        dth->ext->db = db;
+        talloc_free(dth->ext->tmpl);
+        dth->ext->tmpl = tmpl;
     }
     else {
         cJSON_Delete(tmpl);

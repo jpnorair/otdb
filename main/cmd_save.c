@@ -180,7 +180,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
 
     strcpy(rtpath, "_TMPL/tmpl.json");
-    DEBUGPRINT("%s %d :: writing tmpl at %s\n", __FUNCTION__, __LINE__, pathbuf);
+    DEBUGPRINT("%s %d :: writing tmpl (%016llx) at %s\n", __FUNCTION__, __LINE__, dth->ext->tmpl, pathbuf);
     if (jst_writeout(dth->ext->tmpl, pathbuf) != 0) {
         rc = -7;
         goto cmd_save_END;
@@ -188,6 +188,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 
     /// If there is a list of Device IDs supplied in the command, we use these.
     /// Else, we dump all the devices present in the OTDB.
+    DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
     if (arglist.devid_strlist_size > 0) {
         devtest = sub_nextdevice(dth->ext->db, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
@@ -195,6 +196,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         devtest = otfs_iterator_start(dth->ext->db, &devfs, &uid.u8[0]);
     }
 
+    DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
     while (devtest == 0) {
         char* dev_rtpath;
         char hexuid[17];

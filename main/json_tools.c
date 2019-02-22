@@ -686,7 +686,7 @@ int jst_writeout(cJSON* json_obj, const char* filepath) {
         fputs(output, fjson);
         fputs("\n", fjson);
         fclose(fjson);
-        free(output);
+        cJSON_free(output);
         return 0;
     }
     

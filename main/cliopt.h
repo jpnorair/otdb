@@ -58,7 +58,7 @@ FORMAT_Type cliopt_getformat(void);
 
 INTF_Type cliopt_getintf(void);
 
-int cliopt_getpoolsize(void);
+size_t cliopt_getpoolsize(void);
 void cliopt_setpoolsize(size_t poolsize);
 
 int cliopt_gettimeout(void);

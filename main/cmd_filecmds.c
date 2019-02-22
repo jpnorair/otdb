@@ -173,7 +173,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
-            DEBUG_PRINTF("otfs_setfs() = %i, [id = %016%"PRIx64"]\n", rc, arglist.devid);
+            DEBUG_PRINTF("otfs_setfs() = %i, [id = %016"PRIx64"]\n", rc, arglist.devid);
             if (rc != 0) {
                 rc = -256 + rc;
                 goto cmd_read_END;

@@ -178,6 +178,7 @@ void dterm_deinit(dterm_handle_t* dth);
 dterm_thread_t dterm_open(dterm_handle_t* dth, const char* path);
 int dterm_close(dterm_handle_t* dth);
 
+int dterm_cmdfile(dterm_handle_t* dth, const char* filename);
 
 
 ///@todo refactor these read/write functions

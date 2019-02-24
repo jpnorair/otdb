@@ -3,6 +3,6 @@
         "verbose":1,
         "debug":1,
         "intf":"interactive",
-        "archive":"examples/csip"
+        "init":"init_csip.otdb"
     }
 }

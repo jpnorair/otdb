@@ -4,6 +4,6 @@
         "debug":1,
         "intf":"socket",
         "socket":"./otdb.sock",
-        "archive":"examples/csip"
+        "init":"init_csip.otdb"
     }
 }

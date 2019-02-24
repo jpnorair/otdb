@@ -3,7 +3,7 @@
         "verbose":1,
         "debug":0,
         "intf":"interactive",
-        "archive":"examples/csip",
-        "devmgr":"../_hbsys/darwin/bin/smut /dev/tty.usbserial-AL01QILF 9600 --pipe --fmt=hex"
+        "init":"init_csip.otdb",
+        "devmgr":"../_hbsys/darwin/bin/smut /dev/tty.usbserial-AI02RNQQ 19200 --pipe --fmt=hex"
     }
 }

@@ -536,8 +536,12 @@ int otdb_main(  INTF_Type intf_val,
 //    }
     
     if (initfile != NULL) {
+        VERBOSE_PRINTF("Running init file: %s\n", initfile);
         if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
             fprintf(stderr, ERRMARK"Could not run initialization file.\n");
+        }
+        else {
+            VERBOSE_PRINTF("Init file finished successfully\n");
         }
     }
     

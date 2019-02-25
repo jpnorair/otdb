@@ -720,7 +720,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// json input or used like it is here?
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
-    tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
+    tmpl_fs.alloc       = vl_get_fsalloc(&fshdr);
     tmpl_fs.base        = talloc_zero_size(cmd_open_heap, tmpl_fs.alloc);
     if (tmpl_fs.base == NULL) {
         rc = -5;

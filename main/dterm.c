@@ -61,7 +61,7 @@
 
 
 // Dterm variables
-static const char prompt_root[]     = PROMPT;
+static const char prompt_root[]     = _E_MAG PROMPT _E_NRM;
 static const char* prompt_str[]     = {
     prompt_root
 };
@@ -210,6 +210,11 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         rc = -5;
         goto dterm_init_TERM;
     }
+//    dth->tctx = talloc_new(dth->pctx);
+//    if (dth->pctx == NULL) {
+//        rc = -5;
+//        goto dterm_init_TERM;
+//    }
     
     dth->iso_mutex = malloc(sizeof(pthread_mutex_t));
     if (dth->iso_mutex == NULL) {
@@ -736,7 +741,10 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
 
         // Create temporary context as a memory pool
         dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
-
+        
+        // Echo input line to dterm
+        dprintf(dth->fd.out, _E_MAG"%s"_E_NRM"%s\n", prompt_root, filecursor);
+        
         // Process the line-input command
         byteswritten = sub_proc_lineinput(dth, &cmdrc, filecursor, linelen);
         if (byteswritten > 0) {
@@ -748,8 +756,7 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
         
         // Exit the command sequence on first detection of error.
         if (cmdrc < 0) {
-            dprintf(dth->fd.out, _E_RED"Input error (%i) on command:\n"_E_MAG"%s"_E_NRM"\n\n",
-                    cmdrc, filecursor);
+            dprintf(dth->fd.out, _E_RED"ERR: "_E_NRM"Command Returned %i: stopping.\n\n", cmdrc);
             break;
         }
         

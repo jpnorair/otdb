@@ -89,7 +89,7 @@ static int devls_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
     else {
         rc = snprintf((char*)dst, dstmax, "%i. %"PRIx64"\n", index, devfs->uid.u64);
     }
-    DEBUGPRINT("outcurs=%016llX, rc=%i, dstmax=%zu\n", (uint64_t)dst, rc, dstmax);
+    DEBUGPRINT("UID=\"%"PRIx64"\", dstcurs=%016llX, rc=%i, dstmax=%zu\n", devfs->uid.u64, (uint64_t)dst, rc, dstmax);
 
     return rc;
 }
@@ -130,14 +130,14 @@ int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     /// Start formatting of command output.
     dstcurs = dst;
     dstlimit = (int)dstmax - 1;     // -1 accounts for null string terminator
-    DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, 0, outlimit);
+    DEBUGPRINT("dstcurs=%016llX, newchars=%i, dstlimit=%i\n", (uint64_t)dstcurs, 0, dstlimit);
     
     if (arglist.jsonout_flag) {
         dstlimit   -= 2;  // -2 accounts for JSON termination ("]}")
         newchars    = snprintf((char*)dstcurs, dstlimit, "{\"cmd\":\"dev-ls\", \"idlist\":[");
         dstcurs    += newchars;
         dstlimit   -= newchars;
-        DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)outcurs, newchars, outlimit);
+        DEBUGPRINT("dstcurs=%016llX, newchars=%i, dstlimit=%i\n", (uint64_t)dstcurs, newchars, dstlimit);
         
         if (newchars < 0) {
             rc = -3;        ///@todo change to write error
@@ -153,13 +153,12 @@ int cmd_devls(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     if (rc < 0) {
         goto cmd_devls_END;
     }
-
+    if (rc > 0) {
+        dstcurs += rc - 1;      // -1 eats last comma
+    }
     if (arglist.jsonout_flag) {
-        if (rc > 0) {
-            dstcurs--;  // eat last comma
-        }
         dstcurs += sprintf((char*)dstcurs, "]}");
-        DEBUGPRINT("outcurs=%016llX, newchars=%i, outlimit=%i\n", (uint64_t)dstcurs, 2, dstlimit-2);
+        DEBUGPRINT("dstcurs=%016llX, newchars=%i, dstlimit=%i\n", (uint64_t)dstcurs, 2, dstlimit-2);
     }
     
     rc = (int)(dstcurs - dst);

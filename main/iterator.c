@@ -37,7 +37,7 @@
 
 
 
-static int sub_nextdevice(void* handle, otfs_t** outfs, int* devid_i, const char** strlist, size_t listsz) {
+static int sub_nextdevice(void* handle, otfs_t* outfs, int* devid_i, const char** strlist, size_t listsz) {
     int devtest = 1;
     uint64_t uid;
 
@@ -58,7 +58,7 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
     int devid_i = 0;
     int count;
     int outbytes = 0;
-    otfs_t* devfs;
+    otfs_t devfs;
     int dstlimit;
 
     if (arglist->devid_strlist_size > 0) {
@@ -75,9 +75,10 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
         int newbytes;
         count++;
         
-        newbytes    = action(dth, dst, inbytes, src, (size_t)dstlimit, count, arglist, devfs);
+        newbytes    = action(dth, dst, inbytes, src, (size_t)dstlimit, count, arglist, &devfs);
         dstlimit   -= newbytes;
         dst        += newbytes;
+        outbytes   += newbytes;
         
         if (newbytes < 0) {
             outbytes = -3;

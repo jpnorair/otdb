@@ -1,0 +1,16 @@
+{
+    "csip_nameplate_inv": {
+        "_meta":{"block":"isf", "id":18, "mod":52, "size":36, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "pwr_active":{"pos":0, "type":"float", "def":0},
+            "pwr_apparent":{"pos":4, "type":"float", "def":0},
+            "pwr_reactive":{"pos":8, "type":"float", "def":0},
+            "batt_roc_max":{"pos":12, "type":"float", "def":0},
+            "batt_rodc_max":{"pos":16, "type":"float", "def":0},
+            "hw_batt":{"pos":20, "type":"float", "def":1},
+            "hw_pv":{"pos":24, "type":"float", "def":1},
+            "time_units":{"pos":28, "type":"float", "def":1},
+            "time_source":{"pos":32, "type":"float", "def":0}
+        }
+    }
+}

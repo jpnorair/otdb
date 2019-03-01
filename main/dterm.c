@@ -462,7 +462,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
         }
     }
     else {
-        int bytesin = linelen;
+        int bytesin = linelen - cmdlen;
 
         bytesout = cmd_run(cmdptr, dth, cursor, &bytesin, (uint8_t*)(loadbuf+cmdlen), bufmax);
         if (cmdrc != NULL) {

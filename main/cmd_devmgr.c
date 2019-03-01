@@ -94,8 +94,10 @@ extern struct arg_end*  end_man;
 int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     struct pollfd fds[1];
     int rc = 0;
+    int offset;
     char* curs;
     int rbytes;
+    bool ack;
     
     if (dth == NULL) {
         goto cmd_devmgr_END;
@@ -108,6 +110,10 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     /// on the pipe from prepending the protocol response.
     ///@todo make sure this doesn't create dangling FILE pointers
     //FPURGE(fdopen(dth->ext->devmgr->fd_readfrom, "r"));
+//    do {
+//        rbytes = (int)read(dth->ext->devmgr->fd_readfrom, dst, dstmax);
+//    } while (rbytes > 0);
+    
     
     /// In verbose mode, Print the devmgr input to stdout
     VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
@@ -128,36 +134,57 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         goto cmd_devmgr_END;
     }
     
-    rc = 0;
-    while (1) {
-        curs    = (char*)&dst[rc];
-        rbytes  = (int)read(dth->ext->devmgr->fd_readfrom, curs, dstmax-rc-1);
-
-        if (rbytes < 0) {
-            rc = -3;
-            goto cmd_devmgr_END;
-        }
-
-        curs[rbytes]= 0;
-        if (rbytes == 0) {
-            break;
-        }
-
-        rc += rbytes;
-        curs = strchr(curs, '\n');
-        if (curs != NULL) {
-            *curs = 0;
-            rc = (int)((void*)curs - (void*)dst);
-            break;
-        }
-
-        if (poll(fds, 1, 2) <= 0) {
-            break;
-        }
+    /// Devmgr format requires hex encoding, and the first hex byte is an
+    /// ack/nack.  Make sure it is 00.
+    rbytes = read(dth->ext->devmgr->fd_readfrom, dst, 2);
+    if (rbytes != 2) {
+        rc = -3;
+        goto cmd_devmgr_END;
     }
+    {   uint8_t local[4];
+        cmd_hexnread(local, (const char*)dst, 2);
+        ack = (local[0] == 0);
+    }
+    
+    offset = 0;
+    rc = poll(fds, 1, 0);
+    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        rc = -2;
+    }
+    else if (rc > 0) {
+        /// Even if getting a NACK, we still need to purge the buffer
+        while (1) {
+            curs    = (char*)&dst[offset];
+            rbytes  = (int)read(dth->ext->devmgr->fd_readfrom, curs, dstmax-offset-1);
 
-    /// In verbose mode, Print the devmgr input to stdout
-    VDSRC_PRINTF("[in] %.*s\n", rc, (const char*)dst);
+            if (rbytes < 0) {
+                rc = -3;
+                goto cmd_devmgr_END;
+            }
+
+            curs[rbytes]= 0;
+            if (rbytes == 0) {
+                break;
+            }
+
+            offset += rbytes;
+            curs = strchr(curs, '\n');
+            if (curs != NULL) {
+                *curs = 0;
+                offset = (int)((void*)curs - (void*)dst);
+                break;
+            }
+
+            if (poll(fds, 1, 2) <= 0) {
+                break;
+            }
+        }
+
+        /// In verbose mode, Print the devmgr input to stdout
+        VDSRC_PRINTF("[in.%c] %.*s\n", ack?'v':'x', offset, (const char*)dst);
+    }
+    
+    rc = ack ? offset : 0;
     
     cmd_devmgr_END:
     return rc;

@@ -1,0 +1,20 @@
+{
+    "device_features": {
+        "_meta":{"block":"isf", "id":1, "mod":36, "size":48, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "uid":{"pos":0, "type":"hex[8]", "def":"0102030405060708"},
+            "settings":{"pos":8, "type":"uint16_t", "def":0},
+            "maxframe":{"pos":10, "type":"uint8_t", "def":255},
+            "maxpacket":{"pos":11, "type":"uint8_t", "def":1},
+            "macmodes":{"pos":12, "type":"hex[2]", "def":"0001"},
+            "nlsmodes":{"pos":14, "type":"hex[2]", "def":"0000"},
+            "fssize":{"pos":16, "type":"uint16_t", "def":1024},
+            "fsfree":{"pos":18, "type":"uint16_t", "def":128},
+            "logsize":{"pos":20, "type":"uint32_t", "def":16384},
+            "logfree":{"pos":24, "type":"uint32_t", "def":16384},
+            "hwversion":{"pos":32, "type":"uint32_t", "def":1},
+            "fwversion":{"pos":36, "type":"uint32_t", "def":1},
+            "blversion":{"pos":40, "type":"uint32_t", "def":1}
+        }
+    }
+}

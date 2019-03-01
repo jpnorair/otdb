@@ -222,18 +222,22 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
         dstlim = (int)dstmax;
         for (int i=0; i<num_files; i++) {
             AUTH_level minauth;
-            ot_uni16 idmod;
             vlFILE* fp;
             int wrbytes;
             
             // Open File pointer and check also that memptr call worked
-            fp = vl_open(arglist->block_id, idmod.ubyte[0], VL_ACCESS_R, NULL);
+            fp = vl_open(arglist->block_id, i, VL_ACCESS_R, NULL);
             if (fp != NULL) {
                 minauth = cmd_minauth_get(fp, VL_ACCESS_R);
-                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, idmod.ubyte[0]);
+                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
+                
                 if (wrbytes >= 0) {
+                    ot_int binary_bytes;
                     touched++;
-                    vl_store(fp, wrbytes, dst);
+                    binary_bytes = cmd_hexread(dst, (char*)dst);
+                    
+                    ///@todo the +5,-5 is a hack to bypass the file read header.  Unhackify it.
+                    vl_store(fp, binary_bytes-5, dst+5);
                 }
                 vl_close(fp);
             }
@@ -258,10 +262,105 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
 
 
 
+///@todo for some reason, this doesn't work.  Many fps get returned as NULL, inexplicably
+/*
+static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** srcp, size_t dstmax,
+                        int index, cmd_arglist_t* arglist, otfs_t* devfs) {
+    const char* arg_b;
+ 
+    int rc = 0;
+    int dstlim;
+    vl_header_t* fhdr;
+    int touched=0;
+    int num_files=-1;
+    int num_retries = 2;
+ 
+    /// 1. Do input check on devfs, which is provided by the iterator function.
+    ///    The other arguments are passed-though from the caller, so it is up
+    ///    to the caller to make sure they aren't out-of-bounds.
+    if (devfs == NULL)          return -1;
+    if (devfs->base == NULL)    return -1;
+ 
+    /// 2. Get file information from the fs header.
+    ///    This does some low-level operations on the veelite binary image.
+    fhdr = sub_resolveblock(&num_files, &arg_b, arglist, devfs);
+    if (fhdr != NULL) {
+        /// 3. Read each file from the target.  Use Root if necessary.
+        dstlim = (int)dstmax;
+ 
+        ///@todo move retries functionality to devmgr command
+        for (int i=0, retries=num_retries; i<num_files; i++) {
+            AUTH_level minauth;
+            vlFILE* fp;
+            int wrbytes;
+ 
+            // If file cannot be opened, skip it.
+            fp = vl_open(arglist->block_id, i, VL_ACCESS_R, NULL);
+            if (fp == NULL) {
+                continue;
+            }
+ 
+            // If file allocation (in template) is zero, then skip it
+            if (fp->alloc == 0) {
+                touched++;
+                continue;
+            }
+ 
+            minauth = cmd_minauth_get(fp, VL_ACCESS_R);
+            wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
+            if (wrbytes <= 0) {
+                retries--;
+                // retries have expired.  Move to next file.
+                // If retrying, unincrement file counter, try again.
+                if (retries < 0) {
+                    retries = num_retries;
+                }
+                else {
+                    i--;
+                }
+            }
+            else {
+                ot_int binary_bytes;
+                touched++;
+                binary_bytes = cmd_hexread(dst, (char*)dst);
+ 
+                ///@todo the +5,-5 is a hack to bypass the file read header.  Unhackify it.
+                vl_store(fp, binary_bytes-5, dst+5);
+ 
+                // Success.  Reset retry counter
+                retries = num_retries;
+            }
+ 
+            vl_close(fp);
+        }
+    }
+ 
+    pull_action_END:
+    /// 4. Add results to output manifest
+    ///@todo add hex output option
+    if (arglist->jsonout_flag) {
+        rc = snprintf((char*)dst, dstmax, "{\"devid\":\"%"PRIx64"\", \"block\":%i, \"files\":%i, \"touched\":%i},",
+                        devfs->uid.u64, arglist->block_id, num_files, touched);
+    }
+    else {
+        rc = snprintf((char*)dst, dstmax, "devid:%"PRIx64", block:%i, files:%i, touched:%i\n",
+                        devfs->uid.u64, arglist->block_id, num_files, touched);
+    }
+ 
+    return rc;
+}
+*/
+
+
 
 static int sub_testbuffer(int segbytes, int dstlimit) {
-    int results[4] = { 0, -3, -4, -3 };
-    return results[ (segbytes<0) + ((dstlimit<0)<<1) ];
+    if (dstlimit < 0) {
+        return -4;
+    }
+    if (segbytes < 0) {
+        return -3;
+    }
+    return 0;
 }
 
 
@@ -285,16 +384,16 @@ static int sub_pushpull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
         return 0;
     }
     
+    /// Set cursors and limits. -1 on dstlimit accounts for null string terminator
+    dstcurs     = dst;
+    dstlimit    = (int)dstmax - 1;
+    
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, cmdname, (const char*)src, inbytes);
     if (rc != 0) {
         rc = -2;
         goto sub_pushpull_END;
     }
-    
-    /// Start formatting of command output.
-    dstcurs     = dst;
-    dstlimit    = (int)dstmax - 1;     // -1 accounts for null string terminator
     
     /// Preliminary writeout
     ///@todo this could be a cmd library function
@@ -310,8 +409,8 @@ static int sub_pushpull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
     }
     
     rc = iterator_uids(dth, dstcurs, inbytes, &src, (size_t)dstlimit, &arglist, action);
-    if (rc < 0) {
-        goto sub_pushpull_END;
+    if (rc > 0) {
+        dstcurs += rc-1;    //-1 to eat last comma
     }
     
     sub_pushpull_END:
@@ -320,8 +419,8 @@ static int sub_pushpull(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t
             rc = cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, cmdname);
         }
         else {
-            rc -= (rc > 0);
-            rc += sprintf((char*)&dst[rc], "]}");
+            dstcurs+= sprintf((char*)dstcurs, "]}");
+            rc      = (int)(dstcurs - dst);
         }
     }
     

@@ -511,30 +511,6 @@ int otdb_main(  INTF_Type intf_val,
     sub_assign_signal(SIGINT, &sigint_handler);
     sub_assign_signal(SIGQUIT, &sigquit_handler);
     
-    /// Invoke the child threads below.  All of the child threads run
-    /// indefinitely until an error occurs or until the user quits.  Quit can 
-    /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
-    /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
-    /// i.e. raise(SIGINT).
-    pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
-    DEBUG_PRINTF("Finished creating threads\n");
-   
-    /// Threads are now running.  
-    /// If there is an archive supplied as argument, open it.
-//    if (archive != NULL) {
-//        uint8_t dstbuf[80];
-//        int     srcsize;
-//        int     cmd_rc;
-//        srcsize = (int)strlen(archive);
-//        cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
-//        if (cmd_rc != 0) {
-//            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
-//        }
-//        else {
-//            VERBOSE_PRINTF("Archive \"%s\" opened.\n", archive);
-//        }
-//    }
-    
     if (initfile != NULL) {
         VERBOSE_PRINTF("Running init file: %s\n", initfile);
         if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
@@ -544,6 +520,26 @@ int otdb_main(  INTF_Type intf_val,
             VERBOSE_PRINTF("Init file finished successfully\n");
         }
     }
+    
+    
+    /// Invoke the child threads below.  All of the child threads run
+    /// indefinitely until an error occurs or until the user quits.  Quit can 
+    /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
+    /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
+    /// i.e. raise(SIGINT).
+    pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
+    DEBUG_PRINTF("Finished creating threads\n");
+   
+    
+//    if (initfile != NULL) {
+//        VERBOSE_PRINTF("Running init file: %s\n", initfile);
+//        if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
+//            fprintf(stderr, ERRMARK"Could not run initialization file.\n");
+//        }
+//        else {
+//            VERBOSE_PRINTF("Init file finished successfully\n");
+//        }
+//    }
     
     /// The rest of the main() code, below, is blocked by pthread_cond_wait() 
     /// until the kill_cond is sent by one of the child threads.  This will 

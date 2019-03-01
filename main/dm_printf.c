@@ -116,12 +116,19 @@ int dm_xnprintf(dterm_handle_t* dth, uint8_t* dst, size_t dstmax, AUTH_level aut
         return -4;      ///@todo codify an error for buffer overflow
     }
     
+    ///@todo compiler screams at this, but it works
     psize   = snprintf(pcurs, plimit, "\"\0");
     plimit -= psize;
     pcurs  += psize;
+    //*pcurs++    = '"';
+    //*pcurs++    = 0;
+    //plimit     -= 2;
+    
     if (plimit < 0) {
         return -4;      ///@todo codify an error for buffer overflow
     }
+    
+    psize = (int)((uint8_t*)pcurs - dst);
     
     return cmd_devmgr(dth, (uint8_t*)dst, &psize, (uint8_t*)dst, dstmax);
 }

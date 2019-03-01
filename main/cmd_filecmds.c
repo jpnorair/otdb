@@ -45,6 +45,9 @@ extern struct arg_file* archive_man;
 extern struct arg_lit*  compress_opt;
 extern struct arg_lit*  jsonout_opt;
 
+// soft operation
+extern struct arg_lit*  soft_opt;
+
 // used by file commands
 extern struct arg_str*  devid_opt;
 extern struct arg_str*  devidlist_opt;
@@ -155,9 +158,9 @@ int cmd_new(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
 int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_AGEMS | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_SOFTMODE | ARGFIELD_DEVICEIDOPT | ARGFIELD_AGEMS | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID,
     };
-    void* args[] = {help_man, jsonout_opt, devid_opt, fileage_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
+    void* args[] = {help_man, jsonout_opt, soft_opt, devid_opt, fileage_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     uint8_t*    dat_ptr     = NULL;
     int         span        = 0;
     
@@ -204,7 +207,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
             ///@todo this section could be broken-out into its own function
-            if ((arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
+            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
@@ -215,10 +218,10 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 
                 DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %u\n", now, file_age, arglist.age_ms);
                 
-                if (file_age > arglist.age_ms) {
+                if (1) /*(file_age > arglist.age_ms)*/ {
                     otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);
-                    cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u\n", arglist.file_id);
+                    cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u", arglist.file_id);
                     
                     if (cmdbytes < 0) {
                         rc = cmdbytes;  ///@todo coordinate error codes with debug macros
@@ -228,20 +231,20 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     // Convert to binary.
                     // 5 bytes of file header
                     cmdbytes = cmd_hexnread(dst, (const char*)dst, dstmax);
-                    if (cmdbytes <= 6) {
+                    if (cmdbytes <= 5) {
                         ///@todo error code for file error
                         rc = -768 - 1;
                         goto cmd_read_CLOSE;
                     }
                     
                     // Read length value is big endian, bytes 3:4
-                    frlen.ubyte[UPPER] = dst[4];
-                    frlen.ubyte[LOWER] = dst[5];
+                    frlen.ubyte[UPPER] = dst[3];
+                    frlen.ubyte[LOWER] = dst[4];
                     
                     // store new data to the local cache file.
                     // This will also change any file attributes, such as the
                     // file modtime on close
-                    rc = vl_store(fp, frlen.ushort, &dst[6]);
+                    rc = vl_store(fp, frlen.ushort, &dst[5]);
                     if (rc != 0) {
                         ///@todo error code for store error (means file write is too big)
                         rc = -1024 - 1;
@@ -530,9 +533,9 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
 int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {
-        .fields = ARGFIELD_JSONOUT | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
+        .fields = ARGFIELD_JSONOUT | ARGFIELD_SOFTMODE | ARGFIELD_DEVICEIDOPT | ARGFIELD_BLOCKID | ARGFIELD_FILERANGE | ARGFIELD_FILEID | ARGFIELD_FILEDATA,
     };
-    void* args[] = {help_man, jsonout_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
+    void* args[] = {help_man, jsonout_opt, soft_opt, devid_opt, fileblock_opt, filerange_opt, fileid_man, filedata_man, end_man};
     
     /// Extract arguments into arglist struct
     arglist.filedata        = dst;
@@ -606,7 +609,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
         }
         
         ///@todo Re-implement this via devmgr
-        if (dth->ext->devmgr != NULL) {
+        if ((arglist.soft_flag == 0) && (dth->ext->devmgr != NULL)) {
             AUTH_level min_auth;
             uint64_t uid = 0;
             int cmdbytes;

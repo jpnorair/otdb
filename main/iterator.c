@@ -75,10 +75,7 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
         int newbytes;
         count++;
         
-        newbytes    = action(dth, dst, inbytes, src, (size_t)dstlimit, count, arglist, &devfs);
-        dstlimit   -= newbytes;
-        dst        += newbytes;
-        outbytes   += newbytes;
+        newbytes = action(dth, dst, inbytes, src, (size_t)dstlimit, count, arglist, &devfs);
         
         if (newbytes < 0) {
             outbytes = -3;
@@ -88,6 +85,10 @@ int iterator_uids(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t** src
             outbytes = -4;
             goto iterator_EXIT;
         }
+        
+        dstlimit   -= newbytes;
+        dst        += newbytes;
+        outbytes   += newbytes;
         
         if (arglist->devid_strlist_size > 0) {
             devtest = sub_nextdevice(dth->ext->db, &devfs, &devid_i, arglist->devid_strlist, arglist->devid_strlist_size);

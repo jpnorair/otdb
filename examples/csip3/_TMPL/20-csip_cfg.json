@@ -1,0 +1,75 @@
+{
+    "csip_cfg": {
+        "_meta":{"block":"isf", "id":20, "mod":52, "size":164, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "wmax":{"pos":0, "type":"float", "def":0},
+            "wchamax":{"pos":4, "type":"float", "def":0},
+            "vamax":{"pos":8, "type":"float", "def":0},
+            "vachamax":{"pos":12, "type":"float", "def":0},
+            "varmax":{"pos":16, "type":"float", "def":0},
+            "varchamax":{"pos":20, "type":"float", "def":0},
+            "ctlhzhilim":{"pos":24, "type":"float", "def":0},
+            "ctlhzlolim":{"pos":28, "type":"float", "def":0},
+            "ecpnomhz":{"pos":32, "type":"float", "def":0},
+            "hzstr":{"pos":36, "type":"float", "def":0},
+            "hzstop":{"pos":40, "type":"float", "def":0},
+            "hzstopwgra":{"pos":44, "type":"float", "def":0},
+            "wstr":{"pos":48, "type":"float", "def":0},
+            "wstop":{"pos":52, "type":"float", "def":0},
+            "pfstr":{"pos":56, "type":"float", "def":0},
+            "pfstop":{"pos":60, "type":"float", "def":0},
+            "vref":{"pos":64, "type":"float", "def":0},
+            "vrefofs":{"pos":68, "type":"float", "def":0},
+            "wgra":{"pos":72, "type":"float", "def":0},
+            "wchagra":{"pos":76, "type":"float", "def":0},
+            "wmaxlimpct":{"pos":80, "type":"float", "def":0},
+            "varref":{"pos":84, "type":"float", "def":1},
+            "varwmaxpct":{"pos":88, "type":"float", "def":0},
+            "varmaxpct":{"pos":92, "type":"float", "def":0},
+            "varavalpct":{"pos":96, "type":"float", "def":0},
+            "minrsvpct":{"pos":100, "type":"float", "def":0},
+            "wintms":{"pos":104, "type":"float", "def":0},
+            "rvrttms":{"pos":108, "type":"float", "def":0},
+            "opmod": {
+                "_meta": {"pos":112, "type":"bitmask", "size":4},
+                "_content": {
+                    "pas":{"pos":0.00, "type":"bit1_t", "def":0},
+                    "consw":{"pos":0.01, "type":"bit1_t", "def":0},
+                    "consv":{"pos":0.02, "type":"bit1_t", "def":0},
+                    "consvar":{"pos":0.03, "type":"bit1_t", "def":0},
+                    "conspf":{"pos":0.04, "type":"bit1_t", "def":0},
+                    "exim":{"pos":0.05, "type":"bit1_t", "def":0},
+                    "maxvar":{"pos":0.06, "type":"bit1_t", "def":0},
+                    "vov":{"pos":0.07, "type":"bit1_t", "def":0},
+                    "pk":{"pos":0.08, "type":"bit1_t", "def":0},
+                    "isld":{"pos":0.09, "type":"bit1_t", "def":0},
+                    "prc":{"pos":0.10, "type":"bit1_t", "def":0},
+                    "vrt":{"pos":0.11, "type":"bit1_t", "def":0},
+                    "frt":{"pos":0.12, "type":"bit1_t", "def":0},
+                    "vvar":{"pos":0.13, "type":"bit1_t", "def":0}
+                }
+            },
+            "opcondt": {
+                "_meta": {"pos":116, "type":"bitmask", "size":4},
+                "_content": {
+                    "pfsign":{"pos":0.00, "type":"bit2_t", "def":0},
+                    "pfext":{"pos":0.02, "type":"bit1_t", "def":0},
+                    "varact":{"pos":0.03, "type":"bit2_t", "def":0},
+                    "clctova":{"pos":0.05, "type":"bit2_t", "def":0},
+                    "varprior":{"pos":0.07, "type":"bit1_t", "def":0}
+                }
+            },
+            "ramptms":{"pos":120, "type":"float", "def":0},
+            "ramprte":{"pos":124, "type":"float", "def":0},
+            "nomupramp":{"pos":128, "type":"float", "def":0},
+            "nomdnramp":{"pos":132, "type":"float", "def":0},
+            "emgrampuprtg":{"pos":136, "type":"float", "def":0},
+            "connrampdnrtg":{"pos":140, "type":"float", "def":0},
+            "connrampuprtg":{"pos":144, "type":"float", "def":0},
+            "ramprtepct":{"pos":148, "type":"float", "def":0},
+            "pfcons":{"pos":152, "type":"float", "def":0},
+            "varcons":{"pos":156, "type":"float", "def":0},
+            "conndly":{"pos":160, "type":"float", "def":0}
+        }
+    }
+}

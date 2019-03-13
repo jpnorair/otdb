@@ -141,7 +141,7 @@ static void sigquit_handler(int sigcode) {
     pthread_cond_signal(&cli.kill_cond);
 }
 
-
+///@todo sigchild?
 
 
 
@@ -452,8 +452,9 @@ int otdb_main(  INTF_Type intf_val,
     /// program used for devmgr.
     DEBUG_PRINTF("Initializing devmgr (%s) ...\n", devmgr);
     if (devmgr != NULL) {
-        if (popen2_s(&devmgr_proc, devmgr) == 0) {
-            const char* procname = "smut";
+        if (popen2(&devmgr_proc, devmgr, POPEN2_PERSISTENT) == 0) {
+            const char* procname = "devmgr";
+
             ///@todo extract command name from call string.
             //char procname[32];
             //cmd_getname(procname, devmgr, 32);

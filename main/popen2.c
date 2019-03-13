@@ -23,16 +23,25 @@
 #include <sys/wait.h>
 
 
+///@todo way to reopen the childprocess if it exits when POPEN2_PERSISTENT is set
+
 
 #define _READ 0
 #define _WRITE 1
 
-int popen2_s(childproc_t* childproc, const char* cmdline) {
+static pid_t sub_popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild, unsigned int* flags);
+
+static void sub_popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild);
+
+
+
+int popen2(childproc_t* childproc, const char* cmdline, unsigned int flags) {
     int rc;
     
     if ((childproc != NULL) && (cmdline != NULL)) {
-        childproc->pid = popen2(cmdline, &childproc->fd_writeto, &childproc->fd_readfrom);
-        rc = (childproc->pid <= 0);
+        childproc->flags    = flags;
+        childproc->pid      = sub_popen2(cmdline, &childproc->fd_writeto, &childproc->fd_readfrom, &childproc->flags);
+        rc                  = (childproc->pid <= 0);
     }
     else {
         rc = -1;
@@ -42,14 +51,15 @@ int popen2_s(childproc_t* childproc, const char* cmdline) {
 }
 
 
-void popen2_kill_s(childproc_t* childproc) {
+void popen2_kill(childproc_t* childproc) {
     if (childproc != NULL) {
-        popen2_kill(childproc->pid, childproc->fd_writeto, childproc->fd_readfrom);
+        childproc->flags &= ~POPEN2_PERSISTENT;
+        sub_popen2_kill(childproc->pid, childproc->fd_writeto, childproc->fd_readfrom);
     }
 }
 
 
-pid_t popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild) {
+pid_t sub_popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild, unsigned int* flags) {
     pid_t pid;
     int pipe_stdin[2];
     int pipe_stdout[2];
@@ -72,7 +82,20 @@ pid_t popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild) {
         close(pipe_stdout[_READ]);
         dup2(pipe_stdout[_WRITE], _WRITE);
         
+        ///@todo use execvp, which requires parsing the args into an argv
+        ///@note last argv[] must be NULL
+        //e.g. execvp(argv[0], argv);
+        
         execl("/bin/sh", "sh", "-c", cmdline, NULL);
+        
+        ///@todo If we get here, the process crapped-out.  In certain cases,
+        /// we need to try to restart it.  Can have a way of counting seconds
+        /// between crashes.  If it's crashing frequently, give-up
+        
+        ///@todo send a signal to the parent process, somehow, to notify it
+        /// that process died in error.  This might be a good job for main()
+        /// thread, actually.
+        
         perror("execl");
         exit(1);
     }
@@ -95,7 +118,7 @@ pid_t popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild) {
 
 
 
-void popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild) {
+void sub_popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild) {
     close(fd_tochild);
     close(fd_fromchild);               // Is this needed?
     

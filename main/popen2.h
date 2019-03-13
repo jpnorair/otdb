@@ -24,20 +24,20 @@
 #include <sys/types.h>
 
 typedef struct {
-    pid_t   pid;
-    int     fd_writeto;
-    int     fd_readfrom;
+    pid_t           pid;
+    unsigned int    flags;
+    int             fd_writeto;
+    int             fd_readfrom;
 } childproc_t;
 
+/// Flags
+#define POPEN2_PERSISTENT   1
 
-int popen2_s(childproc_t* childproc, const char* cmdline);
 
-void popen2_kill_s(childproc_t* childproc);
 
-pid_t popen2(const char* cmdline, int* fd_tochild, int* fd_fromchild);
+int popen2(childproc_t* childproc, const char* cmdline, unsigned int flags);
 
-void popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild);
-
+void popen2_kill(childproc_t* childproc);
 
 
 #endif /* popen2_h */

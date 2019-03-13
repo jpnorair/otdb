@@ -247,10 +247,10 @@ void dterm_deinit(dterm_handle_t* dth) {
         ch_free(dth->ch);
     }
     
-    // Kill devmgr process. popen2_kill_s() does a NULL check internally
+    // Kill devmgr process. popen2_kill() does a NULL check internally
     ///@todo the ext data should be handled as its own module
     if (dth->ext != NULL) {
-        popen2_kill_s(dth->ext->devmgr);
+        popen2_kill(dth->ext->devmgr);
         
         if (dth->ext->db != NULL) {
             ///@note ext gets free'd externally

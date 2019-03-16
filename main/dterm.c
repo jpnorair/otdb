@@ -48,7 +48,7 @@
 #include <ctype.h>
 
 
-#if 0 //OTDB_FEATURE_DEBUG
+#if 1 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -420,7 +420,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     // Set allocators for cJSON, argtable
     cjson_iso_allocators();
     arg_set_allocators(&iso_malloc, &iso_free);
-    
+
     ///@todo set context for other data systems
     
     /// The input can be JSON of the form:
@@ -445,12 +445,12 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
             goto sub_proc_lineinput_FREE;
         }
     }
-    
+
     // determine length until newline, or null.
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
     cmdptr  = cmd_search(dth->ext->cmdtab, cmdname);
-    
+
     if (cmdptr == NULL) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
@@ -464,6 +464,9 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     else {
         int bytesin = linelen - cmdlen;
 
+        ///@todo segmentation fault within cmd_run() for command:
+        /// open -j /opt/otdb/examples/csip
+        /// Could this be due to permissions problem?
         bytesout = cmd_run(cmdptr, dth, cursor, &bytesin, (uint8_t*)(loadbuf+cmdlen), bufmax);
         if (cmdrc != NULL) {
             *cmdrc = bytesout;
@@ -495,14 +498,14 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
             write(dth->fd.out, (char*)protocol_buf, bytesout);
         }
     }
-    
+
     sub_proc_lineinput_FREE:
     cJSON_Delete(cmdobj);
-    
+
     // Return cJSON and argtable to generic context allocators
     cjson_std_allocators();
     arg_set_allocators(NULL, NULL);
-    
+
     return bytesout;
 }
 

@@ -521,7 +521,6 @@ int otdb_main(  INTF_Type intf_val,
         }
     }
     
-    
     /// Invoke the child threads below.  All of the child threads run
     /// indefinitely until an error occurs or until the user quits.  Quit can 
     /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
@@ -530,16 +529,9 @@ int otdb_main(  INTF_Type intf_val,
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished creating threads\n");
    
-    
-//    if (initfile != NULL) {
-//        VERBOSE_PRINTF("Running init file: %s\n", initfile);
-//        if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
-//            fprintf(stderr, ERRMARK"Could not run initialization file.\n");
-//        }
-//        else {
-//            VERBOSE_PRINTF("Init file finished successfully\n");
-//        }
-//    }
+    ///------------------------------------------------------------------------
+    ///@note initfile section might be better here
+    ///------------------------------------------------------------------------
     
     /// The rest of the main() code, below, is blocked by pthread_cond_wait() 
     /// until the kill_cond is sent by one of the child threads.  This will 

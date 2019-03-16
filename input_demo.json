@@ -5,6 +5,6 @@
         "intf":"socket",
         "socket":"./otdb.sock",
         "init":"init_csipdemo.otdb",
-        "devmgr":"../_hbsys/darwin/bin/smut /dev/tty.usbserial-FT29CMB71 19200 --pipe --fmt=hex"
+        "devmgr":"smut /dev/tty.usbserial-FT29CMB71 19200 --pipe --fmt=hex"
     }
 }

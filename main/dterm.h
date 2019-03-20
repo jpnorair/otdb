@@ -81,17 +81,17 @@ typedef enum {
 // defines state of data terminal
 ///@todo the data stored in here should be dynamic based on the type.
 typedef struct {
-    // old and current terminal settings
-    INTF_Type type;
-    volatile prompt_state state; // state of the terminal prompt
+    INTF_Type type;                 // Socket, Pipe, Interactive, etc.
+    volatile prompt_state state;    // state of the terminal prompt
     
+    // old and current terminal settings
     struct termios oldter;
     struct termios curter;
     
-    int linelen;                 // line length
-    char *cline;                 // pointer to current position in linebuf
-    char linebuf[LINESIZE];      // command read buffer
-    char readbuf[READSIZE];     // character read buffer
+    int linelen;                    // line length
+    char *cline;                    // pointer to current position in linebuf
+    char linebuf[LINESIZE];         // command read buffer
+    char readbuf[READSIZE];         // character read buffer
 } dterm_intf_t;
 
 
@@ -125,9 +125,8 @@ typedef struct {
     dterm_fd_t          fd;
     
     // Process Context:
-    TALLOC_CTX*         pctx;
-    
     // Thread Context: may be null if not using talloc
+    TALLOC_CTX*         pctx;
     TALLOC_CTX*         tctx;
     
     // Isolation Mutex
@@ -188,9 +187,9 @@ int dterm_puts(dterm_fd_t* fd, char *s);
 int dterm_putc(dterm_fd_t* fd, char c);
 int dterm_puts2(dterm_fd_t* fd, char *s);
 
+
 int dterm_putsc(dterm_intf_t *dt, char *s);
 int dterm_putcmd(dterm_intf_t *dt, char *s, int size);
-
 
 // resets command buffer
 void dterm_reset(dterm_intf_t *dt);

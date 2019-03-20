@@ -414,7 +414,7 @@ int otdb_main(  INTF_Type intf_val,
     childproc_t devmgr_proc;
     cmdtab_t main_cmdtab;
     
-    // Application data hooked into dterm (for now)
+    // Application data hooked into dterm
     dterm_ext_t appdata = {
         .cmdtab = NULL,
         .devmgr = NULL,

@@ -26,7 +26,7 @@
 // Local Libraries/Headers
 #include <bintex.h>
 #include <m2def.h>
-#include <otfs.h>
+//#include <otfs.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -48,15 +48,13 @@
 #include <ctype.h>
 
 
-#if 1 //OTDB_FEATURE_DEBUG
+#if 0 //OTDB_FEATURE_DEBUG
 #   define PRINTLINE()     fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__)
 #   define DEBUGPRINT(...) fprintf(stderr, __VA_ARGS__)
 #else
 #   define PRINTLINE()     do { } while(0)
 #   define DEBUGPRINT(...) do { } while(0)
 #endif
-
-
 
 
 
@@ -210,11 +208,6 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         rc = -5;
         goto dterm_init_TERM;
     }
-//    dth->tctx = talloc_new(dth->pctx);
-//    if (dth->pctx == NULL) {
-//        rc = -5;
-//        goto dterm_init_TERM;
-//    }
     
     dth->iso_mutex = malloc(sizeof(pthread_mutex_t));
     if (dth->iso_mutex == NULL) {
@@ -252,8 +245,10 @@ void dterm_deinit(dterm_handle_t* dth) {
         ch_free(dth->ch);
     }
     
+    ///@todo The ext data (between lines) should be handled as its own
+    ///      operation in main()
+    // -----------------------------------------------------------------------
     // Kill devmgr process. popen2_kill_s() does a NULL check internally
-    ///@todo the ext data should be handled as its own module
     if (dth->ext != NULL) {
         popen2_kill_s(dth->ext->devmgr);
         
@@ -266,6 +261,7 @@ void dterm_deinit(dterm_handle_t* dth) {
         // contiguous block.
         talloc_free(dth->ext->tmpl);
     }
+    // -----------------------------------------------------------------------
 
     clithread_deinit(dth->clithread);
     
@@ -375,7 +371,7 @@ int dterm_close(dterm_handle_t* dth) {
     int retcode;
     
     if (dth == NULL)        return -1;
-    if (dth->intf == NULL)    return -1;
+    if (dth->intf == NULL)  return -1;
     
     if (dth->intf->type == INTF_interactive) {
         retcode = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->intf->oldter));
@@ -619,7 +615,7 @@ void* dterm_socketer(void* args) {
             perror("Server Socket accept() failed");
         }
         else {
-            clithread_add(dth->clithread, NULL, &dterm_socket_clithread, (void*)&clithread);
+            clithread_add(dth->clithread, NULL, (int)cliopt_getpoolsize(), &dterm_socket_clithread, (void*)&clithread);
         }
     }
     
@@ -1121,7 +1117,7 @@ int dterm_putsc(dterm_intf_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
     while (*(++end) != 0);
     
-    return dterm_putcmd(dt, s, end-(uint8_t*)s);
+    return dterm_putcmd(dt, s, (int)(end-(uint8_t*)s) );
 }
 
 

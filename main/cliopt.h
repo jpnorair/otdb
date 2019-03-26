@@ -43,9 +43,7 @@ typedef struct {
     INTF_Type   intf;
     
     size_t      mempool_size;
-    
     int         timeout_ms;
-
 } cliopt_t;
 
 

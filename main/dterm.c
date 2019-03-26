@@ -26,7 +26,7 @@
 // Local Libraries/Headers
 #include <bintex.h>
 #include <m2def.h>
-#include <otfs.h>
+//#include <otfs.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -58,10 +58,8 @@
 
 
 
-
-
 // Dterm variables
-static const char prompt_root[]     = PROMPT;
+static const char prompt_root[]     = _E_MAG PROMPT _E_NRM;
 static const char* prompt_str[]     = {
     prompt_root
 };
@@ -261,6 +259,7 @@ void dterm_deinit(dterm_handle_t* dth) {
         // contiguous block.
         talloc_free(dth->ext->tmpl);
     }
+    // -----------------------------------------------------------------------
 
     clithread_deinit(dth->clithread);
     
@@ -370,7 +369,7 @@ int dterm_close(dterm_handle_t* dth) {
     int retcode;
     
     if (dth == NULL)        return -1;
-    if (dth->intf == NULL)    return -1;
+    if (dth->intf == NULL)  return -1;
     
     if (dth->intf->type == INTF_interactive) {
         retcode = tcsetattr(dth->fd.in, TCSAFLUSH, &(dth->intf->oldter));
@@ -397,7 +396,7 @@ int dterm_close(dterm_handle_t* dth) {
   */
 
 
-static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
+static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, int linelen) {
     uint8_t     protocol_buf[1024];
     char        cmdname[32];
     int         cmdlen;
@@ -415,7 +414,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
     // Set allocators for cJSON, argtable
     cjson_iso_allocators();
     arg_set_allocators(&iso_malloc, &iso_free);
-    
+
     ///@todo set context for other data systems
     
     /// The input can be JSON of the form:
@@ -440,12 +439,12 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             goto sub_proc_lineinput_FREE;
         }
     }
-    
+
     // determine length until newline, or null.
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
     cmdptr  = cmd_search(dth->ext->cmdtab, cmdname);
-    
+
     if (cmdptr == NULL) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
@@ -457,10 +456,15 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
         }
     }
     else {
-        int bytesin = linelen;
+        int bytesin = linelen - cmdlen;
 
+        ///@todo segmentation fault within cmd_run() for command:
+        /// open -j /opt/otdb/examples/csip
+        /// Could this be due to permissions problem?
         bytesout = cmd_run(cmdptr, dth, cursor, &bytesin, (uint8_t*)(loadbuf+cmdlen), bufmax);
-        //bytesout = -1;
+        if (cmdrc != NULL) {
+            *cmdrc = bytesout;
+        }
         
         ///@todo spruce-up the command error reporting, maybe even with
         ///      a cursor showing where the first error was found.
@@ -488,14 +492,14 @@ static int sub_proc_lineinput(dterm_handle_t* dth, char* loadbuf, int linelen) {
             write(dth->fd.out, (char*)protocol_buf, bytesout);
         }
     }
-    
+
     sub_proc_lineinput_FREE:
     cJSON_Delete(cmdobj);
-    
+
     // Return cJSON and argtable to generic context allocators
     cjson_std_allocators();
     arg_set_allocators(NULL, NULL);
-    
+
     return bytesout;
 }
 
@@ -558,7 +562,7 @@ void* dterm_socket_clithread(void* args) {
                 linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
 
                 // Process the line-input command
-                dataout = sub_proc_lineinput(&dts, loadbuf, linelen);
+                dataout = sub_proc_lineinput(&dts, NULL, loadbuf, linelen);
                 // If there's meaningful output, add a linebreak
                 if (dataout > 0) {
                     dterm_puts(&dts.fd, "\n");
@@ -609,7 +613,7 @@ void* dterm_socketer(void* args) {
             perror("Server Socket accept() failed");
         }
         else {
-            clithread_add(dth->clithread, NULL, &dterm_socket_clithread, (void*)&clithread);
+            clithread_add(dth->clithread, NULL, (int)cliopt_getpoolsize(), &dterm_socket_clithread, (void*)&clithread);
         }
     }
     
@@ -652,7 +656,7 @@ void* dterm_piper(void* args) {
         dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
 
         // Process the line-input command
-        sub_proc_lineinput(dth, loadbuf, linelen);
+        sub_proc_lineinput(dth, NULL, loadbuf, linelen);
         
         // Free temporary memory pool context
         talloc_free(dth->tctx);
@@ -667,6 +671,105 @@ void* dterm_piper(void* args) {
     fprintf(stderr, "\n--> Chaotic error: dterm_piper() thread broke loop.\n");
     raise(SIGINT);
     return NULL;
+}
+
+
+int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
+    int     filebuf_sz;
+    char*   filecursor;
+    char*   filebuf     = NULL;
+    int     rc          = 0;
+    FILE*   fp          = NULL;
+    dterm_fd_t local;
+    dterm_fd_t saved;
+    
+    // Initial state = off
+    dth->intf->state = prompt_off;
+    
+    // Open the file, Load the contents into filebuf
+    fp = fopen(filename, "r");
+    if (fp == NULL) {
+        perror(ERRMARK"cmdfile couldn't be opened");
+        return -1;
+    }
+    
+    fseek(fp, 0L, SEEK_END);
+    filebuf_sz = (int)ftell(fp);
+    rewind(fp);
+    filebuf = talloc_zero_size(dth->pctx, filebuf_sz+1);
+    if (filebuf == NULL) {
+        rc = -2;
+        goto dterm_cmdfile_END;
+    }
+    
+    rc = !(fread(filebuf, filebuf_sz, 1, fp) == 1);
+    if (rc != 0) {
+        perror(ERRMARK"cmdfile couldn't be read");
+        rc = -3;
+        goto dterm_cmdfile_END;
+    }
+    
+    // File stream no longer required
+    fclose(fp);
+    fp = NULL;
+    
+    // Preprocess the command inputs strings
+    sub_str_sanitize(filebuf, (size_t)filebuf_sz);
+    
+    // Reset the terminal to default state
+    dterm_reset(dth->intf);
+    
+    pthread_mutex_lock(dth->iso_mutex);
+    local.in    = STDIN_FILENO;
+    local.out   = STDOUT_FILENO;
+    saved       = dth->fd;
+    dth->fd     = local;
+    
+    // Run the command on each line
+    filecursor = filebuf;
+    while (filebuf_sz > 0) {
+        int linelen;
+        int cmdrc;
+        int byteswritten;
+        
+        // Burn whitespace ahead of command.
+        while (isspace(*filecursor)) { filecursor++; filebuf_sz--; }
+        linelen = (int)sub_str_mark(filecursor, (size_t)filebuf_sz);
+
+        // Create temporary context as a memory pool
+        dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+        
+        // Echo input line to dterm
+        dprintf(dth->fd.out, _E_MAG"%s"_E_NRM"%s\n", prompt_root, filecursor);
+        
+        // Process the line-input command
+        byteswritten = sub_proc_lineinput(dth, &cmdrc, filecursor, linelen);
+        if (byteswritten > 0) {
+            dterm_puts(&dth->fd, "\n");
+        }
+        
+        // Free temporary memory pool context
+        talloc_free(dth->tctx);
+        
+        // Exit the command sequence on first detection of error.
+        if (cmdrc < 0) {
+            dprintf(dth->fd.out, _E_RED"ERR: "_E_NRM"Command Returned %i: stopping.\n\n", cmdrc);
+            break;
+        }
+        
+        // +1 eats the terminator
+        filebuf_sz -= (linelen + 1);
+        filecursor += (linelen + 1);
+    }
+    
+    dth->fd = saved;
+    pthread_mutex_unlock(dth->iso_mutex);
+
+    dterm_cmdfile_END:
+    if (fp != NULL) fclose(fp);
+    talloc_free(filebuf);
+    
+    return rc;
 }
 
 
@@ -878,7 +981,7 @@ void* dterm_prompter(void* args) {
                     dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
                     
                     // Run command(s) from line input
-                    bytesout = sub_proc_lineinput( dth, 
+                    bytesout = sub_proc_lineinput( dth, NULL,
                                         (char*)dth->intf->linebuf,
                                         (int)sub_str_mark((char*)dth->intf->linebuf, 1024)
                                     );
@@ -978,6 +1081,10 @@ void* dterm_prompter(void* args) {
 
 
 
+
+
+
+
 /** Subroutines for reading & writing
   * ========================================================================<BR>
   */
@@ -1008,7 +1115,7 @@ int dterm_putsc(dterm_intf_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
     while (*(++end) != 0);
     
-    return dterm_putcmd(dt, s, end-(uint8_t*)s);
+    return dterm_putcmd(dt, s, (int)(end-(uint8_t*)s) );
 }
 
 

@@ -419,21 +419,21 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
             fp->length = (uint16_t)derived_length;
         }
         
-        ///@todo synchronize this file against the target
-        ///@todo this should be a callable function, if possible.
-        if (sync_target && (dth->ext->devmgr != NULL)) {
-            int cmdbytes;
-            char outbuf[576];
-            cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", dmeta.fileid);
-            cmdbytes           += cmd_hexwrite(&outbuf[cmdbytes], fdat, fp->length);
-            outbuf[cmdbytes++]  = ']';
-            outbuf[cmdbytes++]  = 0;
-            cmdbytes            = cmd_devmgr(dth, dst, &cmdbytes, (uint8_t*)outbuf, dstmax);
-            if (cmdbytes < 0) {
-                ///@todo this means there's a write error.  Could try again, or
-                /// flag some type of error.
-            }
-        }
+        ///@note synchronization is now done at device level via the "push"
+        ///      command, at the end of open or load.
+//        if (sync_target && (dth->ext->devmgr != NULL)) {
+//            int cmdbytes;
+//            char outbuf[576];
+//            cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", dmeta.fileid);
+//            cmdbytes           += cmd_hexwrite(&outbuf[cmdbytes], fdat, fp->length);
+//            outbuf[cmdbytes++]  = ']';
+//            outbuf[cmdbytes++]  = 0;
+//            cmdbytes            = cmd_devmgr(dth, dst, &cmdbytes, (uint8_t*)outbuf, dstmax);
+//            if (cmdbytes < 0) {
+//                /// this means there's a write error.  Could try again, or
+//                /// flag some type of error.
+//            }
+//        }
         
         vl_setmodtime(fp, (ot_u32)dmeta.modtime);
         vl_close(fp);
@@ -482,6 +482,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     struct dirent *ent      = NULL;
     struct dirent *entbuf   = NULL;
     cJSON* tmpl             = NULL;
+    cJSON* tmpl_export      = NULL;
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
     bool open_valid         = false;
@@ -719,7 +720,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// json input or used like it is here?
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
-    tmpl_fs.alloc       = vworm_fsalloc(&fshdr);
+    tmpl_fs.alloc       = vl_get_fsalloc(&fshdr);
     tmpl_fs.base        = talloc_zero_size(cmd_open_heap, tmpl_fs.alloc);
     if (tmpl_fs.base == NULL) {
         rc = -5;
@@ -1043,7 +1044,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         if (tmpl != NULL) {
             size_t tmpl_size;
             void*  tmpl_block;
-            cJSON* tmpl_obj = NULL;
             
             DEBUGPRINT("%s %d :: cJSON_GetObjectSize\n", __FUNCTION__, __LINE__);
             tmpl_size = cJSON_GetObjectSize(tmpl);
@@ -1053,22 +1053,21 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 if (tmpl_block == NULL) {
                     ///@todo error code
                     rc = -9;
-                    goto cmd_open_FLUSH;
+                    goto cmd_open_ENDGAME;
                 }
                 
                 DEBUGPRINT("%s %d :: cJSON_BlockDup\n", __FUNCTION__, __LINE__);
-                tmpl_obj = cJSON_BlockDup(tmpl_block, tmpl_size, tmpl);
-                DEBUGPRINT("%s %d :: tmpl_obj=%016llx\n", __FUNCTION__, __LINE__, (uint64_t)tmpl_obj);
-                if (tmpl_obj == NULL) {
+                tmpl_export = cJSON_BlockDup(tmpl_block, tmpl_size, tmpl);
+                DEBUGPRINT("%s %d :: tmpl_export=%016llx\n", __FUNCTION__, __LINE__, (uint64_t)tmpl_export);
+                if (tmpl_export == NULL) {
                     ///@todo error code
                     rc = -10;
-                    goto cmd_open_FLUSH;
+                    goto cmd_open_ENDGAME;
                 }
             }
             
             DEBUGPRINT("%s %d :: cJSON_Delete\n", __FUNCTION__, __LINE__);
             cJSON_Delete(tmpl);
-            tmpl = tmpl_obj;
         }
         
         /// Delete the existing database if one exists.  Then link the newly
@@ -1082,18 +1081,34 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         }
     }
     
-    cmd_open_FLUSH:
-    DEBUGPRINT("%s %d :: cmd_open_FLUSH\n", __FUNCTION__, __LINE__);
-    // Database open operation failed.  Wipe the data we created.  These
-    // data elements are part of the talloc context, and they will get
-    // free'd in any case, but for completeness they are deallocated here.
+    cmd_open_ENDGAME:
+    DEBUGPRINT("%s %d :: cmd_open_ENDGAME\n", __FUNCTION__, __LINE__);
+    
+    /// Database open operation either succeeded or failed.  Open operation is
+    /// ATOMIC, so the template (JSON) and database (BINARY) are only attached
+    /// if open was 100% successful.  Otherwise, the intermediate changes are
+    /// discarded -- old data remains.
+    ///
+    /// On successful open, the data could be pushed (using "push" command) to
+    /// the device manager.  Instead of this, we now use an init file that will
+    /// run open, push, etc, on startup.
+    ///
+    /// @note Exported template is allocated on "pctx" (permanent context)
+    ///
+    /// @todo Have Judy Table (db) also get contextually allocated.  This will
+    ///       require modifications to Judy library.  The linked FS data is
+    ///       already contextually allocated.
+    ///
     if (rc >= 0) {
-        ///@todo OTFS data is talloc'ed (on "pctx" permanent context), but Judy
-        ///      is not.  Make Judy also talloc'ed.  Until then, just copy the
-        ///      db pointer (Judy object) to the global dth handle.
         dth->ext->db = db;
         talloc_free(dth->ext->tmpl);
-        dth->ext->tmpl = tmpl;
+        dth->ext->tmpl = tmpl_export;
+        
+//        if (dth->ext->devmgr != NULL) {
+//            uint8_t pushargs[] = "";
+//            int argslen = sizeof("");
+//            cmd_push(dth, dst, &argslen, pushargs, dstmax);
+//        }
     }
     else {
         cJSON_Delete(tmpl);

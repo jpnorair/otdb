@@ -1,0 +1,7 @@
+{
+    "channel_configuration": {
+        "_meta":{"block":"isf", "id":2, "mod":52, "size":0, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+        }
+    }
+}

@@ -55,6 +55,9 @@ struct arg_file*    archive_man;
 struct arg_lit*     compress_opt;
 struct arg_lit*     jsonout_opt;
 
+// Soft operation
+struct arg_lit*     soft_opt;
+
 // used by file commands
 struct arg_str*     devid_opt;
 struct arg_str*     devidlist_opt;
@@ -99,6 +102,7 @@ void cmd_init_argtable(void) {
     devid_man       = arg_str1(NULL,NULL,"DeviceID",    "Device ID as HEX");
     archive_man     = arg_file1(NULL,NULL,"file",       "Archive file or directory");
     jsonout_opt     = arg_lit0("j","json",              "Use JSON as output");
+    soft_opt        = arg_lit0("s","soft",              "Use Soft mode (doesn't propagate to devices)");
     compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
     devidlist_opt   = arg_strn(NULL,NULL,"DeviceID List", 0, 256, "Batch of up to 256 Device IDs");
     devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
@@ -295,16 +299,9 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     char**  argv;
     int     nerrors;
     
-fprintf(stderr, "Args: %s\n", (char*)src);
-    
     /// First, create an argument vector from the input string.
     /// hb_tools_parsestring will treat all bintex containers as whitespace-safe.
     argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
-
-for (int i=0; i<argc; i++) {
-    fprintf(stderr, "Arg %i: %s\n", i, argv[i]);
-}
-
     nerrors = arg_parse(argc, argv, args);
 
     /// Print command specific help
@@ -360,6 +357,11 @@ for (int i=0; i<argc; i++) {
     if (data->fields & ARGFIELD_JSONOUT) {
         data->jsonout_flag = (jsonout_opt->count > 0);
     }
+    /// Soft Mode Flag
+    if (data->fields & ARGFIELD_SOFTMODE) {
+        data->soft_flag = (soft_opt->count > 0);
+    }
+    
 //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Compression Flag
     if (data->fields & ARGFIELD_COMPRESS) {

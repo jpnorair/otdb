@@ -18,8 +18,8 @@
 #define clithread_h
 
 // Configuration Header
-#include "otdb_cfg.h"
-#include "cliopt.h"
+//#include "otdb_cfg.h"
+//#include "cliopt.h"
 
 // talloc library from /usr/local/include
 #include <talloc.h>
@@ -47,7 +47,7 @@ typedef clithread_item_t** clithread_handle_t;
 
 clithread_handle_t clithread_init(void);
 
-clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), clithread_args_t* arg);
+clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, int poolsize, void* (*start_routine)(void*), clithread_args_t* arg);
 
 
 /** @brief Client thread must call this upon exit or return

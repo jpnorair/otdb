@@ -1,8 +1,8 @@
 {
     "arguments": {
         "verbose":1,
-        "debug":1,
+        "debug":0,
         "intf":"interactive",
-        "archive":"examples/csip"
+        "init":"init_csip.otdb"
     }
 }

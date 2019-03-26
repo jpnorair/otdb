@@ -104,13 +104,13 @@ static void sub_json_loadargs(  cJSON* json,
                                 int* debug_val,
                                 int* intf_val, 
                                 char** socket, 
-                                char** archive, 
+                                char** initfile,
                                 char** devmgr,
                                 char** xpath);
 
 static int otdb_main(   INTF_Type intf_val, 
                         const char* socket, 
-                        const char* archive, 
+                        const char* initfile,
                         const char* devmgr, 
                         const char* xpath,
                         cJSON* params); 
@@ -214,14 +214,14 @@ int main(int argc, char* argv[]) {
     struct arg_lit  *debug   = arg_lit0("d","debug",                    "Set debug mode on: requires compiling for debug");
     struct arg_str  *intf    = arg_str0("i","intf", "interactive|pipe|socket", "Interface select.  Default: interactive");
     struct arg_file *socket  = arg_file0("S","socket","path/addr",      "Socket path/address to use for otdb daemon");
-    struct arg_file *archive = arg_file0("A","archive","path",          "Path to archive file/directory to open at startup");
+    struct arg_file *initfile= arg_file0("I","init","path",             "Path to initialization routine to run at startup");
     struct arg_str  *devmgr  = arg_str0("D", "devmgr", "cmd string",    "Command string to invoke device manager app");
     struct arg_file *xpath   = arg_file0("x", "xpath", "<filepath>",    "Path to directory of external data processor programs");
     struct arg_lit  *help    = arg_lit0(NULL,"help",                    "print this help and exit");
     struct arg_lit  *version = arg_lit0(NULL,"version",                 "print version information and exit");
     struct arg_end  *end     = arg_end(10);
     
-    void* argtable[] = { config, verbose, debug, intf, socket, archive, devmgr, xpath, help, version, end };
+    void* argtable[] = { config, verbose, debug, intf, socket, initfile, devmgr, xpath, help, version, end };
     const char* progname = OTDB_PARAM(NAME);
     int nerrors;
     bool bailout        = true;
@@ -230,7 +230,7 @@ int main(int argc, char* argv[]) {
     
     char* xpath_val     = NULL;
     char* socket_val    = NULL;
-    char* archive_val   = NULL;
+    char* initfile_val  = NULL;
     char* devmgr_val    = NULL;
     cJSON* json         = NULL;
     char* buffer        = NULL;
@@ -330,7 +330,7 @@ int main(int argc, char* argv[]) {
             goto main_FINISH;
         }
         {   int tmp_intf, tmp_verbose, tmp_debug;
-            sub_json_loadargs(json, &tmp_debug, &tmp_verbose, &tmp_intf, &socket_val, &archive_val, &devmgr_val, &xpath_val);
+            sub_json_loadargs(json, &tmp_debug, &tmp_verbose, &tmp_intf, &socket_val, &initfile_val, &devmgr_val, &xpath_val);
             intf_val    = tmp_intf;
             verbose_val = (bool)tmp_verbose;
             debug_val   = (bool)tmp_debug;
@@ -348,7 +348,7 @@ int main(int argc, char* argv[]) {
     if (test < 0)       goto main_FINISH;
     else if (test > 0)  intf_val = INTF_socket;
 
-    test = sub_copy_stringarg(&archive_val, archive->count, archive->filename[0]);
+    test = sub_copy_stringarg(&initfile_val, initfile->count, initfile->filename[0]);
     if (test < 0)       goto main_FINISH;
     
     test = sub_copy_stringarg(&devmgr_val, devmgr->count, devmgr->sval[0]);
@@ -381,7 +381,7 @@ int main(int argc, char* argv[]) {
     if (bailout == false) {
         exitcode = otdb_main(   intf_val, 
                                 (const char*)socket_val, 
-                                (const char*)archive_val, 
+                                (const char*)initfile_val,
                                 (const char*)devmgr_val, 
                                 (const char*)xpath_val, 
                                 json    );
@@ -389,11 +389,11 @@ int main(int argc, char* argv[]) {
 
     cJSON_Delete(json);
     
-    if (buffer != NULL)         free(buffer);
-    if (socket_val != NULL)     free(socket_val);
-    if (archive_val != NULL)    free(archive_val);
-    if (devmgr_val != NULL)     free(devmgr_val);
-    if (xpath_val != NULL)      free(xpath_val);
+    free(buffer);
+    free(socket_val);
+    free(initfile_val);
+    free(devmgr_val);
+    free(xpath_val);
 
     return exitcode;
 }
@@ -405,7 +405,7 @@ int main(int argc, char* argv[]) {
 /// the dterm side, and one for the serial I/O.
 int otdb_main(  INTF_Type intf_val,
                 const char* socket,
-                const char* archive,
+                const char* initfile,
                 const char* devmgr,
                 const char* xpath,
                 cJSON* params   ) { 
@@ -414,7 +414,7 @@ int otdb_main(  INTF_Type intf_val,
     childproc_t devmgr_proc;
     cmdtab_t main_cmdtab;
     
-    // Application data hooked into dterm (for now)
+    // Application data hooked into dterm
     dterm_ext_t appdata = {
         .cmdtab = NULL,
         .devmgr = NULL,
@@ -512,6 +512,16 @@ int otdb_main(  INTF_Type intf_val,
     sub_assign_signal(SIGINT, &sigint_handler);
     sub_assign_signal(SIGQUIT, &sigquit_handler);
     
+    if (initfile != NULL) {
+        VERBOSE_PRINTF("Running init file: %s\n", initfile);
+        if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
+            fprintf(stderr, ERRMARK"Could not run initialization file.\n");
+        }
+        else {
+            VERBOSE_PRINTF("Init file finished successfully\n");
+        }
+    }
+    
     /// Invoke the child threads below.  All of the child threads run
     /// indefinitely until an error occurs or until the user quits.  Quit can 
     /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
@@ -520,21 +530,9 @@ int otdb_main(  INTF_Type intf_val,
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished creating threads\n");
    
-    /// Threads are now running.  
-    /// If there is an archive supplied as argument, open it.
-    if (archive != NULL) {
-        uint8_t dstbuf[80];
-        int     srcsize;
-        int     cmd_rc;
-        srcsize = (int)strlen(archive);
-        cmd_rc  = cmd_open(&dterm_handle, dstbuf, &srcsize, (uint8_t*)archive, sizeof(dstbuf));
-        if (cmd_rc != 0) {
-            fprintf(stderr, "Err: open %d: Archive \"%s\" could not be opened.\n", cmd_rc, archive);
-        }
-        else {
-            VERBOSE_PRINTF("Archive \"%s\" opened.\n", archive);
-        }
-    }
+    ///------------------------------------------------------------------------
+    ///@note initfile section might be better here
+    ///------------------------------------------------------------------------
     
     /// The rest of the main() code, below, is blocked by pthread_cond_wait() 
     /// until the kill_cond is sent by one of the child threads.  This will 
@@ -580,7 +578,7 @@ int otdb_main(  INTF_Type intf_val,
 
 
 
-void sub_json_loadargs(cJSON* json, int* debug_val, int* verbose_val, int* intf_val, char** socket, char** archive, char** devmgr, char** xpath) {
+void sub_json_loadargs(cJSON* json, int* debug_val, int* verbose_val, int* intf_val, char** socket, char** initfile, char** devmgr, char** xpath) {
 
 #   define GET_STRINGENUM_ARG(DST, FUNC, NAME) do { \
         arg = cJSON_GetObjectItem(json, NAME);  \
@@ -639,7 +637,7 @@ void sub_json_loadargs(cJSON* json, int* debug_val, int* verbose_val, int* intf_
 
     GET_STRINGENUM_ARG(intf_val, sub_intf_cmp, "intf");
     GET_STRING_ARG(*socket, "socket");
-    GET_STRING_ARG(*archive, "archive");
+    GET_STRING_ARG(*initfile, "init");
     GET_STRING_ARG(*devmgr, "devmgr");
     GET_STRING_ARG(*xpath, "xpath");
     

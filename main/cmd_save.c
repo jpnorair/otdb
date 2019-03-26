@@ -114,7 +114,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // Device OTFS
     int devtest;
     int devid_i = 0;
-    otfs_t* devfs;
+    //otfs_t devfs;       ///@todo could this be NULL?
     otfs_id_union uid;
     
     cmd_arglist_t arglist = {
@@ -193,7 +193,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         devtest = sub_nextdevice(dth->ext->db, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
     }
     else {
-        devtest = otfs_iterator_start(dth->ext->db, &devfs, &uid.u8[0]);
+        devtest = otfs_iterator_start(dth->ext->db, /*&devfs*/ NULL, &uid.u8[0]);
     }
 
     DEBUGPRINT("%s %d\n", __FUNCTION__, __LINE__);
@@ -403,7 +403,7 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             devtest = sub_nextdevice(dth->ext->db, &uid.u8[0], &devid_i, arglist.devid_strlist, arglist.devid_strlist_size);
         }
         else {
-            devtest = otfs_iterator_next(dth->ext->db, &devfs, &uid.u8[0]);
+            devtest = otfs_iterator_next(dth->ext->db, /*&devfs*/ NULL, &uid.u8[0]);
         }
  
     }

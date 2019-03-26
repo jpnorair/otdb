@@ -94,11 +94,13 @@ extern struct arg_end*  end_man;
 int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     struct pollfd fds[1];
     int rc = 0;
+    int offset;
     char* curs;
     int rbytes;
     bool ack;
     char* scurs;
     int offset;
+
     
     if (dth == NULL) {
         return -1;
@@ -106,6 +108,16 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     if (dth->ext->devmgr == NULL) {
         return -1;
     }
+    
+
+    /// Purge the read pipe.  This is important to prevent any lingering data
+    /// on the pipe from prepending the protocol response.
+    ///@todo make sure this doesn't create dangling FILE pointers
+    //FPURGE(fdopen(dth->ext->devmgr->fd_readfrom, "r"));
+//    do {
+//        rbytes = (int)read(dth->ext->devmgr->fd_readfrom, dst, dstmax);
+//    } while (rbytes > 0);
+    
     
     /// In verbose mode, Print the devmgr input to stdout
     VDSRC_PRINTF("[out] %.*s\n", *inbytes, (const char*)src);
@@ -171,6 +183,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         rc = -2;
     }
     else if (rc > 0) {
+        /// Even if getting a NACK, we still need to purge the buffer
         while (1) {
             curs    = (char*)&dst[offset];
             rbytes  = (int)read(dth->ext->devmgr->fd_readfrom, curs, dstmax-offset-1);
@@ -197,11 +210,13 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
                 break;
             }
         }
+
+        /// In verbose mode, Print the devmgr input to stdout
+        VDSRC_PRINTF("[in.%c] %.*s\n", ack?'v':'x', offset, (const char*)dst);
     }
-
-    /// In verbose mode, Print the devmgr input to stdout
-    VDSRC_PRINTF("[in] %.*s\n", rc, (const char*)dst);
-
+    
+    rc = ack ? offset : 0;
+    
     cmd_devmgr_END:
     if (dst == src) {
         talloc_free(scurs);

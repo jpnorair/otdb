@@ -15,9 +15,9 @@
   */
 
 // Application Headers
-#include "cliopt.h"
+//#include "cliopt.h"
 #include "clithread.h"
-#include "debug.h"
+//#include "debug.h"
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -44,7 +44,7 @@ clithread_handle_t clithread_init(void) {
 }
 
 
-clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, void* (*start_routine)(void*), clithread_args_t* arg) {
+clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t* attr, int poolsize, void* (*start_routine)(void*), clithread_args_t* arg) {
     clithread_item_t* newitem;
     clithread_item_t* head;
     
@@ -71,7 +71,7 @@ clithread_item_t* clithread_add(clithread_handle_t handle, const pthread_attr_t*
         
         // If a talloc context is not provided explicitly, create one
         if (newitem->args.tctx == NULL) {
-            newitem->args.tctx = talloc_pool(NULL, cliopt_getpoolsize());
+            newitem->args.tctx = talloc_pool(NULL, poolsize);
             if (newitem->args.tctx == NULL) {
                 goto clithread_add_ERR;
             }

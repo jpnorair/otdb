@@ -42,6 +42,7 @@
 #include "cliopt.h"
 #include "debug.h"
 #include "popen2.h"
+#include "sockpush.h"
 
 // HBuilder Package Libraries
 #include <argtable3.h>
@@ -412,6 +413,7 @@ int otdb_main(  INTF_Type intf_val,
                    
     // Devmgr process
     childproc_t devmgr_proc;
+    sp_handle_t sockpush_handle;
     cmdtab_t main_cmdtab;
     
     // Application data hooked into dterm
@@ -452,23 +454,25 @@ int otdb_main(  INTF_Type intf_val,
     /// program used for devmgr.
     DEBUG_PRINTF("Initializing devmgr (%s) ...\n", devmgr);
     if (devmgr != NULL) {
-        if (popen2(&devmgr_proc, devmgr, POPEN2_PERSISTENT) == 0) {
-            const char* procname = "devmgr";
-
-            ///@todo extract command name from call string.
-            //char procname[32];
-            //cmd_getname(procname, devmgr, 32);
-
-            if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
-                fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
-                cli.exitcode = -2;
-                goto otdb_main_TERM2;
-            }
-            
-            appdata.devmgr = &devmgr_proc;
+        const char* procname = "devmgr";
+        
+        if (sp_open(&sockpush_handle, devmgr, 0) == 0) {
+            appdata.use_socket  = true;
+            appdata.devmgr      = sockpush_handle;
+        }
+        else if (popen2(&devmgr_proc, devmgr, POPEN2_PERSISTENT) == 0) {
+            appdata.use_socket  = false;
+            appdata.devmgr      = &devmgr_proc;
         }
         else {
             fprintf(stderr, "Err: \"%s\" could not be started.\n", devmgr);
+            cli.exitcode = -2;
+            appdata.devmgr = NULL;
+            goto otdb_main_TERM2;
+        }
+
+        if (cmdtab_add(&main_cmdtab, procname, (void*)&cmd_devmgr, NULL) != 0) {
+            fprintf(stderr, "Err: command %s could not be added to command table.\n", procname);
             cli.exitcode = -2;
             goto otdb_main_TERM2;
         }
@@ -555,11 +559,20 @@ int otdb_main(  INTF_Type intf_val,
     DEBUG_PRINTF("Freeing dterm\n");
     dterm_deinit(&dterm_handle);
  
- 
     otdb_main_TERM2:
+    if (appdata.devmgr != NULL) {
+        if (appdata.use_socket) {
+            DEBUG_PRINTF("Closing Device Manager socket\n");
+            sp_close(appdata.devmgr);
+        }
+        else {
+            DEBUG_PRINTF("Killing Device Manager subprocess\n");
+            popen2_kill(appdata.devmgr);
+        }
+    }
+    
     DEBUG_PRINTF("Freeing cmdtab\n");
     cmdtab_free(&main_cmdtab);
-    
     
     otdb_main_TERM3:
     DEBUG_PRINTF("Destroying threading objects\n");

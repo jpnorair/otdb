@@ -14,12 +14,33 @@
   *
   */
 
+/// There are three kinds of responses specified in DTerm2:
+///
+/// 1. error/ack outputs.  These have {"type":"err" ... } in JSON
+///    These indicate a receipt or error of the command that was just sent.
+///
+/// 2. msg outputs.  These have {"type":"msg" ... } in JSON
+///    These are just messages that the command may have produced.  They
+///    could be sent to a console, for example.
+///
+/// 3. rxstat outputs.  These have {"type":"rxstat" ... } in JSON
+///    These are messages that come back from the network.
+///
+/// MSG outputs are ignored here, but they could be forwarded to a console
+/// in the future.
+///
+/// Error/Ack outputs will include an "sid" field in event that a message
+/// was sent to the network.  If sid exists, devmgr should wait for the
+/// rxstat containing a matching sid.
+
 // Local Headers
-#include "cmds.h"
-#include "dterm.h"
 #include "cliopt.h"
-#include "otdb_cfg.h"
+#include "cmds.h"
 #include "debug.h"
+#include "dterm.h"
+#include "otdb_cfg.h"
+#include "popen2.h"
+#include "sockpush.h"
 
 // HB Headers/Libraries
 #include <bintex.h>
@@ -87,11 +108,24 @@ extern struct arg_end*  end_man;
 #endif
 
 
+static struct timespec diff_timespec(struct timespec start, struct timespec end) {
+    struct timespec result;
+ 
+    if (end.tv_nsec < start.tv_nsec) {
+        result.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - 1 - start.tv_sec;
+    }
+    else {
+        result.tv_nsec = end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - start.tv_sec;
+    }
+ 
+    return result;
+}
 
 
 
-///@note: this function got mangled by git merge
-int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+static int sub_devmgr_subproc(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     struct pollfd fds[1];
     int rc = 0;
     int offset;
@@ -99,17 +133,10 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     int rbytes;
     bool ack;
     char* scurs;
-    int offset;
-
+    childproc_t* subproc;
     
-    if (dth == NULL) {
-        return -1;
-    }
-    if (dth->ext->devmgr == NULL) {
-        return -1;
-    }
+    subproc = dth->ext->devmgr;
     
-
     /// Purge the read pipe.  This is important to prevent any lingering data
     /// on the pipe from prepending the protocol response.
     ///@todo make sure this doesn't create dangling FILE pointers
@@ -136,7 +163,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     /// Purge any data that might be sitting on the pipe.  Devmgr is strictly
     /// command-response.
     fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
-    fds[0].fd       = dth->ext->devmgr->fd_readfrom;
+    fds[0].fd       = subproc->fd_readfrom;
     
     rc = poll(fds, 1, 0);
     if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -145,12 +172,12 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     }
     else if (rc > 0) {
         do {
-            rbytes = (int)read(dth->ext->devmgr->fd_readfrom, dst, dstmax);
+            rbytes = (int)read(subproc->fd_readfrom, dst, dstmax);
         } while (rbytes == dstmax);
     }
     
     /// Write the src packet to the pipe
-    write(dth->ext->devmgr->fd_writeto, scurs, *inbytes);
+    write(subproc->fd_writeto, scurs, *inbytes);
     
     /// poll & block on response for configurable timeout duration.
     rc = poll(fds, 1, cliopt_gettimeout());
@@ -165,7 +192,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// Devmgr format requires hex encoding, and the first hex byte is an
     /// ack/nack.  Make sure it is 00.
-    rbytes = (int)read(dth->ext->devmgr->fd_readfrom, dst, 2);
+    rbytes = (int)read(subproc->fd_readfrom, dst, 2);
     if (rbytes != 2) {
         rc = -3;
         goto cmd_devmgr_END;
@@ -186,7 +213,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         /// Even if getting a NACK, we still need to purge the buffer
         while (1) {
             curs    = (char*)&dst[offset];
-            rbytes  = (int)read(dth->ext->devmgr->fd_readfrom, curs, dstmax-offset-1);
+            rbytes  = (int)read(subproc->fd_readfrom, curs, dstmax-offset-1);
 
             if (rbytes < 0) {
                 rc = -3;
@@ -221,6 +248,204 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     if (dst == src) {
         talloc_free(scurs);
     }
+    return rc;
+}
+
+
+
+
+static cJSON* sub_json_gettype(cJSON* top, const char* typename) {
+    top = cJSON_GetObjectItemCaseSensitive(top, "type");
+    if (cJSON_IsString(top)) {
+        if (strcmp(top->valuestring, typename) == 0) {
+            return top;
+        }
+    }
+    
+    return NULL;
+}
+
+
+static int sub_json_getsid(cJSON* top, cJSON** rxbytes, int* qualtest) {
+    int sid = -1;
+
+    cJSON* obj;
+
+    top = cJSON_GetObjectItemCaseSensitive(top, "data");
+    if (cJSON_IsObject(top)) {
+        obj = cJSON_GetObjectItemCaseSensitive(top, "sid");
+        if (cJSON_IsNumber(obj)) {
+            sid = obj->valueint;
+            
+            if (qualtest != NULL) {
+                obj = cJSON_GetObjectItemCaseSensitive(top, "qual");
+                if (cJSON_IsNumber(obj)) {
+                    *qualtest = obj->valueint;
+                }
+            }
+            if (rxbytes != NULL) {
+                *rxbytes = cJSON_GetObjectItemCaseSensitive(top, "rxbytes");
+            }
+        }
+    }
+    
+    return sid;
+}
+
+
+
+
+static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    uint8_t dout[1024];
+    
+    int rc;
+    struct timespec ref;
+    struct timespec test;
+    sp_reader_t reader;
+    
+    int state;
+    int qualtest;
+    int cmd_sid;
+    int timeout = 2000; ///@todo timeout(s) should be in cliopt
+    cJSON* resp = NULL;
+    sp_handle_t sp_handle = dth->ext->devmgr;
+    void* ctx = talloc_new(dth->tctx);
+    
+    ///1. Create the synchronous reader instance for sockpush module
+    reader = sp_reader_create(ctx, sp_handle);
+    if (reader == NULL) {
+        rc = -1;
+        goto sub_devmgr_socket_END;
+    }
+    
+    ///2. Set-up timeout reference
+    ref.tv_sec   = 0;
+    ref.tv_nsec  = 0;
+    if (clock_gettime(CLOCK_MONOTONIC, &ref) != 0) {
+        rc = -2;
+        goto sub_devmgr_socket_TERM;
+    }
+    
+    sub_devmgr_socket_SENDCMD:
+    
+    ///3. Write the output command to the socket.  This is the easy part
+    rc = sp_sendcmd(sp_handle, src, (size_t)*inbytes);
+    if (rc < 0) {
+        rc = -3;
+        goto sub_devmgr_socket_TERM;
+    }
+    
+    ///4. Wait for a message to come back on the socket.  We may need to get
+    ///   more than one message.  There's a timeout enforced
+    state = 0;
+    cmd_sid = -1;
+    while (timeout > 0) {
+        rc = sp_read(reader, dout, sizeof(dout), timeout);
+        if (rc <= 0) {
+            rc = 0; //timeout
+            goto sub_devmgr_socket_END;
+        }
+        
+        qualtest = 0;
+        resp = cJSON_Parse((const char*)dst);
+        if (cJSON_IsObject(resp)) {
+            switch (state) {
+                // State 0: looking for an ACK that has cmd string and sid int
+                //{"type":"ack", "data":{"cmd":"(STRING)", "err":0, "sid":(INT)}}
+                case 0: {
+                    if (sub_json_gettype(resp, "ack") != NULL) {
+                        cmd_sid = sub_json_getsid(resp, NULL, NULL);
+                        if (cmd_sid >= 0) {
+                            state = 1;
+                        }
+                    }
+                } break;
+            
+                // State 1: looking for an RXSTAT that has the saved sid value
+                // {"type":"rxstat", "data":{"sid":(INT) ...
+                // If qualtest != 0, the data is corrupted and command must be
+                // retried.
+                case 1: {
+                    if (sub_json_gettype(resp, "rxstat") != NULL) {
+                        cJSON* rxbytes = NULL;
+                    
+                        if (cmd_sid == sub_json_getsid(resp, &rxbytes, &qualtest)) {
+                            state = 2;
+                            
+                            if ((qualtest != 0) || (rxbytes == NULL)) {
+                                cJSON_Delete(resp);
+                                goto sub_devmgr_socket_SENDCMD;
+                            }
+                            
+                            if ((cJSON_IsString(rxbytes)) && (rxbytes->valuestring != NULL)) {
+                                rc = (int)strlen(rxbytes->valuestring);
+                                if (rc > (int)dstmax - 1) {
+                                    ///@todo dstmax too small, flag error
+                                    rc = (int)dstmax - 1;
+                                }
+                                memcpy(dst, rxbytes->valuestring, rc+1);
+                            }
+                            else {
+                                rc = 0;
+                            }
+                            goto sub_devmgr_socket_TERM;
+                        }
+                    }
+                } break;
+                
+                default: break;
+            }
+        }
+        
+        // Received a message, and it is valid JSON, but it doesn't match
+        // what we are looking for
+        // ----------------------------------------------------------------
+        ///@todo could do something here to propagate message to aconsole
+        
+        
+        // ----------------------------------------------------------------
+        
+        cJSON_Delete(resp);
+        
+        if (clock_gettime(CLOCK_MONOTONIC, &test) != 0) {
+            rc = -1;
+            goto sub_devmgr_socket_TERM;
+        }
+        test    = diff_timespec(ref, test);
+        timeout-= (test.tv_sec * 1000) + (test.tv_nsec / 1000000);
+    }
+    
+    sub_devmgr_socket_TERM:
+    cJSON_Delete(resp);
+    sp_reader_destroy(reader);
+    
+    sub_devmgr_socket_END:
+    talloc_free(ctx);
+    
+    return rc;
+}
+
+
+
+
+///@note: this function got mangled by git merge
+int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
+    int rc;
+    
+    if (dth == NULL) {
+        return -1;
+    }
+    if (dth->ext->devmgr == NULL) {
+        return -1;
+    }
+    
+    if (dth->ext->use_socket) {
+        rc = sub_devmgr_socket(dth, dst, inbytes, src, dstmax);
+    }
+    else {
+        rc = sub_devmgr_subproc(dth, dst, inbytes, src, dstmax);
+    }
+    
     return rc;
 }
 

@@ -105,10 +105,11 @@ typedef struct {
 
 // External data elements
 typedef struct {
-    cmdtab_t*       cmdtab;
-    childproc_t*    devmgr;
-    void*           db;
-    cJSON*          tmpl;
+    bool        use_socket;
+    void*       devmgr;
+    cmdtab_t*   cmdtab;
+    void*       db;
+    cJSON*      tmpl;
 } dterm_ext_t;
 
 

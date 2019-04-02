@@ -218,6 +218,10 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 
                 DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %u\n", now, file_age, arglist.age_ms);
                 
+//*****************************************************************************
+                ///@todo MAJOR TODO
+                ///@todo Time management and intelligence feature
+//*****************************************************************************
                 if (1) /*(file_age > arglist.age_ms)*/ {
                     otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);

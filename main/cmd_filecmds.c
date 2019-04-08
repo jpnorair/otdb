@@ -207,7 +207,8 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
             ///@todo this section could be broken-out into its own function
-            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
+//            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
+            if ((arglist.soft_flag == 0) && (arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
@@ -228,7 +229,8 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u", arglist.file_id);
                     
                     if (cmdbytes < 0) {
-                        rc = cmdbytes;  ///@todo coordinate error codes with debug macros
+                        ///@todo coordinate error codes with debug macros
+                        rc = cmdbytes;
                         goto cmd_read_CLOSE;
                     }
                     
@@ -240,6 +242,11 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         rc = -768 - 1;
                         goto cmd_read_CLOSE;
                     }
+                    
+                    ///@todo make sure ALP headers are appropriate (dst[0:3])
+                    dst += 4;
+                    
+                    ///@todo make sure File Protocol headers are appropriate (first 5 bytes)
                     
                     // Read length value is big endian, bytes 3:4
                     frlen.ubyte[UPPER] = dst[3];
@@ -291,7 +298,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 }
 
 
-
+///@todo this needs to be able to hit the device.  Refer to cmd_read()
 int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
     cmd_arglist_t arglist = {

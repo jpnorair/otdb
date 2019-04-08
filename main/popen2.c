@@ -37,7 +37,7 @@ static void sub_popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild);
 
 int popen2(childproc_t* childproc, const char* cmdline, unsigned int flags) {
     int rc;
-    
+
     if ((childproc != NULL) && (cmdline != NULL)) {
         childproc->flags    = flags;
         childproc->pid      = sub_popen2(cmdline, &childproc->fd_writeto, &childproc->fd_readfrom, &childproc->flags);

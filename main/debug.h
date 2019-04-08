@@ -45,20 +45,24 @@
 #define _E_WHT  "\033[37m"
 
 
+
+
+///@todo debug printf should be do {} while (0) when debug mode not compiled
 #if defined(__DEBUG__)
 #   define DEBUG_RUN(CODE)      do { CODE } while(0)
-#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) fprintf(stderr, _E_YEL "DEBUG: " _E_NRM __VA_ARGS__); } while(0)
+#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) {fprintf(stderr, _E_YEL "DEBUG: " __VA_ARGS__); fprintf(stderr, _E_NRM);}} while(0)
 #   define HEX_DUMP(LABEL, HEX, ...) do { if (cliopt_isdebug()) _HEX_(HEX, SIZE, ...) } while(0)
 
 #else
 #   define DEBUG_RUN(CODE)      do { } while(0)
-#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) fprintf(stderr, _E_YEL "DEBUG: " _E_NRM __VA_ARGS__); } while(0)
-//#   define DEBUG_PRINTF(...)    do { } while(0)
+//#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) {fprintf(stderr, _E_YEL "DEBUG: " __VA_ARGS__); fprintf(stderr, _E_NRM);}} while(0)
+#   define DEBUG_PRINTF(...)    do { } while(0)
 #   define HEX_DUMP(LABEL, HEX, ...) do { } while(0)
 
 #endif
 
 #define ERRMARK                 _E_RED"ERR: "_E_NRM
+#define ERR_PRINTF(...)         do { if (cliopt_isverbose()) { fprintf(stdout, _E_RED "ERR: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)
 #define VERBOSE_PRINTF(...)     do { if (cliopt_isverbose()) { fprintf(stdout, _E_CYN "MSG: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)
 #define VDSRC_PRINTF(...)       do { if (cliopt_isverbose()) { fprintf(stdout, _E_GRN "DSRC: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)
 #define VCLIENT_PRINTF(...)     do { if (cliopt_isverbose()) { fprintf(stdout, _E_MAG "CLIENT: " _E_NRM __VA_ARGS__); fflush(stdout); }} while(0)

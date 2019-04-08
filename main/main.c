@@ -455,7 +455,7 @@ int otdb_main(  INTF_Type intf_val,
     DEBUG_PRINTF("Initializing devmgr (%s) ...\n", devmgr);
     if (devmgr != NULL) {
         const char* procname = "devmgr";
-        
+
         if (sp_open(&sockpush_handle, devmgr, 0) == 0) {
             appdata.use_socket  = true;
             appdata.devmgr      = sockpush_handle;
@@ -517,12 +517,25 @@ int otdb_main(  INTF_Type intf_val,
     sub_assign_signal(SIGQUIT, &sigquit_handler);
     
     if (initfile != NULL) {
+        int init_rc;
         VERBOSE_PRINTF("Running init file: %s\n", initfile);
-        if (dterm_cmdfile(&dterm_handle, initfile) < 0) {
-            fprintf(stderr, ERRMARK"Could not run initialization file.\n");
-        }
-        else {
-            VERBOSE_PRINTF("Init file finished successfully\n");
+        
+        init_rc = dterm_cmdfile(&dterm_handle, initfile);
+        switch (init_rc) {
+            case 0:  VERBOSE_PRINTF("Init file finished successfully\n");
+                     break;
+            case -1: ERR_PRINTF("dterm_cmdfile() out of memmory. (-1)\n");
+                     goto initfile_ERR;
+            case -2: ERR_PRINTF("Init file cannot be opened. (-2)\n");
+                     goto initfile_ERR;
+            case -3: ERR_PRINTF("Init file cannot be read. (-3)\n");
+                     goto initfile_ERR;
+            case -4: ERR_PRINTF("Init file command returned error. (-4)\n");
+                     goto initfile_ERR;
+            default:
+            initfile_ERR:
+                fprintf(stderr, ERRMARK"Error (%i) running initialization file %s.  Initialization aborted\n", init_rc, initfile);
+                break;
         }
     }
     
@@ -532,7 +545,7 @@ int otdb_main(  INTF_Type intf_val,
     /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
     /// i.e. raise(SIGINT).
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
-    DEBUG_PRINTF("Finished creating threads\n");
+    DEBUG_PRINTF("Finished Initializing OTDB\n");
    
     ///------------------------------------------------------------------------
     ///@note initfile section might be better here

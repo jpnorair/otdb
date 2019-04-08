@@ -483,7 +483,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
                 VCLIENT_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
                 cursor += bytesout;
                 bufmax -= bytesout;
-                cursor  = (uint8_t*)stpncpy((char*)cursor, "}\f\0", bufmax);
+                cursor  = (uint8_t*)stpncpy((char*)cursor, "}\0", bufmax);
                 bytesout= (int)(cursor - protocol_buf);
             }
             
@@ -689,8 +689,8 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
     // Open the file, Load the contents into filebuf
     fp = fopen(filename, "r");
     if (fp == NULL) {
-        perror(ERRMARK"cmdfile couldn't be opened");
-        return -1;
+        //perror(ERRMARK"cmdfile couldn't be opened");
+        return -2;
     }
     
     fseek(fp, 0L, SEEK_END);
@@ -698,13 +698,13 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
     rewind(fp);
     filebuf = talloc_zero_size(dth->pctx, filebuf_sz+1);
     if (filebuf == NULL) {
-        rc = -2;
+        rc = -1;
         goto dterm_cmdfile_END;
     }
     
     rc = !(fread(filebuf, filebuf_sz, 1, fp) == 1);
     if (rc != 0) {
-        perror(ERRMARK"cmdfile couldn't be read");
+        //perror(ERRMARK"cmdfile couldn't be read");
         rc = -3;
         goto dterm_cmdfile_END;
     }
@@ -753,6 +753,7 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
         
         // Exit the command sequence on first detection of error.
         if (cmdrc < 0) {
+            rc = -4;
             dprintf(dth->fd.out, _E_RED"ERR: "_E_NRM"Command Returned %i: stopping.\n\n", cmdrc);
             break;
         }

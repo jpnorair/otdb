@@ -5,8 +5,6 @@ THISSYSTEM	:= $(shell uname -s)
 
 
 APP         ?= otdb
-APPDIR      := bin/$(THISMACHINE)
-BUILDDIR    := build/$(THISMACHINE)
 PKGDIR      := ../_hbpkg/$(THISMACHINE)
 SYSDIR      := ../_hbsys/$(THISMACHINE)
 EXT_DEF     ?= 
@@ -14,6 +12,17 @@ EXT_INC     ?=
 EXT_LIBFLAGS ?= 
 EXT_LIBS    ?= 
 VERSION     ?= 0.3.0
+
+
+ifeq ($(MAKECMDGOALS),debug)
+	APPDIR      := bin/$(THISMACHINE)
+	BUILDDIR    := build/$(THISMACHINE)_debug
+	DEBUG_MODE  := 1
+else
+	APPDIR      := bin/$(THISMACHINE)
+	BUILDDIR    := build/$(THISMACHINE)
+	DEBUG_MODE  := 0
+endif
 
 
 # Make sure the LD_LIBRARY_PATH includes the _hbsys directory
@@ -48,9 +57,9 @@ LIBMODULES  := argtable cJSON cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIB
 #SUBMODULES  := main client test
 SUBMODULES  := main client
 
-SRCEXT      := c
-DEPEXT      := d
-OBJEXT      := o
+#SRCEXT      := c
+#DEPEXT      := d
+#OBJEXT      := o
 
 CFLAGS_DEBUG:= -std=gnu99 -O -g -Wall -pthread
 CFLAGS      := -std=gnu99 -O3 -pthread
@@ -79,8 +88,11 @@ export OTDB_APP
 
 
 deps: $(LIBMODULES)
-all: directories $(APP) $(PRODUCTS)
-debug: directories $(APP).debug $(PRODUCTS)
+all: release $(PRODUCTS)
+release: directories $(APP)
+
+debug: directories $(APP).debug
+
 obj: $(SUBMODULES)
 pkg: deps all install
 remake: cleaner all
@@ -94,13 +106,13 @@ install:
 	@ln -s $(APP).$(VERSION) ./$(PKGDIR)/$(APP)
 	cd ../_hbsys && $(MAKE) sys_install INS_MACHINE=$(THISMACHINE) INS_PKGNAME=otdb
 
-
 directories:
 	@mkdir -p $(APPDIR)
 	@mkdir -p $(BUILDDIR)
 
 # Clean only this machine
 clean:
+	@$(RM) -rf $(BUILDDIR)
 	@$(RM) -rf $(BUILDDIR)
 	@$(RM) -rf $(APPDIR)
 
@@ -120,23 +132,27 @@ otdb.Darwin.a: $(OBJECTS)
 	libtool -o $(APPDIR)/libotdb.a -static $(OBJECTS)
 
 otdb.POSIX.a: $(OBJECTS)
-	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+#	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.o"))
 	ar rcs -o $(APPDIR)/libotdb.a $(OBJECTS)
 
 # Build shared library
 otdb.Linux.so: $(OBJECTS)
-	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+#	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	$(eval LIBTOOL_OBJ := $(shell find $(BUILDDIR) -type f -name "*.o"))
 	$(CC) -shared -fPIC -Wl,-soname,libotdb.so.1 -o $(APPDIR)/libotdb.so.$(VERSION) $(LIBTOOL_OBJ) -lc
 
 
 # Linker for OTDB application
 $(APP): $(SUBMODULES) 
-	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+#	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.o"))
 	$(CC) $(CFLAGS) $(OTDB_DEF) $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP) $(OBJECTS) $(OTDB_LIB)
 
 $(APP).debug: $(SUBMODULES)
-	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	$(CC) $(CFLAGS_DEBUG) $(OTDB_DEF) -D__DEBUG__ $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS) $(OTDB_LIB)
+#	$(eval OBJECTS_D := $(shell find $(BUILDDIR) -type f -name "*.d$(OBJEXT)"))
+	$(eval OBJECTS_D := $(shell find $(BUILDDIR) -type f -name "*.do"))
+	$(CC) $(CFLAGS_DEBUG) $(OTDB_DEF) -D__DEBUG__ $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS_D) $(OTDB_LIB)
 
 
 
@@ -146,7 +162,8 @@ $(LIBMODULES): %:
 
 #otdb submodules
 $(SUBMODULES): %: directories
-	cd ./$@ && $(MAKE) -f $@.mk obj
+	cd ./$@ && $(MAKE) -f $@.mk obj EXT_DEBUG=$(DEBUG_MODE)
+	
 
 #Non-File Targets
 .PHONY: all deps debug pkg obj remake clean cleaner

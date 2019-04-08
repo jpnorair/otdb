@@ -228,21 +228,25 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
             // Open File pointer and check also that memptr call worked
             fp = vl_open(arglist->block_id, i, VL_ACCESS_R, NULL);
             if (fp != NULL) {
+                ot_int binary_bytes;
                 minauth = cmd_minauth_get(fp, VL_ACCESS_R);
                 wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
                 
-                if (wrbytes >= 0) {
-                    ot_int binary_bytes;
-                    touched++;
-                    binary_bytes = cmd_hexread(dst, (char*)dst);
-                    
-                    ///@todo the +5,-5 is a hack to bypass the file read header.  Unhackify it.
-                    vl_store(fp, binary_bytes-5, dst+5);
+                if (wrbytes < 0) {
+                    vl_close(fp);
+                    break;
                 }
+                
+                touched++;
+                binary_bytes = cmd_hexread(dst, (char*)dst);
+                    
+                ///@todo the +9,-9 is a hack to bypass the alp & file read headers.
+                ///@todo Verify the ALP ID of the return message
+                ///@todo Verify the alignment of the file read vs. local file
+                vl_store(fp, binary_bytes-9, dst+9);
                 vl_close(fp);
             }
         }
-    
     }
     
     pull_action_END:

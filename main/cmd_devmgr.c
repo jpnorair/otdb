@@ -266,7 +266,34 @@ static cJSON* sub_json_gettype(cJSON* top, const char* typename) {
 }
 
 
-static int sub_json_getsid(cJSON* top, cJSON** rxbytes, int* qualtest) {
+static int sub_json_getack(cJSON* top, uint32_t* sid) {
+    uint32_t sidval = 0;
+    int errval = -1;
+
+    cJSON* obj;
+
+    top = cJSON_GetObjectItemCaseSensitive(top, "data");
+    if (cJSON_IsObject(top)) {
+        obj = cJSON_GetObjectItemCaseSensitive(top, "err");
+        if (cJSON_IsNumber(obj)) {
+            errval = obj->valueint;
+            
+            if (sid != NULL) {
+                obj = cJSON_GetObjectItemCaseSensitive(top, "sid");
+                if (cJSON_IsNumber(obj)) {
+                    sidval = obj->valueint;
+                }
+                *sid = sidval;
+            }
+        }
+    }
+    
+    return errval;
+}
+
+
+
+static int sub_json_getframe(cJSON* top, cJSON** frame, int* qualtest) {
     int sid = -1;
 
     cJSON* obj;
@@ -283,8 +310,8 @@ static int sub_json_getsid(cJSON* top, cJSON** rxbytes, int* qualtest) {
                     *qualtest = obj->valueint;
                 }
             }
-            if (rxbytes != NULL) {
-                *rxbytes = cJSON_GetObjectItemCaseSensitive(top, "rxbytes");
+            if (frame != NULL) {
+                *frame = cJSON_GetObjectItemCaseSensitive(top, "frame");
             }
         }
     }
@@ -305,7 +332,8 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     
     int state;
     int qualtest;
-    int cmd_sid;
+    uint32_t cmd_sid;
+    int cmd_err;
     int timeout = 2000; ///@todo timeout(s) should be in cliopt
     cJSON* resp = NULL;
     sp_handle_t sp_handle = dth->ext->devmgr;
@@ -314,7 +342,7 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     ///1. Create the synchronous reader instance for sockpush module
     reader = sp_reader_create(ctx, sp_handle);
     if (reader == NULL) {
-        rc = -1;
+        rc = -3;
         goto sub_devmgr_socket_END;
     }
     
@@ -322,16 +350,17 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     ref.tv_sec   = 0;
     ref.tv_nsec  = 0;
     if (clock_gettime(CLOCK_MONOTONIC, &ref) != 0) {
-        rc = -2;
+        rc = -5;
         goto sub_devmgr_socket_TERM;
     }
     
     sub_devmgr_socket_SENDCMD:
     
     ///3. Write the output command to the socket.  This is the easy part
+    DEBUG_PRINTF("Sending %i bytes to sp_sendcmd():\n%.*s\n", *inbytes, *inbytes, src);
     rc = sp_sendcmd(sp_handle, src, (size_t)*inbytes);
     if (rc < 0) {
-        rc = -3;
+        rc = -6;
         goto sub_devmgr_socket_TERM;
     }
     
@@ -342,48 +371,61 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     while (timeout > 0) {
         rc = sp_read(reader, dout, sizeof(dout), timeout);
         if (rc <= 0) {
-            rc = 0; //timeout
-            goto sub_devmgr_socket_END;
+            rc = -4; //timeout
+            goto sub_devmgr_socket_TERM;
         }
         
+        DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
+        
         qualtest = 0;
-        resp = cJSON_Parse((const char*)dst);
+        resp = cJSON_Parse((const char*)dout);
         if (cJSON_IsObject(resp)) {
             switch (state) {
                 // State 0: looking for an ACK that has cmd string and sid int
                 //{"type":"ack", "data":{"cmd":"(STRING)", "err":0, "sid":(INT)}}
+                // - If err is non-zero, there was a problem with the command
+                // - If sid is zero, this command doesn't have a packet, and
+                //   thus the operation is complete.
                 case 0: {
                     if (sub_json_gettype(resp, "ack") != NULL) {
-                        cmd_sid = sub_json_getsid(resp, NULL, NULL);
-                        if (cmd_sid >= 0) {
-                            state = 1;
+                        cmd_err = sub_json_getack(resp, &cmd_sid);
+                        if (cmd_err != 0) {
+                            ///@todo better error reporting
+                            rc = -256 - abs(cmd_err);
+                            goto sub_devmgr_socket_TERM;
                         }
+                        if (cmd_sid == 0) {
+                            rc = 0;
+                            goto sub_devmgr_socket_TERM;
+                        }
+                        state = 1;
                     }
                 } break;
             
                 // State 1: looking for an RXSTAT that has the saved sid value
                 // {"type":"rxstat", "data":{"sid":(INT) ...
-                // If qualtest != 0, the data is corrupted and command must be
-                // retried.
+                // - If sid does not match saved sid, ignore
+                // - If qualtest!=0, then data is corrupted: retry.
+                // - If frame field is present (hex) it is copied to output
                 case 1: {
                     if (sub_json_gettype(resp, "rxstat") != NULL) {
-                        cJSON* rxbytes = NULL;
+                        cJSON* frame = NULL;
                     
-                        if (cmd_sid == sub_json_getsid(resp, &rxbytes, &qualtest)) {
+                        if (cmd_sid == sub_json_getframe(resp, &frame, &qualtest)) {
                             state = 2;
                             
-                            if ((qualtest != 0) || (rxbytes == NULL)) {
+                            if ((qualtest != 0) || (frame == NULL)) {
                                 cJSON_Delete(resp);
                                 goto sub_devmgr_socket_SENDCMD;
                             }
                             
-                            if ((cJSON_IsString(rxbytes)) && (rxbytes->valuestring != NULL)) {
-                                rc = (int)strlen(rxbytes->valuestring);
+                            if ((cJSON_IsString(frame)) && (frame->valuestring != NULL)) {
+                                rc = (int)strlen(frame->valuestring);
                                 if (rc > (int)dstmax - 1) {
                                     ///@todo dstmax too small, flag error
                                     rc = (int)dstmax - 1;
                                 }
-                                memcpy(dst, rxbytes->valuestring, rc+1);
+                                memcpy(dst, frame->valuestring, rc+1);
                             }
                             else {
                                 rc = 0;
@@ -400,15 +442,16 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
         // Received a message, and it is valid JSON, but it doesn't match
         // what we are looking for
         // ----------------------------------------------------------------
-        ///@todo could do something here to propagate message to aconsole
+        ///@todo could do something here to propagate message to a console
         
         
         // ----------------------------------------------------------------
         
         cJSON_Delete(resp);
+        resp = NULL;
         
         if (clock_gettime(CLOCK_MONOTONIC, &test) != 0) {
-            rc = -1;
+            rc = -7;
             goto sub_devmgr_socket_TERM;
         }
         test    = diff_timespec(ref, test);
@@ -436,7 +479,7 @@ int cmd_devmgr(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         return -1;
     }
     if (dth->ext->devmgr == NULL) {
-        return -1;
+        return -2;
     }
     
     if (dth->ext->use_socket) {

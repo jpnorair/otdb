@@ -222,7 +222,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 ///@todo MAJOR TODO
                 ///@todo Time management and intelligence feature
 //*****************************************************************************
-                if (1) /*(file_age > arglist.age_ms)*/ {
+                if (file_age > arglist.age_ms) {
                     otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);
                     cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u", arglist.file_id);
@@ -235,7 +235,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     // Convert to binary.
                     // 5 bytes of file header
                     cmdbytes = cmd_hexnread(dst, (const char*)dst, dstmax);
-                    if (cmdbytes <= 5) {
+                    if (cmdbytes <= 9) {
                         ///@todo error code for file error
                         rc = -768 - 1;
                         goto cmd_read_CLOSE;

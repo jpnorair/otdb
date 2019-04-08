@@ -76,5 +76,5 @@ $(BUILDDIR)/%.$(OBJEXT): ./%.$(SRCEXT)
 	
 
 #Non-File Targets
-.PHONY: all obj remake clean cleaner resources
+.PHONY: all obj remake resources clean cleaner
 

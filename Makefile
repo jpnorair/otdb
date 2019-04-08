@@ -166,5 +166,5 @@ $(SUBMODULES): %: directories
 	
 
 #Non-File Targets
-.PHONY: all deps debug pkg obj remake clean cleaner
+.PHONY: deps all release debug obj pkg remake install directories clean cleaner
 

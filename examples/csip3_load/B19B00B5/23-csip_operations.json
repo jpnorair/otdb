@@ -1,0 +1,12 @@
+{
+    "csip_operations": {
+    	"_meta":{"block":"isf", "id":23, "mod":52, "size":16, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+			"wintms":0,
+			"rvrttms":0,
+			"rmptms":0,
+			"opmodprc":0,
+			"opmodst":0
+		}
+    }
+}

@@ -207,6 +207,7 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
     vl_header_t* fhdr;
     int touched=0;
     int num_files=-1;
+    int i;
     
     /// 1. Do input check on devfs, which is provided by the iterator function.
     ///    The other arguments are passed-though from the caller, so it is up
@@ -220,7 +221,7 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
     if (fhdr != NULL) {
         /// 3. Read each file from the target.  Use Root if necessary.
         dstlim = (int)dstmax;
-        for (int i=0; i<num_files; i++) {
+        for (i=0; i<num_files; i++) {
             AUTH_level minauth;
             vlFILE* fp;
             int wrbytes;
@@ -230,13 +231,14 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
             if (fp != NULL) {
                 ot_int binary_bytes;
                 minauth = cmd_minauth_get(fp, VL_ACCESS_R);
-                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
                 
-                if (wrbytes < 0) {
+                wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
+                if (wrbytes >= 0) {
                     vl_close(fp);
                     break;
                 }
                 
+                pull_action_WRITESUCCESS:
                 touched++;
                 binary_bytes = cmd_hexread(dst, (char*)dst);
                     

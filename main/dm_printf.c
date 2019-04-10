@@ -133,5 +133,3 @@ int dm_xnprintf(dterm_handle_t* dth, uint8_t* dst, size_t dstmax, AUTH_level aut
     return cmd_devmgr(dth, (uint8_t*)dst, &psize, (uint8_t*)dst, dstmax);
 }
 
-
-

@@ -33,4 +33,3 @@ int dm_printf(dterm_handle_t* dth, uint8_t* dst, size_t dstmax, const char* rest
 
 int dm_xnprintf(dterm_handle_t* dth, uint8_t* dst, size_t dstmax, AUTH_level auth, uint64_t uid, const char* restrict fmt, ...);
 
-

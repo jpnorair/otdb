@@ -179,7 +179,6 @@ static int push_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
         }
     }
         
-    push_action_END:
     /// 4. Add results to output manifest
     ///@todo add hex output option
     if (arglist->jsonout_flag) {
@@ -231,14 +230,11 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
             if (fp != NULL) {
                 ot_int binary_bytes;
                 minauth = cmd_minauth_get(fp, VL_ACCESS_R);
-                
                 wrbytes = dm_xnprintf(dth, dst, dstmax, minauth, devfs->uid.u64, "file r -b %s %i", arg_b, i);
-                if (wrbytes >= 0) {
+                if (wrbytes <= 0) {
                     vl_close(fp);
                     break;
                 }
-                
-                pull_action_WRITESUCCESS:
                 touched++;
                 binary_bytes = cmd_hexread(dst, (char*)dst);
                     
@@ -251,7 +247,6 @@ static int pull_action(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t*
         }
     }
     
-    pull_action_END:
     /// 4. Add results to output manifest
     ///@todo add hex output option
     if (arglist->jsonout_flag) {

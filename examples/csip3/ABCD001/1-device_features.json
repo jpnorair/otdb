@@ -8,9 +8,10 @@
 			"maxpacket":1,
 			"macmodes":"0001",
 			"nlsmodes":"0000",
+			"opmode":0,
 			"hwversion":1,
-			"fwversion":1,
-			"blversion":1
+            "fwversion":"0102030405060708",
+            "blversion":"0102030405060708"
         }
     }
 }

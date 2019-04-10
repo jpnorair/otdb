@@ -1,0 +1,10 @@
+{
+    "root_auth_key":{
+        "_meta":{"block":"isf", "id":14, "mod":0, "size":22, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "info":{"pos":0, "type":"hex[2]", "def":"0038"},
+            "lifetime":{"pos":2, "type":"uint32_t", "def":86400},
+            "key":{"pos":6, "type":"hex[16]", "def":"00112233445566778899AABBCCDDEEFF"}
+        }
+    }
+}

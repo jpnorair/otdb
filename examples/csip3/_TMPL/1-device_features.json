@@ -12,9 +12,10 @@
             "fsfree":{"pos":18, "type":"uint16_t", "def":128},
             "logsize":{"pos":20, "type":"uint32_t", "def":16384},
             "logfree":{"pos":24, "type":"uint32_t", "def":16384},
-            "hwversion":{"pos":32, "type":"uint32_t", "def":1},
-            "fwversion":{"pos":36, "type":"uint32_t", "def":1},
-            "blversion":{"pos":40, "type":"uint32_t", "def":1}
+            "opmode":{"pos":28, "type":"uint16_t", "def":0},
+            "hwversion":{"pos":30, "type":"uint16_t", "def":1},
+            "fwversion":{"pos":32, "type":"hex[8]", "def":"0102030405060708"},
+            "blversion":{"pos":40, "type":"hex[8]", "def":"0102030405060708"}
         }
     }
 }

@@ -326,18 +326,19 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     uint8_t dout[1024];
     
     int rc;
+    int state;
+    int qualtest;
+    int cmd_err;
+    uint32_t cmd_sid;
     struct timespec ref;
     struct timespec test;
     sp_reader_t reader;
     
-    int state;
-    int qualtest;
-    uint32_t cmd_sid;
-    int cmd_err;
-    int timeout = 2000; ///@todo timeout(s) should be in cliopt
-    cJSON* resp = NULL;
-    sp_handle_t sp_handle = dth->ext->devmgr;
-    void* ctx = talloc_new(dth->tctx);
+    /// @todo devmgr timeout should be a cliopt-style variable.  Currently fixed.
+    cJSON* resp             = NULL;
+    sp_handle_t sp_handle   = dth->ext->devmgr;
+    void* ctx               = talloc_new(dth->tctx);
+    int timeout             = 2000;
     
     ///1. Create the synchronous reader instance for sockpush module
     reader = sp_reader_create(ctx, sp_handle);
@@ -366,14 +367,14 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     
     ///4. Wait for a message to come back on the socket.  We may need to get
     ///   more than one message.  There's a timeout enforced
-    /// @todo sp_read() timeout should be a cliopt-style variable.  Currently fixed
+    /// @todo sp_read() timeout should be a cliopt-style variable.  Currently fixed.
     state = 0;
     cmd_sid = -1;
     while (timeout > 0) {
         rc = sp_read(reader, dout, sizeof(dout), 600);
         if (rc <= 0) {
             rc = -4; //timeout
-            goto sub_devmgr_socket_TERM;
+            goto sub_devmgr_socket_CHECKTIME;
         }
         
         DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
@@ -451,6 +452,7 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
         cJSON_Delete(resp);
         resp = NULL;
         
+        sub_devmgr_socket_CHECKTIME:
         if (clock_gettime(CLOCK_MONOTONIC, &test) != 0) {
             rc = -7;
             goto sub_devmgr_socket_TERM;

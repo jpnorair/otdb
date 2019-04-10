@@ -207,8 +207,8 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             
             ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
             ///@todo this section could be broken-out into its own function
-//            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
-            if ((arglist.soft_flag == 0) && (arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
+            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
+//            if ((arglist.soft_flag == 0) && (arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
@@ -243,19 +243,16 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         goto cmd_read_CLOSE;
                     }
                     
-                    ///@todo make sure ALP headers are appropriate (dst[0:3])
-                    dst += 4;
-                    
                     ///@todo make sure File Protocol headers are appropriate (first 5 bytes)
                     
                     // Read length value is big endian, bytes 3:4
-                    frlen.ubyte[UPPER] = dst[3];
-                    frlen.ubyte[LOWER] = dst[4];
+                    frlen.ubyte[UPPER] = dst[4+3];
+                    frlen.ubyte[LOWER] = dst[4+4];
                     
                     // store new data to the local cache file.
                     // This will also change any file attributes, such as the
                     // file modtime on close
-                    rc = vl_store(fp, frlen.ushort, &dst[5]);
+                    rc = vl_store(fp, frlen.ushort, &dst[4+5]);
                     if (rc != 0) {
                         ///@todo error code for store error (means file write is too big)
                         rc = -1024 - 1;

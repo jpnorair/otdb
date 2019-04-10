@@ -565,6 +565,7 @@ void* sp_iothread(void* args) {
             while(1) {
                 if (read(fds[0].fd, cursor, 1) < 1) {
                     pthread_mutex_unlock(&sp->user_mutex);
+//fprintf(stderr, "sp_iothread() reconnect\n");
                     goto sp_iothread_RECONNECT;
                 }
                 if ((*cursor == '\n') || (*cursor == 0)) {
@@ -572,6 +573,7 @@ void* sp_iothread(void* args) {
                     break;
                 }
                 if (++cursor >= end) {
+//fprintf(stderr, "sp_iothread() read cursor looping\n");
                     cursor = (char*)rbuffer;
                 }
             }
@@ -581,6 +583,8 @@ void* sp_iothread(void* args) {
             sp->read_id++;
             sp->read_buf    = rbuffer;
             sp->read_size   = (cursor - (char*)rbuffer);
+            
+//fprintf(stderr, "sp_iothread() readline (%zu bytes)\n%s\n", sp->read_size, sp->read_buf);
             
             // Also, publish it to subscribers, which are callbacks that need
             // to deal with data replication themselves.

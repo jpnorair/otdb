@@ -320,8 +320,6 @@ static int sub_json_getframe(cJSON* top, cJSON** frame, int* qualtest) {
 }
 
 
-
-
 static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     uint8_t dout[1024];
     
@@ -334,11 +332,12 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     struct timespec test;
     sp_reader_t reader;
     
-    /// @todo devmgr timeout should be a cliopt-style variable.  Currently fixed.
+    /// @todo timeout variables should be cliopt-style variables.  Currently fixed.
     cJSON* resp             = NULL;
     sp_handle_t sp_handle   = dth->ext->devmgr;
     void* ctx               = talloc_new(dth->tctx);
-    int timeout             = 2000;
+    int global_timeout      = 3000;
+    int read_timeout        = 800;
     
     ///1. Create the synchronous reader instance for sockpush module
     reader = sp_reader_create(ctx, sp_handle);
@@ -355,9 +354,8 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
         goto sub_devmgr_socket_TERM;
     }
     
-    sub_devmgr_socket_SENDCMD:
-    
     ///3. Write the output command to the socket.  This is the easy part
+    sub_devmgr_socket_SENDCMD:
     DEBUG_PRINTF("Sending %i bytes to sp_sendcmd():\n%.*s\n", *inbytes, *inbytes, src);
     rc = sp_sendcmd(sp_handle, src, (size_t)*inbytes);
     if (rc < 0) {
@@ -370,95 +368,109 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     /// @todo sp_read() timeout should be a cliopt-style variable.  Currently fixed.
     state = 0;
     cmd_sid = -1;
-    while (timeout > 0) {
-        rc = sp_read(reader, dout, sizeof(dout), 600);
+    while (1) {
+        rc = sp_read(reader, dout, sizeof(dout), read_timeout);
         if (rc <= 0) {
-            rc = -4; //timeout
-            goto sub_devmgr_socket_CHECKTIME;
+            DEBUG_PRINTF("sp_read() timeout in cmd_devmgr() %i\n", read_timeout);
+            rc = -4; //-4 == retry
         }
-        
-        DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
-        
-        qualtest = 0;
-        resp = cJSON_Parse((const char*)dout);
-        if (cJSON_IsObject(resp)) {
-            switch (state) {
+        else {
+            DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
+            rc = -1;
+            qualtest = 0;
+            resp = cJSON_Parse((const char*)dout);
+            if (resp != NULL) {
+                switch (state) {
                 // State 0: looking for an ACK that has cmd string and sid int
                 //{"type":"ack", "data":{"cmd":"(STRING)", "err":0, "sid":(INT)}}
                 // - If err is non-zero, there was a problem with the command
                 // - If sid is zero, this command doesn't have a packet, and
                 //   thus the operation is complete.
-                case 0: {
+                case 0:
                     if (sub_json_gettype(resp, "ack") != NULL) {
                         cmd_err = sub_json_getack(resp, &cmd_sid);
                         if (cmd_err != 0) {
                             ///@todo better error reporting
                             rc = -256 - abs(cmd_err);
-                            goto sub_devmgr_socket_TERM;
                         }
-                        if (cmd_sid == 0) {
+                        else if (cmd_sid == 0) {
                             rc = 0;
-                            goto sub_devmgr_socket_TERM;
                         }
-                        state = 1;
+                        else {
+                            state = 1;
+                        }
                     }
-                } break;
-            
+                    break;
+                
                 // State 1: looking for an RXSTAT that has the saved sid value
                 // {"type":"rxstat", "data":{"sid":(INT) ...
                 // - If sid does not match saved sid, ignore
                 // - If qualtest!=0, then data is corrupted: retry.
-                // - If frame field is present (hex) it is copied to output
-                case 1: {
+                // - If the frame is somehow invalid: retry
+                // - If the frame is valid, rc set accordingly, and exit.
+                case 1:
                     if (sub_json_gettype(resp, "rxstat") != NULL) {
                         cJSON* frame = NULL;
                     
                         if (cmd_sid == sub_json_getframe(resp, &frame, &qualtest)) {
-                            state = 2;
+                            state   = 2;
+                            rc      = -4;   //-4 == retry
                             
-                            if ((qualtest != 0) || (frame == NULL)) {
-                                cJSON_Delete(resp);
-                                goto sub_devmgr_socket_SENDCMD;
-                            }
-                            
-                            if ((cJSON_IsString(frame)) && (frame->valuestring != NULL)) {
-                                rc = (int)strlen(frame->valuestring);
-                                if (rc > (int)dstmax - 1) {
-                                    ///@todo dstmax too small, flag error
-                                    rc = (int)dstmax - 1;
+                            if ((qualtest == 0) && (frame != NULL)) {
+                                if ((cJSON_IsString(frame)) && (frame->valuestring != NULL)) {
+                                    rc = (int)strlen(frame->valuestring);
+                                    if (rc > (int)dstmax - 1) {
+                                        ///@todo dstmax too small, flag error
+                                        rc = (int)dstmax - 1;
+                                    }
+                                    memcpy(dst, frame->valuestring, rc+1);
                                 }
-                                memcpy(dst, frame->valuestring, rc+1);
                             }
-                            else {
-                                rc = 0;
-                            }
-                            goto sub_devmgr_socket_TERM;
                         }
                     }
-                } break;
-                
+                    break;
+                    
                 default: break;
+                }
+            
+                // Received a message, and it is valid JSON, but it doesn't match
+                // what we are looking for
+                // ----------------------------------------------------------------
+                ///@todo could do something here to propagate message to a console
+                
+                
+                // ----------------------------------------------------------------
+            
+                cJSON_Delete(resp);
+                resp = NULL;
             }
+        
+            // Received a message, but it's not JSON.
         }
         
-        // Received a message, and it is valid JSON, but it doesn't match
-        // what we are looking for
-        // ----------------------------------------------------------------
-        ///@todo could do something here to propagate message to a console
+        // Escape loop if the read is finished
+        if (rc >= 0) {
+            break;
+        }
         
-        
-        // ----------------------------------------------------------------
-        
-        cJSON_Delete(resp);
-        resp = NULL;
-        
-        sub_devmgr_socket_CHECKTIME:
+        // Retract the timeout
         if (clock_gettime(CLOCK_MONOTONIC, &test) != 0) {
-            rc = -7;
+            rc = -5;
+            break;
+        }
+        test            = diff_timespec(ref, test);
+        global_timeout -= (test.tv_sec * 1000) + (test.tv_nsec / 1000000);
+        
+        // Escape loop if:
+        // - there's a timeout (goto termination)
+        // - rc == -4, a reception error (retry the command)
+        if (global_timeout <= 0) {
             goto sub_devmgr_socket_TERM;
         }
-        test    = diff_timespec(ref, test);
-        timeout-= (test.tv_sec * 1000) + (test.tv_nsec / 1000000);
+        if (rc == -4) {
+//fprintf(stderr, "Retrying...\n");
+            goto sub_devmgr_socket_SENDCMD;
+        }
     }
     
     sub_devmgr_socket_TERM:
@@ -468,6 +480,7 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     sub_devmgr_socket_END:
     talloc_free(ctx);
     
+//fprintf(stderr, "Returning %i\n", rc);
     return rc;
 }
 

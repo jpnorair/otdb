@@ -258,7 +258,6 @@ int client_main(const char* otdbpath, const char* otdbsocket) {
     
     /// Start OTDB as a child process
     /// wait 1 second for otdb to start up completely (this is overkill)
-    ///@todo spawn a local thread for relaying reads from the OTDB stdout
     {   const char* otdbargs   = "-i socket -S ";
         const char* def_socket = "./otdbsocket";
         

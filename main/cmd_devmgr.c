@@ -365,7 +365,6 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     
     ///4. Wait for a message to come back on the socket.  We may need to get
     ///   more than one message.  There's a timeout enforced
-    /// @todo sp_read() timeout should be a cliopt-style variable.  Currently fixed.
     state = 0;
     cmd_sid = -1;
     while (1) {

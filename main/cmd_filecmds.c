@@ -205,7 +205,6 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Beginning of Read synchronization section --------------------
             /// Check if age parameter is in acceptable range.
             
-            ///@todo might need to do some threaded I/O for write & ACK, but maybe not.
             ///@todo this section could be broken-out into its own function
             if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
 //            if ((arglist.soft_flag == 0) && (arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
@@ -616,7 +615,6 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             memcpy(&dptr[arglist.range_lo], arglist.filedata, span);
         }
         
-        ///@todo Re-implement this via devmgr
         if ((arglist.soft_flag == 0) && (dth->ext->devmgr != NULL)) {
             AUTH_level min_auth;
             uint64_t uid = 0;

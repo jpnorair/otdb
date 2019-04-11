@@ -168,8 +168,6 @@ size_t dirent_buf_size(DIR * dirp) {
 
 
 
-///@todo this function is used only by LOAD command at the moment, but in the
-/// future, the part of OPEN that it replicates should also use it.
 
 /** @brief Implements an interior routine in OPEN and LOAD commands, for loading data .json files
   * @param dth          (dterm_handle_t*) dterm handle
@@ -519,10 +517,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
  
     /// On successful extraction, create a new device in the database
     DEBUGPRINT("cmd_open():\n  json=%d, archive=%s\n", arglist.jsonout_flag, arglist.archive_path);
-    
-    ///@todo implementation
-    /// When opening a database, a copy of the template gets saved 
-    /// temporarily as long as the Database is open.
     
     /// 1. Check if input file is compressed.  If so, decompress it to 
     ///    the local store (.activedb)

@@ -114,7 +114,6 @@ int cmd_save(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // Device OTFS
     int devtest;
     int devid_i = 0;
-    //otfs_t devfs;       ///@todo could this be NULL?
     otfs_id_union uid;
     
     cmd_arglist_t arglist = {

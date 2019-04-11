@@ -47,7 +47,6 @@
 
 
 
-///@todo debug printf should be do {} while (0) when debug mode not compiled
 #if defined(__DEBUG__)
 #   define DEBUG_RUN(CODE)      do { CODE } while(0)
 #   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) {fprintf(stderr, _E_YEL "DEBUG: " __VA_ARGS__); fprintf(stderr, _E_NRM);}} while(0)
@@ -55,7 +54,6 @@
 
 #else
 #   define DEBUG_RUN(CODE)      do { } while(0)
-//#   define DEBUG_PRINTF(...)    do { if (cliopt_isdebug()) {fprintf(stderr, _E_YEL "DEBUG: " __VA_ARGS__); fprintf(stderr, _E_NRM);}} while(0)
 #   define DEBUG_PRINTF(...)    do { } while(0)
 #   define HEX_DUMP(LABEL, HEX, ...) do { } while(0)
 
@@ -70,7 +68,6 @@
 
 
 
-///@todo finish error codes and make them into an HB lib
 
 /// LIBCODE: up to 128
 #define LIBCODE(VAL)                    LIBCODE_##VAL

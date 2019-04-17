@@ -1,0 +1,32 @@
+{
+    "pwrdata_inv": {
+    	"_meta":{"block":"isf", "id":16, "mod":52, "size":50, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+			"contactor_l1":0,
+			"contactor_l2":0,
+			"ac_current_l1":0,
+			"ac_current_l2":0,
+			"ac_voltage_l1":0,
+			"ac_voltage_l2":0,
+			"ac_phase_l1":0,
+			"ac_phase_l2":0,
+			"pwr_active_l1":0,
+			"pwr_active_l2":0,
+			"pwr_reactive_l1":0,
+			"pwr_reactive_l2":0,
+			"hw_temp_inv1":0,
+			"hw_temp_inv2":0,
+			"hw_dcdc_temp":0,
+			"pwr_grid_dir":0,
+			"pwr_opstate":0,
+			"batt_fc":0,
+			"batt_soc":0,
+			"batt_soh":0,
+			"batt_rc":0,
+			"batt_voltage":0,
+			"batt_temp":0,
+			"batt_ate":0,
+			"batt_atf":0
+    	}
+	}
+}

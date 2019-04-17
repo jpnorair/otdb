@@ -1,0 +1,9 @@
+{
+    "csip_nameplate_mppt": {
+    	"_meta":{"block":"isf", "id":19, "mod":52, "size":8, "pos":0, "type":"struct", "modtime":0},
+    	"_content":{
+			"pv_ishort":0,
+			"pv_vopen":0
+		}
+    }
+}

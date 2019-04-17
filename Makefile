@@ -11,7 +11,7 @@ EXT_DEF     ?=
 EXT_INC     ?= 
 EXT_LIBFLAGS ?= 
 EXT_LIBS    ?= 
-VERSION     ?= 0.3.0
+VERSION     ?= 1.0.a
 
 
 ifeq ($(MAKECMDGOALS),debug)

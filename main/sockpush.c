@@ -421,11 +421,11 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
         sp->waiting_readers++;
         pthread_mutex_unlock(&sp->id_mutex);
         
-        pthread_mutex_lock(&sp->readline_mutex);
         if (pthread_cond_timedwait(&sp->readline_cond, &sp->readline_mutex, &ts) == 0) {
             rc = sub_loadread(rdr, sp, readbuf, readmax);
+            pthread_mutex_unlock(&sp->readline_mutex);
         }
-        pthread_mutex_unlock(&sp->readline_mutex);
+        
         
         // Unset "waiting state"
         pthread_mutex_lock(&sp->id_mutex);

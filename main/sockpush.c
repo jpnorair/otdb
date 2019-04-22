@@ -76,12 +76,17 @@ typedef struct {
     uint8_t*        read_buf;
     size_t          read_size;
     unsigned int    read_id;
-    pthread_mutex_t id_mutex;
+    
+    ///@todo id_mutex deprecated
+    //pthread_mutex_t id_mutex;
     
     // User mutex: for modifying readers and subs information
     pthread_mutex_t user_mutex;
     
     // reader cond: for broadcasting "new line arrived" to all readers
+    ///@note readline_inactive is needed for Linux, which can have unreliable
+    ///      implementation of pthread_cond_wait & pthread_cond_timedwait
+    bool            readline_inactive;
     pthread_cond_t  readline_cond;
     pthread_mutex_t readline_mutex;
     
@@ -122,7 +127,7 @@ static int sub_mutex_timedlock(pthread_mutex_t *restrict mutex, const struct tim
     // Try to acquire the lock and, if we fail, sleep for 1ms. */
     while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
         clock_gettime(CLOCK_REALTIME, &cur);
-fprintf(stderr, _E_RED"pthread_mutex_trylock busy\n"_E_NRM);
+//fprintf(stderr, _E_RED"pthread_mutex_trylock busy\n"_E_NRM);
         if ((cur.tv_sec > timeout->tv_sec) \
         || ((cur.tv_sec == timeout->tv_sec) \
         && (cur.tv_nsec >= timeout->tv_nsec))) {
@@ -220,10 +225,10 @@ int sp_open(sp_handle_t* handle, const char* socket_path, unsigned int flags) {
         rc = -5;
         goto sp_open_ERR;
     }
-    if (pthread_mutex_init(&new_sp->id_mutex, NULL) != 0) {
-        rc = -6;
-        goto sp_open_ERR;
-    }
+    //if (pthread_mutex_init(&new_sp->id_mutex, NULL) != 0) {
+    //    rc = -6;
+    //    goto sp_open_ERR;
+    //}
 
     // Initialize ReadWait Cond setup
     if (pthread_mutex_init(&new_sp->readline_mutex, NULL) != 0) {
@@ -249,8 +254,8 @@ int sp_open(sp_handle_t* handle, const char* socket_path, unsigned int flags) {
         case -9: pthread_cond_destroy(&new_sp->readline_cond);
         case -8: pthread_mutex_unlock(&new_sp->readline_mutex);
                  pthread_mutex_destroy(&new_sp->readline_mutex);
-        case -7: pthread_mutex_unlock(&new_sp->id_mutex);
-                 pthread_mutex_destroy(&new_sp->id_mutex);
+        case -7: //pthread_mutex_unlock(&new_sp->id_mutex);
+                 //pthread_mutex_destroy(&new_sp->id_mutex);
         case -6: pthread_mutex_unlock(&new_sp->user_mutex);
                  pthread_mutex_destroy(&new_sp->user_mutex);
         case -5: close(new_sp->fd_sock);
@@ -281,8 +286,8 @@ int sp_close(sp_handle_t handle) {
     pthread_mutex_unlock(&sp->readline_mutex);
     pthread_mutex_destroy(&sp->readline_mutex);
     
-    pthread_mutex_unlock(&sp->id_mutex);
-    pthread_mutex_destroy(&sp->id_mutex);
+    //pthread_mutex_unlock(&sp->id_mutex);
+    //pthread_mutex_destroy(&sp->id_mutex);
     
     pthread_mutex_unlock(&sp->user_mutex);
     pthread_mutex_destroy(&sp->user_mutex);
@@ -376,6 +381,7 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
     sprdr_t* rdr;
     struct timespec ts, cur;
     int rc = 0;
+    int wait_test;
 
     rdr = reader;
     if (rdr == NULL) {
@@ -417,29 +423,33 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
     // for a readline cond signal to be broadcasted by sp_iothread().
     if (rc == 0) {
         // Set "waiting state"
-        pthread_mutex_lock(&sp->id_mutex);
-        sp->waiting_readers++;
-        pthread_mutex_unlock(&sp->id_mutex);
+        //pthread_mutex_lock(&sp->id_mutex);
+        //sp->waiting_readers++;
+        //pthread_mutex_unlock(&sp->id_mutex);
         
-fprintf(stderr, "sp_read() is waiting\n");
+//fprintf(stderr, "sp_read() is waiting\n");
         
-        ///@todo seems like there's a need to put cond_wait/timed_wait in a
-        ///      false positive validation loop.  Google it and implement.
+        ///@note Linux has unreliable pthread_cond_wait, so an additional flag
+        /// (readline_inactive) is recommended to prevent unwanted releases.
         pthread_mutex_lock(&sp->readline_mutex);
-        if (pthread_cond_timedwait(&sp->readline_cond, &sp->readline_mutex, &ts) == 0) {
+        sp->waiting_readers++;
+        wait_test = 0;
+        while (sp->readline_inactive && (wait_test == 0)) {
+            wait_test = pthread_cond_timedwait(&sp->readline_cond, &sp->readline_mutex, &ts);
+        }
+        if (wait_test == 0) {
             rc = sub_loadread(rdr, sp, readbuf, readmax);
         }
+        sp->waiting_readers--;
         pthread_mutex_unlock(&sp->readline_mutex);
         
-fprintf(stderr, "sp_read() is exiting\n");
+//fprintf(stderr, "sp_read() is exiting\n");
         
         // Unset "waiting state"
-        pthread_mutex_lock(&sp->id_mutex);
-        sp->waiting_readers -= (sp->waiting_readers != 0);
-        pthread_mutex_unlock(&sp->id_mutex);
+        //pthread_mutex_lock(&sp->id_mutex);
+        //sp->waiting_readers -= (sp->waiting_readers != 0);
+        //pthread_mutex_unlock(&sp->id_mutex);
     }
-    
-    
     
     sp_read_END:
     return rc;
@@ -534,9 +544,10 @@ void* sp_iothread(void* args) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Setup reference variables needed by sp_read()
-    sp->read_buf    = linebuf;
-    sp->read_size   = 0;
-    sp->read_id     = 1;
+    sp->readline_inactive   = true;
+    sp->read_buf            = linebuf;
+    sp->read_size           = 0;
+    sp->read_id             = 1;
     
     while (1) {
         /// Connect to the socket
@@ -645,11 +656,11 @@ void* sp_iothread(void* args) {
             sp->read_size = (cursor - (char*)readbuf);
             memcpy(sp->read_buf, readbuf, sp->read_size);
 
-{
-struct timespec cur;
-clock_gettime(CLOCK_REALTIME, &cur);
-fprintf(stderr, _E_MAG "sp_iothread() [%zu.%zu] readline (%zu bytes)\n%s\n" _E_NRM, cur.tv_sec, cur.tv_nsec, sp->read_size, sp->read_buf);
-}
+//{
+//struct timespec cur;
+//clock_gettime(CLOCK_REALTIME, &cur);
+//fprintf(stderr, _E_MAG "sp_iothread() [%zu.%zu] readline (%zu bytes)\n%s\n" _E_NRM, cur.tv_sec, cur.tv_nsec, sp->read_size, sp->read_buf);
+//}
             
             // Also, publish it to subscribers, which are callbacks that need
             // to deal with data replication themselves.
@@ -664,12 +675,13 @@ fprintf(stderr, _E_MAG "sp_iothread() [%zu.%zu] readline (%zu bytes)\n%s\n" _E_N
             }
             
             waiting_readers = (int)sp->readers;
-fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
+//fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
             pthread_mutex_unlock(&sp->user_mutex);
             
             // If there are readers allocated, push reads to waiting readers.
             ///@todo determine if there's a better way to do this than with
             /// waiting_readers semaphore
+            /*
             if (waiting_readers > 0) {
                 pthread_mutex_lock(&sp->id_mutex);
                 waiting_readers = (int)sp->waiting_readers;
@@ -677,6 +689,7 @@ fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
                 
                 if (waiting_readers > 0) {
                     pthread_mutex_lock(&sp->readline_mutex);
+                    sp->readline_inactive = false;
                     pthread_cond_broadcast(&sp->readline_cond);
                     pthread_mutex_unlock(&sp->readline_mutex);
                     
@@ -686,9 +699,28 @@ fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
                         waiting_readers = (int)sp->waiting_readers;
                         pthread_mutex_unlock(&sp->id_mutex);
                     } while (waiting_readers > 0);
+                    
+                    sp->readline_inactive = true;
                 }
             }
-
+            */
+            if (waiting_readers > 0) {
+                pthread_mutex_lock(&sp->readline_mutex);
+                waiting_readers = (int)sp->waiting_readers;
+                if (waiting_readers > 0) {
+                    sp->readline_inactive = false;
+                    pthread_cond_broadcast(&sp->readline_cond);
+                }
+                pthread_mutex_unlock(&sp->readline_mutex);
+            
+                while (waiting_readers > 0) {
+                    pthread_mutex_lock(&sp->readline_mutex);
+                    waiting_readers = (int)sp->waiting_readers;
+                    pthread_mutex_unlock(&sp->readline_mutex);
+                }
+                    
+                sp->readline_inactive = true;
+            }
         }
         
         sp_iothread_RECONNECT:

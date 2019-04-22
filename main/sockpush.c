@@ -15,6 +15,7 @@
   */
 
 #include "sockpush.h"
+#include "debug.h"
 
 #include <talloc.h>
 
@@ -121,7 +122,7 @@ static int sub_mutex_timedlock(pthread_mutex_t *restrict mutex, const struct tim
     // Try to acquire the lock and, if we fail, sleep for 1ms. */
     while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
         clock_gettime(CLOCK_REALTIME, &cur);
-
+fprintf(stderr, _E_RED"pthread_mutex_trylock busy\n"_E_NRM);
         if ((cur.tv_sec > timeout->tv_sec) \
         || ((cur.tv_sec == timeout->tv_sec) \
         && (cur.tv_nsec >= timeout->tv_nsec))) {
@@ -404,13 +405,12 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
     // 1st step is just to look if there's data sitting on the buffer already
     // This timed-lock allows sp_read() to catch a line that is being read at
     // time of calling.
-    if (sub_mutex_timedlock(&sp->user_mutex, &ts) != 0) {
-        goto sp_read_END;
+    if (pthread_mutex_trylock(&sp->user_mutex) == 0) {
+        if (rdr->last_read != sp->read_id) {
+            rc = sub_loadread(rdr, sp, readbuf, readmax);
+        }
+        pthread_mutex_unlock(&sp->user_mutex);
     }
-    if (rdr->last_read != sp->read_id) {
-        rc = sub_loadread(rdr, sp, readbuf, readmax);
-    }
-    pthread_mutex_unlock(&sp->user_mutex);
     
     // If 1st step yields no data, it means that sp_iothread() is in its poll()
     // state, waiting on the file.  So until the timeout expires, we can wait
@@ -421,11 +421,17 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
         sp->waiting_readers++;
         pthread_mutex_unlock(&sp->id_mutex);
         
+fprintf(stderr, "sp_read() is waiting\n");
+        
+        ///@todo seems like there's a need to put cond_wait/timed_wait in a
+        ///      false positive validation loop.  Google it and implement.
+        pthread_mutex_lock(&sp->readline_mutex);
         if (pthread_cond_timedwait(&sp->readline_cond, &sp->readline_mutex, &ts) == 0) {
             rc = sub_loadread(rdr, sp, readbuf, readmax);
-            pthread_mutex_unlock(&sp->readline_mutex);
         }
+        pthread_mutex_unlock(&sp->readline_mutex);
         
+fprintf(stderr, "sp_read() is exiting\n");
         
         // Unset "waiting state"
         pthread_mutex_lock(&sp->id_mutex);
@@ -510,13 +516,16 @@ int sp_subscribe(sp_handle_t handle, sp_action_t action, int flags, uint8_t* buf
 
 void* sp_iothread(void* args) {
     sp_item_t* sp = args;
-    uint8_t rbuffer[4096];
+    
+    //uint8_t rbuffer[4096];
+    //int data_cnt;
+    //struct pollfd fds[1];
+    
+    uint8_t linebuf[1024];
+    uint8_t readbuf[1024];
     char* cursor;
     char* end;
-    struct pollfd fds[1];
-    int ready_fds;
     int waiting_readers;
-    
     int backoff = 1;
     int max_backoff = 60;
     
@@ -525,7 +534,7 @@ void* sp_iothread(void* args) {
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     
     // Setup reference variables needed by sp_read()
-    sp->read_buf    = rbuffer;
+    sp->read_buf    = linebuf;
     sp->read_size   = 0;
     sp->read_id     = 1;
     
@@ -539,25 +548,28 @@ void* sp_iothread(void* args) {
             continue;
         }
         
-        backoff         = 1;
-        fds[0].fd       = sp->fd_sock;
-        fds[0].events   = POLLIN | POLLNVAL | POLLHUP;
+        backoff = 1;
+        
+        //fds[0].fd       = sp->fd_sock;
+        //fds[0].events   = POLLIN | POLLNVAL | POLLHUP;
         
         while (1) {
-            /// Wait for a line to come
+            /*
+            // ----------------------------------------------------------------
+            /// Stream Model: Wait for a line to come, might not be atomic
             /// - Always Null terminate in order to work with string functions
             /// - Exit socket if read fails
             /// - if read has 0 bytes, it means the buffer is full with no
             ///   delimeter.  Wipe buffer and start over.
             /// - Delimeter is \n.  Process the input when \n found.
-            ready_fds = poll(fds, 1, -1);
-            if (ready_fds <= 0) {
+            data_cnt = poll(fds, 1, -1);
+            if (data_cnt <= 0) {
                 goto sp_iothread_RECONNECT;
             }
             if (fds[0].revents & (POLLNVAL|POLLHUP)) {
                 goto sp_iothread_RECONNECT;
             }
-            
+        
             pthread_mutex_lock(&sp->user_mutex);
             sp->read_size = 0;
             // Search for line in input
@@ -566,7 +578,6 @@ void* sp_iothread(void* args) {
             while(1) {
                 if (read(fds[0].fd, cursor, 1) < 1) {
                     pthread_mutex_unlock(&sp->user_mutex);
-//fprintf(stderr, "sp_iothread() reconnect\n");
                     goto sp_iothread_RECONNECT;
                 }
                 if ((*cursor == '\n') || (*cursor == 0)) {
@@ -574,7 +585,6 @@ void* sp_iothread(void* args) {
                     break;
                 }
                 if (++cursor >= end) {
-//fprintf(stderr, "sp_iothread() read cursor looping\n");
                     cursor = (char*)rbuffer;
                 }
             }
@@ -585,7 +595,61 @@ void* sp_iothread(void* args) {
             sp->read_buf    = rbuffer;
             sp->read_size   = (cursor - (char*)rbuffer);
             
-//fprintf(stderr, "sp_iothread() readline (%zu bytes)\n%s\n", sp->read_size, sp->read_buf);
+            // END OF STREAM MODEL --------------------------------------------
+            */
+            
+            /*
+            // ----------------------------------------------------------------
+            /// Datagram-like model: Line read is atomic from single write()
+            /// A complete datagram should be received atomically.
+            /// It shall be a string with a \n or NUL terminator.
+            /// Any other receptions are discarded
+            data_cnt = (int)read(sp->fd_sock, rbuffer, 4096);
+            if (data_cnt <= 0) {
+                goto sp_iothread_RECONNECT;
+            }
+            if ((rbuffer[data_cnt-1] != '\n') && (rbuffer[data_cnt-1] != 0)) {
+                continue;
+            }
+            
+            pthread_mutex_lock(&sp->user_mutex);
+            /// Replace \n terminator with 0 terminator
+            sp->read_size   = data_cnt;
+            sp->read_buf    = rbuffer;
+            sp->read_id++;
+            // END OF DATAGRAM MODEL ------------------------------------------
+            */
+            
+            
+            // ----------------------------------------------------------------
+            /// Double-Buffer stream
+            /// Solves for problem of reading two lines at the same time.
+            cursor = (char*)readbuf;
+            end    = (char*)readbuf + sizeof(readbuf);
+            while(1) {
+                if (read(sp->fd_sock, cursor, 1) < 1) {
+                    goto sp_iothread_RECONNECT;
+                }
+                if ((*cursor == '\n') || (*cursor == 0)) {
+                    *cursor++ = 0;
+                    break;
+                }
+                if (++cursor >= end) {
+                    cursor = (char*)readbuf;
+                }
+            }
+            // ----------------------------------------------------------------
+            
+            pthread_mutex_lock(&sp->user_mutex);
+            sp->read_id++;
+            sp->read_size = (cursor - (char*)readbuf);
+            memcpy(sp->read_buf, readbuf, sp->read_size);
+
+{
+struct timespec cur;
+clock_gettime(CLOCK_REALTIME, &cur);
+fprintf(stderr, _E_MAG "sp_iothread() [%zu.%zu] readline (%zu bytes)\n%s\n" _E_NRM, cur.tv_sec, cur.tv_nsec, sp->read_size, sp->read_buf);
+}
             
             // Also, publish it to subscribers, which are callbacks that need
             // to deal with data replication themselves.
@@ -599,27 +663,30 @@ void* sp_iothread(void* args) {
                 }
             }
             
-            if (sp->readers > 0) {
+            waiting_readers = (int)sp->readers;
+fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
+            pthread_mutex_unlock(&sp->user_mutex);
+            
+            // If there are readers allocated, push reads to waiting readers.
+            ///@todo determine if there's a better way to do this than with
+            /// waiting_readers semaphore
+            if (waiting_readers > 0) {
                 pthread_mutex_lock(&sp->id_mutex);
                 waiting_readers = (int)sp->waiting_readers;
                 pthread_mutex_unlock(&sp->id_mutex);
-            }
-            else {
-                waiting_readers = 0;
-            }
-            pthread_mutex_unlock(&sp->user_mutex);
-            
-            // If there are waiting readers, we bother to send the cond-signal
-            // to wake them up.
-            if (waiting_readers > 0) {
-                pthread_cond_broadcast(&sp->readline_cond);
                 
-                // Wait for any readers to finish up
-                do {
-                    pthread_mutex_lock(&sp->id_mutex);
-                    waiting_readers = (int)sp->waiting_readers;
-                    pthread_mutex_unlock(&sp->id_mutex);
-                } while (waiting_readers > 0);
+                if (waiting_readers > 0) {
+                    pthread_mutex_lock(&sp->readline_mutex);
+                    pthread_cond_broadcast(&sp->readline_cond);
+                    pthread_mutex_unlock(&sp->readline_mutex);
+                    
+                    // Wait for any readers to finish up
+                    do {
+                        pthread_mutex_lock(&sp->id_mutex);
+                        waiting_readers = (int)sp->waiting_readers;
+                        pthread_mutex_unlock(&sp->id_mutex);
+                    } while (waiting_readers > 0);
+                }
             }
 
         }

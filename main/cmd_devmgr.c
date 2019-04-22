@@ -370,7 +370,7 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
     while (1) {
         rc = sp_read(reader, dout, sizeof(dout), read_timeout);
         if (rc <= 0) {
-            DEBUG_PRINTF("sp_read() timeout in cmd_devmgr() %i\n", read_timeout);
+            ERR_PRINTF("sp_read() timeout in cmd_devmgr(): %i ms\n", read_timeout);
             rc = -4; //-4 == retry
         }
         else {

@@ -20,12 +20,12 @@
 // Configuration Header
 #include "otdb_cfg.h"
 #include "cliopt.h"
-#include "clithread.h"
 #include "cmdhistory.h"
 #include "popen2.h"
 
 // HB Libraries
 #include <cJSON.h>
+#include <clithread.h>
 #include <cmdtab.h>
 #include <talloc.h>
 

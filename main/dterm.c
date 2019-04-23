@@ -16,7 +16,6 @@
 
 // Application Headers
 #include "cliopt.h"
-#include "clithread.h"
 #include "cmds.h"
 #include "cmdhistory.h"
 #include "cmdsearch.h"
@@ -25,6 +24,7 @@
 
 // Local Libraries/Headers
 #include <bintex.h>
+#include <clithread.h>
 #include <m2def.h>
 //#include <otfs.h>
 
@@ -202,6 +202,7 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         goto dterm_init_TERM;
     }
     
+    talloc_disable_null_tracking();
     dth->pctx = talloc_new(NULL);
     dth->tctx = dth->pctx;
     if (dth->pctx == NULL) {
@@ -613,7 +614,9 @@ void* dterm_socketer(void* args) {
             perror("Server Socket accept() failed");
         }
         else {
-            clithread_add(dth->clithread, NULL, (int)cliopt_getpoolsize(), &dterm_socket_clithread, (void*)&clithread);
+            size_t poolsize = cliopt_getpoolsize();
+            size_t est_obj  = (poolsize / 128) + 1;
+            clithread_add(dth->clithread, NULL, est_obj, poolsize, &dterm_socket_clithread, (void*)&clithread);
         }
     }
     
@@ -641,6 +644,8 @@ void* dterm_piper(void* args) {
     /// Get each line from the pipe.
     while (1) {
         int linelen;
+        size_t est_objs;
+        size_t poolsize;
         
         if (loadlen <= 0) {
             dterm_reset(dth->intf);
@@ -653,7 +658,9 @@ void* dterm_piper(void* args) {
         linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
 
         // Create temporary context as a memory pool
-        dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+        poolsize    = cliopt_getpoolsize();
+        est_objs    = (poolsize / 128) + 1;
+        dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
 
         // Process the line-input command
         sub_proc_lineinput(dth, NULL, loadbuf, linelen);
@@ -731,13 +738,17 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
         int linelen;
         int cmdrc;
         int byteswritten;
+        size_t est_objs;
+        size_t poolsize;
         
         // Burn whitespace ahead of command.
         while (isspace(*filecursor)) { filecursor++; filebuf_sz--; }
         linelen = (int)sub_str_mark(filecursor, (size_t)filebuf_sz);
 
         // Create temporary context as a memory pool
-        dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+        poolsize    = cliopt_getpoolsize();
+        est_objs    = (poolsize / 128) + 1;
+        dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
         
         // Echo input line to dterm
         dprintf(dth->fd.out, _E_MAG"%s"_E_NRM"%s\n", prompt_root, filecursor);
@@ -970,6 +981,8 @@ void* dterm_prompter(void* args) {
                 // 4. Reset prompt, change to OFF State, unlock mutex on dterm
                 case ct_enter: {
                     int bytesout;
+                    size_t est_objs;
+                    size_t poolsize;
                     
                     //dterm_put(dt, (char[]){ASCII_NEWLN}, 2);
                     dterm_putc(&dth->fd, '\n');
@@ -979,7 +992,9 @@ void* dterm_prompter(void* args) {
                     }
                     
                     // Create temporary context as a memory pool
-                    dth->tctx = talloc_pool(NULL, cliopt_getpoolsize());
+                    poolsize    = cliopt_getpoolsize();
+                    est_objs    = (poolsize / 128) + 1;
+                    dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
                     
                     // Run command(s) from line input
                     bytesout = sub_proc_lineinput( dth, NULL,

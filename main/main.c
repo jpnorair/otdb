@@ -76,6 +76,8 @@ typedef struct {
     //bool            block_in;
     
     int             exitcode;
+    
+    bool            kill_inactive;
     pthread_mutex_t kill_mutex;
     pthread_cond_t  kill_cond;
     
@@ -134,12 +136,18 @@ static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
 
 static void sigint_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
+    pthread_mutex_lock(&cli.kill_mutex);
+    cli.kill_inactive = false;
     pthread_cond_signal(&cli.kill_cond);
+    pthread_mutex_unlock(&cli.kill_mutex);
 }
 
 static void sigquit_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
+    pthread_mutex_lock(&cli.kill_mutex);
+    cli.kill_inactive = false;
     pthread_cond_signal(&cli.kill_cond);
+    pthread_mutex_unlock(&cli.kill_mutex);
 }
 
 ///@todo sigchild?
@@ -369,6 +377,7 @@ int main(int argc, char* argv[]) {
     cliopts.debug_on = debug_val;
     
     /// Client Options.  These are read-only from internal modules
+    cliopts.mempool_size = OTDB_PARAM_MMAP_PAGESIZE;
     cliopts.format = FORMAT_Dynamic;
     cliopt_init(&cliopts);
     
@@ -555,7 +564,10 @@ int otdb_main(  INTF_Type intf_val,
     /// until the kill_cond is sent by one of the child threads.  This will 
     /// cause the program to quit.
     pthread_mutex_lock(&cli.kill_mutex);
-    pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
+    cli.kill_inactive = true;
+    while (cli.kill_inactive) {
+        pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
+    }
     
     ///@todo clump this with dterm_deinit()
     DEBUG_PRINTF("Cancelling Theads\n");

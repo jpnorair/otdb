@@ -1,7 +1,8 @@
 {
-    "csip_setarray": {
-    	"_meta":{"block":"isf", "id":21, "mod":52, "size":80, "pos":0, "type":"struct", "modtime":0},
-    	"_content":{
+	"csip_setarray": {
+		"_meta":{"block":"isf", "id":21, "mod":52, "size":84, "pos":0, "type":"struct", "modtime":0},
+		"_content":{
+			"idcurve":0,
 			"pair_x0":0,
 			"pair_y0":0,
 			"pair_x1":0,

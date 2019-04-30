@@ -1,9 +1,9 @@
 {
     "arguments": {
         "verbose":1,
-        "debug":0,
+        "debug":1,
         "intf":"socket",
-        "socket":"/opt/otdb/otdb.sock"
+        "socket":"/opt/otdb/otdb.sock",
         "init":"/opt/otdb/init_csip_notarget.otdb"
     }
 }

@@ -3,7 +3,7 @@
         "verbose":1,
         "debug":0,
         "intf":"interactive",
-        "init":"init_csipdemo.otdb",
-        "devmgr":"smut /dev/tty.usbserial-FT29CMB71 19200 --pipe --fmt=hex"
+        "init":"/opt/otdb/init_csip_push.otdb",
+        "devmgr":"/opt/otdb/smut.sock"
     }
 }

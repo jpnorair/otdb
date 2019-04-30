@@ -1,0 +1,2 @@
+open -j ./examples/csip
+pull -j

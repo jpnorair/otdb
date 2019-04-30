@@ -3,6 +3,6 @@
         "verbose":1,
         "debug":0,
         "intf":"interactive",
-        "init":"init_csip.otdb"
+        "init":"/opt/otdb/init_csip_notarget.otdb"
     }
 }

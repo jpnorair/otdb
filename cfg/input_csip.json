@@ -4,7 +4,7 @@
         "debug":0,
         "intf":"socket",
         "socket":"/opt/otdb/otdb.sock",
-        "init":"/opt/otdb/init_csip_demo.otdb",
+        "init":"/opt/otdb/init_csip_push.otdb",
         "devmgr":"/opt/otdb/smut.sock"
     }
 }

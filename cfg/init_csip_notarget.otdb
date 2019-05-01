@@ -1,1 +1,1 @@
-open -j ./examples/csip
+open -j /opt/otdb/examples/csip

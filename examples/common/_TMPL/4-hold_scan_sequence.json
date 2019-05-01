@@ -2,6 +2,10 @@
     "hold_scan_sequence": {
         "_meta":{"block":"isf", "id":4, "mod":52, "size":0, "stock":true, "pos":0, "type":"struct"},
         "_content": {
+            "chan_1":{"pos":0, "type":"hex[1]", "def":"28"},
+            "scan_1":{"pos":1, "type":"hex[1]", "def":"31"},
+            "next_1":{"pos":2, "type":"uint16_t", "def":0},
+        
         }
     }
 }

@@ -2,6 +2,36 @@
     "channel_configuration": {
         "_meta":{"block":"isf", "id":2, "mod":52, "size":48, "stock":true, "pos":0, "type":"struct"},
         "_content": {
+            "header":{"pos":0, "type":"uint16_t", "def":0},
+            "regcode":{"pos":2, "type":"uint8_t", "def":0},
+            "txduty":{"pos":3, "type":"uint8_t", "def":0},
+            "txscale":{"pos":4, "type":"uint8_t", "def":0},
+            "rfu5":{"pos":5, "type":"uint8_t", "def":0},
+            "specid_ch1":{"pos":6, "type":"uint8_t", "def":0},
+            "rfu_ch1":{"pos":7, "type":"uint8_t", "def":0},
+            "maxpwr_ch1":{"pos":8, "type":"uint8_t", "def":108},
+            "lqi_ch1":{"pos":9, "type":"uint8_t", "def":160},
+            "csrssi_ch1":{"pos":10, "type":"uint8_t", "def":10},
+            "ccarssi_ch1":{"pos":11, "type":"uint8_t", "def":20},
+            "specid_ch2":{"pos":12, "type":"uint8_t", "def":16},
+            "rfu_ch2":{"pos":13, "type":"uint8_t", "def":0},
+            "maxpwr_ch2":{"pos":14, "type":"uint8_t", "def":108},
+            "lqi_ch2":{"pos":15, "type":"uint8_t", "def":145},
+            "csrssi_ch2":{"pos":16, "type":"uint8_t", "def":15},
+            "ccarssi_ch2":{"pos":17, "type":"uint8_t", "def":25},
+            "specid_ch3":{"pos":18, "type":"uint8_t", "def":32},
+            "rfu_ch3":{"pos":19, "type":"uint8_t", "def":0},
+            "maxpwr_ch3":{"pos":20, "type":"uint8_t", "def":108},
+            "lqi_ch3":{"pos":21, "type":"uint8_t", "def":140},
+            "csrssi_ch3":{"pos":22, "type":"uint8_t", "def":20},
+            "ccarssi_ch3":{"pos":23, "type":"uint8_t", "def":30},
+            "specid_ch4":{"pos":24, "type":"uint8_t", "def":48},
+            "rfu_ch4":{"pos":25, "type":"uint8_t", "def":0},
+            "maxpwr_ch4":{"pos":26, "type":"uint8_t", "def":108},
+            "lqi_ch4":{"pos":27, "type":"uint8_t", "def":135},
+            "csrssi_ch4":{"pos":28, "type":"uint8_t", "def":25},
+            "ccarssi_ch4":{"pos":29, "type":"uint8_t", "def":35},
+            "unused":{"pos":30, "type":"hex[18]", "def":"00"}
         }
     }
 }

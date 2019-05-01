@@ -429,11 +429,11 @@ int sp_read(sp_reader_t reader, uint8_t* readbuf, size_t readmax, size_t timeout
         
 //fprintf(stderr, "sp_read() is waiting\n");
         
-        ///@note Linux has unreliable pthread_cond_wait, so an additional flag
-        /// (readline_inactive) is recommended to prevent unwanted releases.
+        ///@todo there seems to be a multiple read problem at times, here (or maybe above)
         pthread_mutex_lock(&sp->readline_mutex);
         sp->waiting_readers++;
         wait_test = 0;
+        sp->readline_inactive = true;
         while (sp->readline_inactive && (wait_test == 0)) {
             wait_test = pthread_cond_timedwait(&sp->readline_cond, &sp->readline_mutex, &ts);
         }
@@ -561,77 +561,7 @@ void* sp_iothread(void* args) {
         
         backoff = 1;
         
-        //fds[0].fd       = sp->fd_sock;
-        //fds[0].events   = POLLIN | POLLNVAL | POLLHUP;
-        
         while (1) {
-            /*
-            // ----------------------------------------------------------------
-            /// Stream Model: Wait for a line to come, might not be atomic
-            /// - Always Null terminate in order to work with string functions
-            /// - Exit socket if read fails
-            /// - if read has 0 bytes, it means the buffer is full with no
-            ///   delimeter.  Wipe buffer and start over.
-            /// - Delimeter is \n.  Process the input when \n found.
-            data_cnt = poll(fds, 1, -1);
-            if (data_cnt <= 0) {
-                goto sp_iothread_RECONNECT;
-            }
-            if (fds[0].revents & (POLLNVAL|POLLHUP)) {
-                goto sp_iothread_RECONNECT;
-            }
-        
-            pthread_mutex_lock(&sp->user_mutex);
-            sp->read_size = 0;
-            // Search for line in input
-            cursor = (char*)rbuffer;
-            end    = (char*)rbuffer + sizeof(rbuffer);
-            while(1) {
-                if (read(fds[0].fd, cursor, 1) < 1) {
-                    pthread_mutex_unlock(&sp->user_mutex);
-                    goto sp_iothread_RECONNECT;
-                }
-                if ((*cursor == '\n') || (*cursor == 0)) {
-                    *cursor++ = 0;
-                    break;
-                }
-                if (++cursor >= end) {
-                    cursor = (char*)rbuffer;
-                }
-            }
-
-            // Line is downloaded into rbuffer
-            // it's possible to publish it to the readers now
-            sp->read_id++;
-            sp->read_buf    = rbuffer;
-            sp->read_size   = (cursor - (char*)rbuffer);
-            
-            // END OF STREAM MODEL --------------------------------------------
-            */
-            
-            /*
-            // ----------------------------------------------------------------
-            /// Datagram-like model: Line read is atomic from single write()
-            /// A complete datagram should be received atomically.
-            /// It shall be a string with a \n or NUL terminator.
-            /// Any other receptions are discarded
-            data_cnt = (int)read(sp->fd_sock, rbuffer, 4096);
-            if (data_cnt <= 0) {
-                goto sp_iothread_RECONNECT;
-            }
-            if ((rbuffer[data_cnt-1] != '\n') && (rbuffer[data_cnt-1] != 0)) {
-                continue;
-            }
-            
-            pthread_mutex_lock(&sp->user_mutex);
-            /// Replace \n terminator with 0 terminator
-            sp->read_size   = data_cnt;
-            sp->read_buf    = rbuffer;
-            sp->read_id++;
-            // END OF DATAGRAM MODEL ------------------------------------------
-            */
-            
-            
             // ----------------------------------------------------------------
             /// Double-Buffer stream
             /// Solves for problem of reading two lines at the same time.
@@ -678,32 +608,8 @@ void* sp_iothread(void* args) {
 //fprintf(stderr, "waiting_readers=%i\n", waiting_readers);
             pthread_mutex_unlock(&sp->user_mutex);
             
-            // If there are readers allocated, push reads to waiting readers.
-            ///@todo determine if there's a better way to do this than with
-            /// waiting_readers semaphore
-            /*
-            if (waiting_readers > 0) {
-                pthread_mutex_lock(&sp->id_mutex);
-                waiting_readers = (int)sp->waiting_readers;
-                pthread_mutex_unlock(&sp->id_mutex);
-                
-                if (waiting_readers > 0) {
-                    pthread_mutex_lock(&sp->readline_mutex);
-                    sp->readline_inactive = false;
-                    pthread_cond_broadcast(&sp->readline_cond);
-                    pthread_mutex_unlock(&sp->readline_mutex);
-                    
-                    // Wait for any readers to finish up
-                    do {
-                        pthread_mutex_lock(&sp->id_mutex);
-                        waiting_readers = (int)sp->waiting_readers;
-                        pthread_mutex_unlock(&sp->id_mutex);
-                    } while (waiting_readers > 0);
-                    
-                    sp->readline_inactive = true;
-                }
-            }
-            */
+            ///@todo there seems to be a problem where a line gets read multiple times via sp_read()
+            
             if (waiting_readers > 0) {
                 pthread_mutex_lock(&sp->readline_mutex);
                 waiting_readers = (int)sp->waiting_readers;
@@ -718,8 +624,6 @@ void* sp_iothread(void* args) {
                     waiting_readers = (int)sp->waiting_readers;
                     pthread_mutex_unlock(&sp->readline_mutex);
                 }
-                    
-                sp->readline_inactive = true;
             }
         }
         

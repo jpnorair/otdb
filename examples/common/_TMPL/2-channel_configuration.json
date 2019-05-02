@@ -31,7 +31,24 @@
             "lqi_ch4":{"pos":27, "type":"uint8_t", "def":135},
             "csrssi_ch4":{"pos":28, "type":"uint8_t", "def":25},
             "ccarssi_ch4":{"pos":29, "type":"uint8_t", "def":35},
-            "unused":{"pos":30, "type":"hex[18]", "def":"00"}
+            "specid_ch5":{"pos":30, "type":"uint8_t", "def":48},
+            "rfu_ch5":{"pos":31, "type":"uint8_t", "def":0},
+            "maxpwr_ch5":{"pos":32, "type":"uint8_t", "def":0},
+            "lqi_ch5":{"pos":33, "type":"uint8_t", "def":0},
+            "csrssi_ch5":{"pos":34, "type":"uint8_t", "def":0},
+            "ccarssi_ch5":{"pos":35, "type":"uint8_t", "def":0},
+            "specid_ch6":{"pos":36, "type":"uint8_t", "def":0},
+            "rfu_ch6":{"pos":37, "type":"uint8_t", "def":0},
+            "maxpwr_ch6":{"pos":38, "type":"uint8_t", "def":0},
+            "lqi_ch6":{"pos":39, "type":"uint8_t", "def":0},
+            "csrssi_ch6":{"pos":40, "type":"uint8_t", "def":0},
+            "ccarssi_ch6":{"pos":41, "type":"uint8_t", "def":0},
+            "specid_ch7":{"pos":42, "type":"uint8_t", "def":0},
+            "rfu_ch7":{"pos":43, "type":"uint8_t", "def":0},
+            "maxpwr_ch7":{"pos":44, "type":"uint8_t", "def":0},
+            "lqi_ch7":{"pos":45, "type":"uint8_t", "def":0},
+            "csrssi_ch7":{"pos":46, "type":"uint8_t", "def":0},
+            "ccarssi_ch7":{"pos":47, "type":"uint8_t", "def":0}
         }
     }
 }

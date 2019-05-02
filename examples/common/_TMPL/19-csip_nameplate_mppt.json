@@ -1,9 +1,7 @@
 {
-    "csip_nameplate_mppt": {
-        "_meta":{"block":"isf", "id":19, "mod":52, "size":8, "stock":true, "pos":0, "type":"struct"},
-        "_content": {
-            "pv_ishort":{"pos":0, "type":"float", "def":0},
-            "pv_vopen":{"pos":4, "type":"float", "def":0}
-        }
+    "memory_size": {
+        "_meta":{"block":"isf", "id":19, "mod":52, "size":12, "stock":true, "pos":0, "type":"array"},
+        "_content":[0,  0,  0,  0,  0,  0,  0,  0,
+                    0,  0,  0,  0]
     }
 }

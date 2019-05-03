@@ -113,7 +113,7 @@ directories:
 # Clean only this machine
 clean:
 	@$(RM) -rf $(BUILDDIR)
-	@$(RM) -rf $(BUILDDIR)
+	@$(RM) -rf $(BUILDDIR)_debug
 	@$(RM) -rf $(APPDIR)
 
 # Clean all builds

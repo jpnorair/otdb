@@ -417,7 +417,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     arg_set_allocators(&iso_malloc, &iso_free);
 
     ///@todo set context for other data systems
-    
+
     /// The input can be JSON of the form:
     /// { "type":"${cmd_type}", data:"${cmd_data}" }
     /// where we only truly care about the data object, which must be a string.
@@ -445,7 +445,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
     cmdptr  = cmd_search(dth->ext->cmdtab, cmdname);
-
     if (cmdptr == NULL) {
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
@@ -466,7 +465,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
         if (cmdrc != NULL) {
             *cmdrc = bytesout;
         }
-        
+
         ///@todo spruce-up the command error reporting, maybe even with
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
@@ -475,7 +474,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
                         cmdname, bytesout);
             dterm_puts(&dth->fd, (char*)protocol_buf);
         }
-        
+
         // If there are bytes to send to MPipe, do that.
         // If bytesout == 0, there is no error, but also nothing
         // to send to MPipe.
@@ -489,7 +488,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
             }
             
             DEBUG_PRINTF("raw output (%i bytes) %.*s\n", bytesout, bytesout, protocol_buf);
-            
             write(dth->fd.out, (char*)protocol_buf, bytesout);
         }
     }
@@ -519,24 +517,25 @@ void* dterm_socket_clithread(void* args) {
     dterm_handle_t dts;
     clithread_args_t* ct_args;
     char databuf[1024];
-    
+
     ct_args = (clithread_args_t*)args;
     if (args == NULL)
         return NULL;
     if ((ct_args->app_handle == NULL) || (ct_args->tctx == NULL))
         return NULL;
-    
+
     // Deferred cancellation: will wait until the blocking read() call is in
     // idle before killing the thread.
     pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-    
+
     // Thread-local memory elements
     dth = ((clithread_args_t*)args)->app_handle;
     memcpy(&dts, dth, sizeof(dterm_handle_t));
     dts.fd.in   = ((clithread_args_t*)args)->fd_in;
     dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     dts.tctx    = ct_args->tctx;
-
+    
+    clithread_sigup(ct_args->clithread_self);
     VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
     /// Get a packet from the Socket
@@ -551,7 +550,6 @@ void* dterm_socket_clithread(void* args) {
         loadlen = (int)read(dts.fd.out, loadbuf, LINESIZE);
         if (loadlen > 0) {
             sub_str_sanitize(loadbuf, (size_t)loadlen);
-            
             pthread_mutex_lock(dts.iso_mutex);
             dts.intf->state = prompt_off;
             
@@ -576,7 +574,7 @@ void* dterm_socket_clithread(void* args) {
             } while (loadlen > 0);
 
             pthread_mutex_unlock(dts.iso_mutex);
-            
+
         }
         else {
             // After servicing the client socket, it is important to close it.
@@ -605,6 +603,7 @@ void* dterm_socketer(void* args) {
     dth->intf->state        = prompt_off;
     clithread.app_handle    = dth;
     clithread.fd_in         = dth->fd.in;
+    clithread.tctx          = NULL;
     
     /// Get a packet from the Socket
     while (1) {
@@ -615,15 +614,12 @@ void* dterm_socketer(void* args) {
         }
         else {
             size_t poolsize = cliopt_getpoolsize();
-            size_t est_obj  = (poolsize / 128) + 1;
-            clithread_add(dth->clithread, NULL, est_obj, poolsize, &dterm_socket_clithread, (void*)&clithread);
+            size_t est_obj  = 4; //(poolsize / 128) + 1;
+            clithread_add(dth->clithread, NULL, est_obj, poolsize,
+                                &dterm_socket_clithread, (void*)&clithread);
         }
     }
     
-    /// This code should never occur, given the while(1) loop.
-    /// If it does (possibly a stack fuck-up), we print this "chaotic error."
-    fprintf(stderr, "\n--> Chaotic error: dterm_piper() thread broke loop.\n");
-    raise(SIGINT);
     return NULL;
 }
 
@@ -659,7 +655,7 @@ void* dterm_piper(void* args) {
 
         // Create temporary context as a memory pool
         poolsize    = cliopt_getpoolsize();
-        est_objs    = (poolsize / 128) + 1;
+        est_objs    = 4; //(poolsize / 128) + 1;
         dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
 
         // Process the line-input command
@@ -747,7 +743,7 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
 
         // Create temporary context as a memory pool
         poolsize    = cliopt_getpoolsize();
-        est_objs    = (poolsize / 128) + 1;
+        est_objs    = 4; //(poolsize / 128) + 1;
         dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
         
         // Echo input line to dterm
@@ -993,7 +989,7 @@ void* dterm_prompter(void* args) {
                     
                     // Create temporary context as a memory pool
                     poolsize    = cliopt_getpoolsize();
-                    est_objs    = (poolsize / 128) + 1;
+                    est_objs    = 4; //(poolsize / 128) + 1;
                     dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
                     
                     // Run command(s) from line input

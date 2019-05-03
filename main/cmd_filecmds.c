@@ -163,7 +163,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     void* args[] = {help_man, jsonout_opt, soft_opt, devid_opt, fileage_opt, fileblock_opt, filerange_opt, fileid_man, end_man};
     uint8_t*    dat_ptr     = NULL;
     int         span        = 0;
-    
+
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r", (const char*)src, inbytes);
     /// On successful extraction, create a new device in the database
@@ -173,7 +173,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         DEBUG_PRINTF("r (read cmd):\n  device_id=%016"PRIx64"\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n",
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi);
-        
+
         if (arglist.devid != 0) {
             rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
             DEBUG_PRINTF("otfs_setfs() = %i, [id = %016"PRIx64"]\n", rc, arglist.devid);

@@ -44,7 +44,25 @@
 #define _E_CYN  "\033[36m"
 #define _E_WHT  "\033[37m"
 
+// Overlay color on black
+#define _E_OBLK  "\033[30;40m"
+#define _E_ORED  "\033[31;40m"
+#define _E_OGRN  "\033[32;40m"
+#define _E_OYEL  "\033[33;40m"
+#define _E_OBLU  "\033[34;40m"
+#define _E_OMAG  "\033[35;40m"
+#define _E_OCYN  "\033[36;40m"
+#define _E_OWHT  "\033[37;40m"
 
+// Bright
+#define _E_BBLK "\033[1;30;40m"
+#define _E_BRED "\033[1;31;40m"
+#define _E_BGRN "\033[1;32;40m"
+#define _E_BYEL "\033[1;33;40m"
+#define _E_BBLU "\033[1;34;40m"
+#define _E_BMAG "\033[1;35;40m"
+#define _E_BCYN "\033[1;36;40m"
+#define _E_BWHT "\033[1;37;40m"
 
 
 #if defined(__DEBUG__)

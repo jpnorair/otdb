@@ -375,6 +375,11 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
         }
         else {
             DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
+//{
+//struct timespec cur;
+//clock_gettime(CLOCK_REALTIME, &cur);
+//fprintf(stderr, _E_CYN "sp_read() [%zu.%zu] (%i bytes)\n%s\n" _E_NRM, cur.tv_sec, cur.tv_nsec, rc, dout);
+//}
             rc = -1;
             qualtest = 0;
             resp = cJSON_Parse((const char*)dout);
@@ -391,13 +396,15 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
                         if (cmd_err != 0) {
                             ///@todo better error reporting
                             rc = -256 - abs(cmd_err);
+                            goto sub_devmgr_socket_TERM;
                         }
-                        else if (cmd_sid == 0) {
+                        if (cmd_sid == 0) {
                             rc = 0;
+                            goto sub_devmgr_socket_TERM;
                         }
-                        else {
-                            state = 1;
-                        }
+                        
+                        // Success + wait for rxstat packet
+                        state = 1;
                     }
                     break;
                 

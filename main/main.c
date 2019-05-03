@@ -136,18 +136,18 @@ static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
 
 static void sigint_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
-    pthread_mutex_lock(&cli.kill_mutex);
-    cli.kill_inactive = false;
+    //pthread_mutex_lock(&cli.kill_mutex);
+    //cli.kill_inactive = false;
     pthread_cond_signal(&cli.kill_cond);
-    pthread_mutex_unlock(&cli.kill_mutex);
+    //pthread_mutex_unlock(&cli.kill_mutex);
 }
 
 static void sigquit_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
-    pthread_mutex_lock(&cli.kill_mutex);
-    cli.kill_inactive = false;
+    //pthread_mutex_lock(&cli.kill_mutex);
+    //cli.kill_inactive = false;
     pthread_cond_signal(&cli.kill_cond);
-    pthread_mutex_unlock(&cli.kill_mutex);
+    //pthread_mutex_unlock(&cli.kill_mutex);
 }
 
 ///@todo sigchild?
@@ -523,7 +523,7 @@ int otdb_main(  INTF_Type intf_val,
     /// Otter is shutdown.
     cli.exitcode = EXIT_SUCCESS;
     sub_assign_signal(SIGINT, &sigint_handler);
-    sub_assign_signal(SIGQUIT, &sigquit_handler);
+    //sub_assign_signal(SIGQUIT, &sigquit_handler);
     
     if (initfile != NULL) {
         int init_rc;
@@ -564,10 +564,10 @@ int otdb_main(  INTF_Type intf_val,
     /// until the kill_cond is sent by one of the child threads.  This will 
     /// cause the program to quit.
     pthread_mutex_lock(&cli.kill_mutex);
-    cli.kill_inactive = true;
-    while (cli.kill_inactive) {
+    //cli.kill_inactive = true;
+    //while (cli.kill_inactive) {
         pthread_cond_wait(&cli.kill_cond, &cli.kill_mutex);
-    }
+    //}
     
     ///@todo clump this with dterm_deinit()
     DEBUG_PRINTF("Cancelling Theads\n");

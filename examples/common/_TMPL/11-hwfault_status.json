@@ -1,0 +1,6 @@
+{
+    "hwfault_status": {
+        "_meta":{"block":"isf", "id":11, "mod":52, "size":4, "stock":true, "pos":0, "type":"array"},
+        "_content":[0,0,0,0]
+    }
+}

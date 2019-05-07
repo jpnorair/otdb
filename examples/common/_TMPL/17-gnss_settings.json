@@ -1,0 +1,10 @@
+{
+    "gnss_settings": {
+        "_meta":{"block":"isf", "id":17, "mod":52, "size":8, "stock":true, "pos":0, "type":"struct"},
+        "gnss_ctl":{"pos":0, "type":"uint8_t", "def":0},
+        "outlist_size":{"pos":1, "type":"uint8_t", "def":0},
+        "agnss_file":{"pos":2, "type":"uint8_t", "def":0},
+        "agnss_size":{"pos":3, "type":"uint8_t", "def":0},
+        ...
+    }
+}

@@ -1,0 +1,15 @@
+{
+    "gnss_output": {
+        "_meta":{"block":"isf", "id":18, "mod":52, "size":24, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "lat":{"pos":0, "type":"uint32_t", "def":0},
+            "lon":{"pos":4, "type":"uint32_t", "def":0},
+            "alt":{"pos":8, "type":"uint32_t", "def":0},
+            "acc":{"pos":12, "type":"uint16_t", "def":0},
+            "week":{"pos":14, "type":"uint16_t", "def":0},
+            "nanos":{"pos":16, "type":"uint32_t", "def":0},
+            "velocity":{"pos":20, "type":"uint16_t", "def":0},
+            "heading":{"pos":22, "type":"uint16_t", "def":0}
+        }
+    }
+}

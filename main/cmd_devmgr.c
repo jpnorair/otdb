@@ -124,7 +124,7 @@ static struct timespec diff_timespec(struct timespec start, struct timespec end)
 }
 
 
-
+///@note DEPRECATED
 static int sub_devmgr_subproc(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     struct pollfd fds[1];
     int rc = 0;

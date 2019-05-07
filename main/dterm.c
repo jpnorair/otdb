@@ -196,8 +196,7 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         }
     }
     
-    dth->clithread = clithread_init();
-    if (dth->clithread == NULL) {
+    if (clithread_init(&dth->clithread) != 0) {
         rc = -4;
         goto dterm_init_TERM;
     }
@@ -524,10 +523,6 @@ void* dterm_socket_clithread(void* args) {
     if ((ct_args->app_handle == NULL) || (ct_args->tctx == NULL))
         return NULL;
 
-    // Deferred cancellation: will wait until the blocking read() call is in
-    // idle before killing the thread.
-    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-
     // Thread-local memory elements
     dth = ((clithread_args_t*)args)->app_handle;
     memcpy(&dts, dth, sizeof(dterm_handle_t));
@@ -535,7 +530,12 @@ void* dterm_socket_clithread(void* args) {
     dts.fd.out  = ((clithread_args_t*)args)->fd_out;
     dts.tctx    = ct_args->tctx;
     
+    // Thread instantiation done: unblock the clithread creator
     clithread_sigup(ct_args->clithread_self);
+    
+    // Deferred cancellation: will wait until the blocking read() call is in
+    // idle before killing the thread.
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
     VERBOSE_PRINTF("Client Thread on socket:fd=%i has started\n", dts.fd.out);
     
     /// Get a packet from the Socket

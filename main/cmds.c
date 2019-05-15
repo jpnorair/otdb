@@ -106,7 +106,7 @@ void cmd_init_argtable(void) {
     compress_opt    = arg_lit0("c","compress",          "Use compression on output (7z)");
     devidlist_opt   = arg_strn(NULL,NULL,"DeviceID List", 0, 256, "Batch of up to 256 Device IDs");
     devid_opt       = arg_str0("i","id","DeviceID",     "Device ID as HEX");
-    fileage_opt     = arg_int0("a","age","ms",          "Maximum age of file, in ms. Default:-1 (infinity).");
+    fileage_opt     = arg_int0("a","age","ms",          "Maximum age of file, in ms. Default:0 (1 second max latency).");
     fileblock_opt   = arg_str0("b","block","isf|iss|gfb", "File Block to search in");
     filerange_opt   = arg_str0("r","range","X:Y",       "Access File bytes between offsets X:Y");
     fileid_man      = arg_int1(NULL,NULL,"FileID",      "File ID, 0-255.");
@@ -322,7 +322,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
         out_val = -3;
         goto sub_extract_args_END;
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+
     /// Device ID convert to uint64
     if (data->fields & ARGFIELD_DEVICEID) {
         if (devid_man->count > 0) {
@@ -341,7 +341,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             data->devid = 0;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+ 
     /// Archive Path
     if (data->fields & ARGFIELD_ARCHIVE) {
         if (archive_man->count > 0) {
@@ -352,38 +352,38 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             goto sub_extract_args_END;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+
     /// JSON-out Flag
     if (data->fields & ARGFIELD_JSONOUT) {
         data->jsonout_flag = (jsonout_opt->count > 0);
     }
+    
     /// Soft Mode Flag
     if (data->fields & ARGFIELD_SOFTMODE) {
         data->soft_flag = (soft_opt->count > 0);
     }
     
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
     /// Compression Flag
     if (data->fields & ARGFIELD_COMPRESS) {
         data->compress_flag = (compress_opt->count > 0);
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+   
     /// List of Device IDs
     if (data->fields & ARGFIELD_DEVICEIDLIST) {
         data->devid_strlist_size    = devidlist_opt->count;
         data->devid_strlist         = devidlist_opt->sval;
     }
-    //fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);
+
     /// Check for Age flag (-a, --age), which specifies maximum file
     /// modification/access delta from present time.
     if (data->fields & ARGFIELD_AGEMS) {
-        data->age_ms = -1;      // default: Infinity = -1
+        data->age_ms = 0;      // default: 0 (practically means 1 second)
         if (fileage_opt->count > 0) {
             DEBUGPRINT("Age arg encountered: %i\n", fileblock_opt->sval[0]);
             data->age_ms = fileage_opt->ival[0];
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);    
+  
     /// Check for block flag (-b, --block), which specifies fs block
     /// Default is isf.
     if (data->fields & ARGFIELD_BLOCKID) {
@@ -405,7 +405,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             }
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+  
     /// Range is optional.  Default is maximum file range (0:)
     if (data->fields & ARGFIELD_FILERANGE) {
         data->range_lo  = 0;
@@ -423,7 +423,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             }
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+   
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEID) {
         if (fileid_man->count > 0) {
@@ -435,7 +435,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             goto sub_extract_args_END;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+    
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEPERMS) {
         if (fileperms_man->count > 0) {
@@ -447,7 +447,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             goto sub_extract_args_END;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+   
     /// File ID is simply copied from the args
     if (data->fields & ARGFIELD_FILEALLOC) {
         if (filealloc_man->count > 0) {
@@ -459,7 +459,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             goto sub_extract_args_END;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__);     
+    
     /// Filedata field is converted from bintex and stored to data->filedata
     if (data->fields & ARGFIELD_FILEDATA) {
         DEBUGPRINT("DataCount=%i, Filedata=%016%"PRIx64"\n", filedata_man->count, (uint64_t)data->filedata);
@@ -475,7 +475,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
             goto sub_extract_args_END;
         }
     }
-//fprintf(stderr, "%s %d\n", __FUNCTION__, __LINE__); 
+
     /// Done!  Return 0 for success.
     out_val = 0;
 

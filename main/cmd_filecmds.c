@@ -206,23 +206,21 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Check if age parameter is in acceptable range.
             
             ///@todo this section could be broken-out into its own function
-            if ((arglist.soft_flag == 0) && /* (arglist.age_ms >= 0) && */ (dth->ext->devmgr != NULL)) {
-//            if ((arglist.soft_flag == 0) && (arglist.age_ms >= 0) && (dth->ext->devmgr != NULL)) {
+            if ((arglist.soft_flag == 0) && (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
                 uint64_t uid = 0;
                 uint32_t now        = (uint32_t)time(NULL);
                 uint32_t file_age   = now - vl_getmodtime(fp);
-                arglist.age_ms      = (arglist.age_ms/1000);
                 
-                DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %u\n", now, file_age, arglist.age_ms);
+                if (arglist.age_ms > 0) {
+                    arglist.age_ms  = (arglist.age_ms/1000);
+                }
                 
-//*****************************************************************************
-                ///@todo MAJOR TODO
-                ///@todo Time management and intelligence feature
-//*****************************************************************************
-                if (file_age > arglist.age_ms) {
+                DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %i\n", now, file_age, arglist.age_ms);
+               
+                if ((int)file_age > arglist.age_ms) {
                     otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);
                     cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u", arglist.file_id);
@@ -242,7 +240,7 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                         goto cmd_read_CLOSE;
                     }
                     
-                    ///@todo make sure File Protocol headers are appropriate (first 5 bytes)
+                    ///@todo Validation of File Protocol headers (first 5 bytes)
                     
                     // Read length value is big endian, bytes 3:4
                     frlen.ubyte[UPPER] = dst[4+3];
@@ -309,7 +307,7 @@ int cmd_readall(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, s
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "r*", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, read all
     if (rc == 0) {
         vaddr header;
         vlFILE* fp;
@@ -495,7 +493,7 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
     /// Extract arguments into arglist struct
     rc = cmd_extract_args(&arglist, args, "rp", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, read permissions
     if (rc == 0) {
         vaddr header;
         
@@ -510,7 +508,6 @@ int cmd_readperms(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src,
             }
         }
         
-        ///
         ///@note OTDB works entirely as the root user (NULL user_id)
         rc = vl_getheader_vaddr(&header, arglist.block_id, arglist.file_id, VL_ACCESS_R, NULL);
         if (rc != 0) {
@@ -549,7 +546,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     arglist.filedata_size   = (int)dstmax;
     rc                      = cmd_extract_args(&arglist, args, "w", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, write
     if (rc == 0) {
         vaddr header;
         vlFILE*     fp;
@@ -708,7 +705,7 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     arglist.filedata_size   = (int)dstmax;
     rc                      = cmd_extract_args(&arglist, args, "pub", (const char*)src, inbytes);
     
-    /// On successful extraction, create a new device in the database
+    /// On successful extraction, publish
     if (rc == 0) {
         vaddr header;
         vlFILE*     fp;

@@ -622,7 +622,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
             otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
             min_auth = cmd_minauth_get(fp, VL_ACCESS_W);
             cmdbytes = dm_xnprintf(dth, dst, dstmax, min_auth, uid,
-                        "file w -r %u:%u %u [%s]", arglist.range_lo, arglist.range_hi, arglist.file_id, hexbuf);
+                        "file w %u -r %u:%u [%s]", arglist.file_id, arglist.range_lo, arglist.range_hi, hexbuf);
             if (cmdbytes < 0) {
                 ///@todo this means there's a write error.  Could try again, or
                 /// flag some type of error.

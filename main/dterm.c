@@ -66,27 +66,6 @@ static const char* prompt_str[]     = {
 
 
 
-// switches terminal to punctual input mode
-// returns 0 if success, -1 - fail
-int dterm_setnoncan(dterm_intf_t *dt);
-
-
-// switches terminal to canonical input mode
-// returns 0 if success, -1 - fail
-int dterm_setcan(dterm_intf_t *dt);
-
-
-// reads command from stdin
-// returns command type
-cmdtype dterm_readcmd(dterm_intf_t *dt);
-
-
-
-
-
-int dterm_putlinec(dterm_intf_t *dt, char c);
-
-
 // writes size bytes to command buffer
 // retunrns number of bytes written
 int dterm_putcmd(dterm_intf_t *dt, char *s, int size);
@@ -101,7 +80,11 @@ int dterm_remc(dterm_intf_t *dt, int count);
 void dterm_remln(dterm_intf_t *dt, dterm_fd_t* fd);
 
 
-
+int dterm_put(dterm_fd_t* fd, char *s, int size);
+int dterm_puts(dterm_fd_t* fd, char *s);
+int dterm_putc(dterm_fd_t* fd, char c);
+int dterm_putsc(dterm_intf_t *dt, char *s);
+void dterm_reset(dterm_intf_t *dt);
 
 
 
@@ -1117,11 +1100,6 @@ int dterm_putc(dterm_fd_t* fd, char c) {
     return (int)write(fd->out, &c, 1);
 }
 
-int dterm_puts2(dterm_fd_t* fd, char *s) {
-    return (int)write(fd->out, s, strlen(s));
-}
-
-
 
 int dterm_putsc(dterm_intf_t *dt, char *s) {
     uint8_t* end = (uint8_t*)s - 1;
@@ -1130,37 +1108,6 @@ int dterm_putsc(dterm_intf_t *dt, char *s) {
     return dterm_putcmd(dt, s, (int)(end-(uint8_t*)s) );
 }
 
-
-
-int dterm_putlinec(dterm_intf_t *dt, char c) {
-    int line_delta = 0;
-    
-    if (c == ASCII_BACKSPC) {
-        line_delta = -1;
-    }
-    
-    else if (c == ASCII_DEL) {
-        size_t line_remnant;
-        line_remnant = dt->linelen - 1 - (dt->cline - dt->linebuf);
-        
-        if (line_remnant > 0) {
-            memcpy(dt->cline, dt->cline+1, line_remnant);
-            line_delta = -1;
-        }
-    }
-    
-    else if (dt->linelen > (LINESIZE-1) ) {
-        return 0;
-    }
-    
-    else {
-        *dt->cline++    = c;
-        line_delta      = 1;
-    }
-    
-    dt->linelen += line_delta;
-    return line_delta;
-}
 
 
 

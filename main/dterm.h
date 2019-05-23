@@ -183,17 +183,10 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename);
 
 ///@todo refactor these read/write functions
 
-int dterm_put(dterm_fd_t* fd, char *s, int size);
-int dterm_puts(dterm_fd_t* fd, char *s);
-int dterm_putc(dterm_fd_t* fd, char c);
-int dterm_puts2(dterm_fd_t* fd, char *s);
 
 
-int dterm_putsc(dterm_intf_t *dt, char *s);
-int dterm_putcmd(dterm_intf_t *dt, char *s, int size);
 
-// resets command buffer
-void dterm_reset(dterm_intf_t *dt);
+
 
 
 

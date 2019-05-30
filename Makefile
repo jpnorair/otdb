@@ -13,6 +13,12 @@ EXT_LIBFLAGS ?=
 EXT_LIBS    ?= 
 VERSION     ?= 1.0.a
 
+# Try to get git HEAD commit value
+ifneq ($(INSTALLER_HEAD),)
+    GITHEAD := $(INSTALLER_HEAD)
+else
+    GITHEAD := $(shell git rev-parse --short HEAD)
+endif
 
 ifeq ($(MAKECMDGOALS),debug)
 	APPDIR      := bin/$(THISMACHINE)
@@ -30,9 +36,6 @@ ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
 	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
 endif
 
-
-# Try to get git HEAD commit value
-GITHEAD := $(shell git rev-parse --short HEAD)
 
 
 ifeq ($(THISSYSTEM),Darwin)

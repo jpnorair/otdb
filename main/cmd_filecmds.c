@@ -206,21 +206,25 @@ int cmd_read(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             /// Check if age parameter is in acceptable range.
             
             ///@todo this section could be broken-out into its own function
+            ///@note file age is only at 1s resolution in the filesystem
             if ((arglist.soft_flag == 0) && (dth->ext->devmgr != NULL)) {
                 int cmdbytes;
                 ot_uni16 frlen;
                 AUTH_level minauth;
                 uint64_t uid = 0;
-                uint32_t now        = (uint32_t)time(NULL);
-                uint32_t file_age   = now - vl_getmodtime(fp);
+                struct timespec now;
+                int64_t now_ms;
+                int64_t file_age;
+                int64_t request_age;
                 
-                if (arglist.age_ms > 0) {
-                    arglist.age_ms  = (arglist.age_ms/1000);
-                }
+                clock_gettime(CLOCK_REALTIME, &now);
+                now_ms      = ((int64_t)now.tv_sec)*1000 + ((int64_t)now.tv_nsec)/1000000;
+                file_age    = now_ms - ((int64_t)vl_getmodtime(fp) * 1000);
+                request_age = (int64_t)arglist.age_ms;
                 
-                DEBUG_PRINTF("Now: %u, file-age: %u, Age-param: %i\n", now, file_age, arglist.age_ms);
-               
-                if ((int)file_age > arglist.age_ms) {
+                DEBUG_PRINTF("Now: %lli, file-age: %lli, Age-param: %lli\n", now_ms, file_age, request_age);
+                
+                if (file_age > request_age) {
                     otfs_activeuid(dth->ext->db, (uint8_t*)&uid);
                     minauth  = cmd_minauth_get(fp, VL_ACCESS_W);
                     cmdbytes = dm_xnprintf(dth, dst, dstmax, minauth, uid, "file r %u", arglist.file_id);

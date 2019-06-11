@@ -375,11 +375,6 @@ static int sub_devmgr_socket(dterm_handle_t* dth, uint8_t* dst, int* inbytes, ui
         }
         else {
             DEBUG_PRINTF("Read %i bytes from sp_read():\n%.*s\n", rc, rc, dout);
-//{
-//struct timespec cur;
-//clock_gettime(CLOCK_REALTIME, &cur);
-//fprintf(stderr, _E_CYN "sp_read() [%zu.%zu] (%i bytes)\n%s\n" _E_NRM, cur.tv_sec, cur.tv_nsec, rc, dout);
-//}
             rc = -1;
             qualtest = 0;
             resp = cJSON_Parse((const char*)dout);

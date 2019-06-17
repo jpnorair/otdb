@@ -552,7 +552,7 @@ int cmd_write(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, siz
     
     /// On successful extraction, write
     if (rc == 0) {
-        vaddr header;
+        vaddr       header;
         vlFILE*     fp;
         uint8_t*    dptr;
         int         span;
@@ -711,12 +711,12 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     
     /// On successful extraction, publish
     if (rc == 0) {
-        vaddr header;
+        vaddr       header;
         vlFILE*     fp;
         uint8_t*    dptr;
         int         span;
     
-        DEBUG_PRINTF("w (write cmd)\n  device_id=%016"PRIx64"\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n",
+        DEBUG_PRINTF("pub (pub cmd)\n  device_id=%016"PRIx64"\n  block=%d\n  file_id=%d\n  file_range=%d:%d\n  write_bytes=%d\n",
                 arglist.devid, arglist.block_id, arglist.file_id, arglist.range_lo, arglist.range_hi, arglist.filedata_size);
                 
         if (arglist.devid != 0) {
@@ -782,8 +782,5 @@ int cmd_pub(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_
     cmd_pub_END:
     return cmd_jsonout_err((char*)dst, dstmax, arglist.jsonout_flag, rc, "pub");
 }
-
-
-
 
 

@@ -1,0 +1,31 @@
+{
+    "hold_scan_sequence": {
+        "_meta":{"block":"isf", "id":4, "mod":52, "size":32, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "next_1":0,
+            "chan_1":"28",
+            "scan_1":"31",
+            "next_2":0,
+            "chan_2":"2B",
+            "scan_2":"31",
+            "next_3":0,
+            "chan_3":"00",
+            "scan_3":"00",
+            "next_4":0,
+            "chan_4":"00",
+            "scan_4":"00",
+            "next_5":0,
+            "chan_5":"00",
+            "scan_5":"00",
+            "next_6":0,
+            "chan_6":"00",
+            "scan_6":"00",
+            "next_7":0,
+            "chan_7":"00",
+            "scan_7":"00",
+            "next_8":0,
+            "chan_8":"00",
+            "scan_8":"00"
+        }
+    }
+}

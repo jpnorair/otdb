@@ -1,0 +1,23 @@
+{
+    "device_features": {
+        "_meta":{"block":"isf", "id":1, "mod":36, "size":48, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "uid":"DA54700101010101",
+            "settings":"0737",
+            "maxframe":255,
+            "maxpacket":1,
+            "macmodes":1,
+            "nlsmodes":0,
+            "isfsize":2048,
+            "isffree":0,
+            "isssize":256,
+            "issfree":0,
+            "gfbsize":0,
+            "gfbfree":0,
+            "gfbfree":0,
+            "rfu":0,
+            "sessiondepth":8,
+            "fwversion":"OTv1"
+        }
+    }
+}

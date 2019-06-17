@@ -1,0 +1,39 @@
+{
+    "gnss_output": {
+        "_meta":{"block":"isf", "id":23, "mod":52, "size":92, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "iTOW":0,
+            "year":0,
+            "month":0,
+            "day":0,
+            "hour":0,
+            "min":0,
+            "sec":0,
+            "valid":0,
+            "tAcc":0,
+            "nano":0,
+            "fixType":0,
+            "flags":0,
+            "flags2":0,
+            "numSV":0,
+            "lon":0,
+            "lat":0,
+            "height":0,
+            "hMSL":0,
+            "hAcc":0,
+            "vAcc":0,
+            "velN":0,
+            "velE":0,
+            "velD":0,
+            "gSpeed":0,
+            "headMot":0,
+            "sAcc":0,
+            "headAcc":0,
+            "pDOP":0,
+            "reserved1":"000000000000",
+            "headVeh":0,
+            "magDec":0,
+            "magAcc":0
+        }
+    }
+}

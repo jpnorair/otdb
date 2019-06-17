@@ -1,0 +1,19 @@
+{
+    "beacon_transmit_sequence": {
+        "_meta":{"block":"isf", "id":6, "mod":52, "size":24, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "next_1":0,
+            "chan_1":"28",
+            "params_1":"20000008",
+            "call_1":"20000008",
+            "next_2":0,
+            "chan_2":"28",
+            "params_2":"20000008",
+            "call_2":"20000008",
+            "next_3":0,
+            "chan_3":"28",
+            "params_3":"20000008",
+            "call_3":"20000008"
+        }
+    }
+}

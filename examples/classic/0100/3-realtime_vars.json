@@ -1,0 +1,13 @@
+{
+    "realtime_vars": {
+        "_meta":{"block":"isf", "id":3, "mod":52, "size":12, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "holdsync_mask":15,
+            "holdsync_value":8,
+            "sleepsync_mask":3,
+            "sleepsync_value":2,
+            "beaconsync_mask":3,
+            "beaconsync_value":2
+        }
+    }
+}

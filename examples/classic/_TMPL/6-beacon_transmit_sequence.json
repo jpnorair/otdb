@@ -1,0 +1,19 @@
+{
+    "beacon_transmit_sequence": {
+        "_meta":{"block":"isf", "id":6, "mod":52, "size":24, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "next_1":{"pos":0, "type":"uint16_t", "def":0},
+            "chan_1":{"pos":2, "type":"hex[1]", "def":"28"},
+            "params_1":{"pos":3, "type":"hex[1]", "def":"20000008"},
+            "call_1":{"pos":4, "type":"hex[4]", "def":"20000008"},
+            "next_2":{"pos":8, "type":"uint16_t", "def":0},
+            "chan_2":{"pos":10, "type":"hex[1]", "def":"28"},
+            "params_2":{"pos":11, "type":"hex[1]", "def":"20000008"},
+            "call_2":{"pos":12, "type":"hex[4]", "def":"20000008"},
+            "next_3":{"pos":16, "type":"uint16_t", "def":0},
+            "chan_3":{"pos":18, "type":"hex[1]", "def":"28"},
+            "params_3":{"pos":19, "type":"hex[1]", "def":"20000008"},
+            "call_3":{"pos":20, "type":"hex[4]", "def":"20000008"}
+        }
+    }
+}

@@ -1,0 +1,13 @@
+{
+    "realtime_vars": {
+        "_meta":{"block":"isf", "id":3, "mod":52, "size":12, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "holdsync_mask":{"pos":0, "type":"uint16_t", "def":15},
+            "holdsync_value":{"pos":2, "type":"uint16_t", "def":8},
+            "sleepsync_mask":{"pos":4, "type":"uint16_t", "def":3},
+            "sleepsync_value":{"pos":6, "type":"uint16_t", "def":2},
+            "beaconsync_mask":{"pos":8, "type":"uint16_t", "def":3},
+            "beaconsync_value":{"pos":10, "type":"uint16_t", "def":2}
+        }
+    }
+}

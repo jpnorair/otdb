@@ -1,0 +1,39 @@
+{
+    "gnss_output": {
+        "_meta":{"block":"isf", "id":23, "mod":52, "size":92, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "iTOW":{"pos":0, "type":"uint32_t", "def":0},
+            "year":{"pos":4, "type":"uint16_t", "def":0},
+            "month":{"pos":6, "type":"uint8_t", "def":0},
+            "day":{"pos":7, "type":"uint8_t", "def":0},
+            "hour":{"pos":8, "type":"uint8_t", "def":0},
+            "min":{"pos":9, "type":"uint8_t", "def":0},
+            "sec":{"pos":10, "type":"uint8_t", "def":0},
+            "valid":{"pos":11, "type":"uint8_t", "def":0},
+            "tAcc":{"pos":12, "type":"uint32_t", "def":0},
+            "nano":{"pos":16, "type":"int32_t", "def":0},
+            "fixType":{"pos":20, "type":"uint8_t", "def":0},
+            "flags":{"pos":21, "type":"uint8_t", "def":0},
+            "flags2":{"pos":22, "type":"uint8_t", "def":0},
+            "numSV":{"pos":23, "type":"uint8_t", "def":0},
+            "lon":{"pos":24, "type":"int32_t", "def":0},
+            "lat":{"pos":28, "type":"int32_t", "def":0},
+            "height":{"pos":32, "type":"int32_t", "def":0},
+            "hMSL":{"pos":36, "type":"int32_t", "def":0},
+            "hAcc":{"pos":40, "type":"uint32_t", "def":0},
+            "vAcc":{"pos":44, "type":"uint32_t", "def":0},
+            "velN":{"pos":48, "type":"int32_t", "def":0},
+            "velE":{"pos":52, "type":"int32_t", "def":0},
+            "velD":{"pos":56, "type":"int32_t", "def":0},
+            "gSpeed":{"pos":60, "type":"int32_t", "def":0},
+            "headMot":{"pos":64, "type":"int32_t", "def":0},
+            "sAcc":{"pos":68, "type":"uint32_t", "def":0},
+            "headAcc":{"pos":72, "type":"uint32_t", "def":0},
+            "pDOP":{"pos":76, "type":"uint16_t", "def":0},
+            "reserved1":{"pos":78, "type":"hex[6]", "def":"000000000000"},
+            "headVeh":{"pos":84, "type":"int32_t", "def":0},
+            "magDec":{"pos":88, "type":"int16_t", "def":0},
+            "magAcc":{"pos":90, "type":"uint16_t", "def":0}
+        }
+    }
+}

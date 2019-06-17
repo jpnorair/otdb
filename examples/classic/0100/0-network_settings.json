@@ -1,0 +1,14 @@
+{
+    "network_settings": {
+        "_meta":{"block":"isf", "id":0, "mod":52, "size":10, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "vid":"0000",
+            "subnet":17,
+            "bsubnet":17,
+            "settings":"0437",
+            "defflags":0,
+            "battempts":1,
+            "hold":2
+        }
+    }
+}

@@ -1,0 +1,7 @@
+{
+    "sensor_list": {
+        "_meta":{"block":"isf", "id":12, "mod":36, "size":16, "stock":true, "pos":0, "type":"array"},
+        "_content":[0,  0,  0,  0,  0,  0,  0,  0, 
+                    0,  0,  0,  0,  0,  0,  0,  0]
+    }
+}

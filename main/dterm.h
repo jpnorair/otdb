@@ -109,6 +109,7 @@ typedef struct {
     void*       devmgr;
     cmdtab_t*   cmdtab;
     void*       db;
+    void*       tmpl_fs;
     cJSON*      tmpl;
 } dterm_ext_t;
 

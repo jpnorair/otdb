@@ -430,6 +430,7 @@ int otdb_main(  INTF_Type intf_val,
         .cmdtab = NULL,
         .devmgr = NULL,
         .db = NULL,
+        .tmpl_fs = NULL,
         .tmpl = NULL
     };
     

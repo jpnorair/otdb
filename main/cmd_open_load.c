@@ -166,42 +166,25 @@ size_t dirent_buf_size(DIR * dirp) {
 
 
 
-
-
-
-/** @brief Implements an interior routine in OPEN and LOAD commands, for loading data .json files
-  * @param dth          (dterm_handle_t*) dterm handle
-  * @param dst          (uint8_t*) destination buffer -- used only as interim
-  * @param dstmax       (size_t) maximum extent of destination buffer
-  * @param fstmpl       (cJSON*) FS template JSON object
-  * @param devdir       (DIR*) directory object for device archive directory
-  * @param path         (const char*) active path to device directory (or device)
-  * @param uid          (uint64_t) 64 bit device id (Unique ID)
-  * @param export_tmp   (bool) true/false to export aggregate data to tmp directory
-  * @param sync_target  (bool) true/false to sync loaded delta to target devices
-  *
-  * dth, dst, and dstmax arguments are mainly for synchronization with target.
-  * If sync_target == false, dst can be NULL and dstmax is ignored.
-  */
-static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
+int cmdsub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
                         cJSON* fstmpl, DIR* devdir, const char* path, uint64_t uid,
-                        bool export_tmp, bool sync_target) {
+                        bool export_tmp) {
     int rc                  = 0;
     struct dirent *devent   = NULL;
     struct dirent *entbuf   = NULL;
     cJSON* data             = NULL;
     cJSON* dataobj;
     vlFILE* fp;
-    TALLOC_CTX* sub_datafile_heap;
+    TALLOC_CTX* cmdsub_datafile_heap;
     
-    sub_datafile_heap = talloc_new(dth->tctx);
-    if (sub_datafile_heap == NULL) {
+    cmdsub_datafile_heap = talloc_new(dth->tctx);
+    if (cmdsub_datafile_heap == NULL) {
     ///@todo better error code for out of memory
         return -1;
     }
     
     // Allocate directory traversal buffer -- fast exit if fails
-    entbuf = talloc_size(sub_datafile_heap, dirent_buf_size(devdir));
+    entbuf = talloc_size(cmdsub_datafile_heap, dirent_buf_size(devdir));
     if (entbuf == NULL) {
         return -1;
     }
@@ -214,10 +197,10 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         }
         if (devent->d_type == DT_REG) {
             DEBUGPRINT("%s %d :: json=%s/%s\n", __FUNCTION__, __LINE__, path, devent->d_name);
-            rc = jst_aggregate_json(sub_datafile_heap, &data, path, devent->d_name);
+            rc = jst_aggregate_json(cmdsub_datafile_heap, &data, path, devent->d_name);
             if (rc != 0) {
                 rc = -9;
-                goto sub_datafile_CLOSE;
+                goto cmdsub_datafile_CLOSE;
             }
         }
     }
@@ -253,7 +236,7 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
     // If there's no custom data to write, move on
     if (data == NULL) {
         rc = 0;
-        goto sub_datafile_CLOSE;
+        goto cmdsub_datafile_CLOSE;
     }
 
     // Correlate elements from data files with their metadata from the
@@ -417,22 +400,6 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
             fp->length = (uint16_t)derived_length;
         }
         
-        ///@note synchronization is now done at device level via the "push"
-        ///      command, at the end of open or load.
-//        if (sync_target && (dth->ext->devmgr != NULL)) {
-//            int cmdbytes;
-//            char outbuf[576];
-//            cmdbytes            = snprintf(outbuf, 576-512-2, "file w %u [", dmeta.fileid);
-//            cmdbytes           += cmd_hexwrite(&outbuf[cmdbytes], fdat, fp->length);
-//            outbuf[cmdbytes++]  = ']';
-//            outbuf[cmdbytes++]  = 0;
-//            cmdbytes            = cmd_devmgr(dth, dst, &cmdbytes, (uint8_t*)outbuf, dstmax);
-//            if (cmdbytes < 0) {
-//                /// this means there's a write error.  Could try again, or
-//                /// flag some type of error.
-//            }
-//        }
-        
         vl_setmodtime(fp, (ot_u32)dmeta.modtime);
         vl_close(fp);
     }
@@ -451,9 +418,9 @@ static int sub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
         }
     }
 
-    sub_datafile_CLOSE:
+    cmdsub_datafile_CLOSE:
     cJSON_Delete(data);
-    talloc_free(sub_datafile_heap);
+    talloc_free(cmdsub_datafile_heap);
 
     return rc;
 }
@@ -483,14 +450,13 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     cJSON* tmpl_export      = NULL;
     cJSON* data             = NULL;
     cJSON* obj              = NULL;
-    bool open_valid         = false;
     void* db                = NULL;
     
     // Function Heap
     TALLOC_CTX* cmd_open_heap;
     
     // OTFS data tables and handles
-    otfs_t tmpl_fs;
+    otfs_t* tmpl_fs;
     otfs_t data_fs;
     vlFSHEADER fshdr;
     vl_header_t *gfbhdr, *isshdr, *isfhdr;
@@ -503,9 +469,15 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     ///@todo do more input checks!!!!!!
 
+    tmpl_fs = talloc_zero_size(dth->pctx, sizeof(otfs_t));
+    if (tmpl_fs == NULL) {
+        ///@todo better error code for out of memory
+        return -1;
+    }
+
     cmd_open_heap = talloc_new(dth->tctx);
     if (cmd_open_heap == NULL) {
-    ///@todo better error code for out of memory
+        ///@todo better error code for out of memory
         return -1;
     }
     
@@ -599,9 +571,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     // input files
 
     // Template FS for defaults
-    tmpl_fs.alloc   = 0;
-    tmpl_fs.base    = NULL;
-    tmpl_fs.uid.u64 = 0;
+    tmpl_fs->alloc   = 0;
+    tmpl_fs->base    = NULL;
+    tmpl_fs->uid.u64 = 0;
     memset(&fshdr, 0, sizeof(vlFSHEADER));
     if (tmpl == NULL) {
         // No template found
@@ -714,17 +686,17 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     /// json input or used like it is here?
     fshdr.ftab_alloc    = sizeof(vlFSHEADER) + sizeof(vl_header_t)*(fshdr.isf.files+fshdr.iss.files+fshdr.gfb.files);
     fshdr.res_time0     = (uint32_t)time(NULL);
-    tmpl_fs.alloc       = vl_get_fsalloc(&fshdr);
-    tmpl_fs.base        = talloc_zero_size(cmd_open_heap, tmpl_fs.alloc);
-    if (tmpl_fs.base == NULL) {
+    tmpl_fs->alloc      = vl_get_fsalloc(&fshdr);
+    tmpl_fs->base       = talloc_zero_size(tmpl_fs, tmpl_fs->alloc);
+    if (tmpl_fs->base == NULL) {
         rc = -5;
         goto cmd_open_CLOSE;
     }
-    memcpy(tmpl_fs.base, &fshdr, sizeof(vlFSHEADER));
+    memcpy(tmpl_fs->base, &fshdr, sizeof(vlFSHEADER));
    
-    gfbhdr  = (fshdr.gfb.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER) : NULL;
-    isshdr  = (fshdr.iss.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+(fshdr.gfb.files*sizeof(vl_header_t)) : NULL;
-    isfhdr  = (fshdr.isf.files != 0) ? tmpl_fs.base+sizeof(vlFSHEADER)+((fshdr.gfb.files+fshdr.iss.files)*sizeof(vl_header_t)) : NULL;
+    gfbhdr  = (fshdr.gfb.files != 0) ? tmpl_fs->base+sizeof(vlFSHEADER) : NULL;
+    isshdr  = (fshdr.iss.files != 0) ? tmpl_fs->base+sizeof(vlFSHEADER)+(fshdr.gfb.files*sizeof(vl_header_t)) : NULL;
+    isfhdr  = (fshdr.isf.files != 0) ? tmpl_fs->base+sizeof(vlFSHEADER)+((fshdr.gfb.files+fshdr.iss.files)*sizeof(vl_header_t)) : NULL;
     
     // 4. Prepare the file table, except for base and length fields, which
     //    are done in 4b and 4c respectively.
@@ -856,7 +828,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         content     = cJSON_GetObjectItemCaseSensitive(obj, "_content");
         hdr->length = 0;
-        filedata    = (uint8_t*)tmpl_fs.base + hdr->base;
+        filedata    = (uint8_t*)tmpl_fs->base + hdr->base;
         if (content != NULL) {
             // Struct type, most involved
             if (ctype == CONTENT_struct) {   
@@ -928,7 +900,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
 
     // TEST PRINT THE HEADER
-    DEBUG_RUN( test_dumpbytes(tmpl_fs.base, sizeof(vl_header_t), fshdr.ftab_alloc, "FS TABLE"); );
+    DEBUG_RUN( test_dumpbytes(tmpl_fs->base, sizeof(vl_header_t), fshdr.ftab_alloc, "FS TABLE"); );
 
     // 5. By this point, the default FS is created based on the input 
     // template.  For each device in the imported JSON, we make a copy of
@@ -972,13 +944,13 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // Create new FS using defaults from template
         ///@note data_fs goes on the permanent memory context
-        data_fs.alloc   = tmpl_fs.alloc;
-        data_fs.base    = talloc_size(dth->pctx, tmpl_fs.alloc);
+        data_fs.alloc   = tmpl_fs->alloc;
+        data_fs.base    = talloc_size(dth->pctx, tmpl_fs->alloc);
         if (data_fs.base == NULL) {
             rc = -7;
         }
         else {
-            memcpy(data_fs.base, tmpl_fs.base, tmpl_fs.alloc);
+            memcpy(data_fs.base, tmpl_fs->base, tmpl_fs->alloc);
         
             // Create new FS based on device id and template FS
             DEBUGPRINT("%s %d :: ID=%"PRIx64"\n", __FUNCTION__, __LINE__, data_fs.uid.u64);
@@ -995,8 +967,8 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                     rc = -8;
                 }
                 else {
-                    ///@todo verify that final argument (sync_target=true) is indeed what we want to do
-                    rc = sub_datafile(dth, dst, dstmax, tmpl, devdir, pathbuf, data_fs.uid.u64, true, true);
+                    ///@todo verify that final argument is indeed what we want to do
+                    rc = cmdsub_datafile(dth, dst, dstmax, tmpl, devdir, pathbuf, data_fs.uid.u64, true);
                     closedir(devdir);
                     devdir = NULL;
                 }
@@ -1098,6 +1070,9 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         talloc_free(dth->ext->tmpl);
         dth->ext->tmpl = tmpl_export;
         
+        talloc_free(dth->ext->tmpl_fs);
+        dth->ext->tmpl_fs = tmpl_fs;
+        
 //        if (dth->ext->devmgr != NULL) {
 //            uint8_t pushargs[] = "";
 //            int argslen = sizeof("");
@@ -1105,6 +1080,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
 //        }
     }
     else {
+        talloc_free(tmpl_fs);
         cJSON_Delete(tmpl);
         otfs_deinit(db, &sub_tfree);
     }
@@ -1200,7 +1176,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         
         // Activate the chosen ID.  If it is not in the database, skip it.
         if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) == 0) {
-            rc = sub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, arglist.archive_path, active_id.u64, false, true);
+            rc = cmdsub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, arglist.archive_path, active_id.u64, false);
         }
     }
     else {
@@ -1253,7 +1229,7 @@ int cmd_load(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
             }
             else {
                 if (otfs_setfs(dth->ext->db, NULL, &active_id.u8[0]) == 0) {
-                    rc = sub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, pathbuf, active_id.u64, false, true);
+                    rc = cmdsub_datafile(dth, dst, dstmax, dth->ext->tmpl, devdir, pathbuf, active_id.u64, false);
                 }
                 closedir(devdir);
                 devdir = NULL;

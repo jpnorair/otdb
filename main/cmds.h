@@ -25,6 +25,7 @@
 #include <argtable3.h>
 
 // POSIX & Standard C Libraries
+#include <dirent.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -227,6 +228,25 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
   * ID is a bintex expression.
   */
 int cmd_devset(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax);
+
+
+
+/** @brief Implements an interior routine in OPEN, LOAD, DEV-NEW commands, for loading data .json files
+  * @param dth          (dterm_handle_t*) dterm handle
+  * @param dst          (uint8_t*) destination buffer -- used only as interim
+  * @param dstmax       (size_t) maximum extent of destination buffer
+  * @param fstmpl       (cJSON*) FS template JSON object
+  * @param devdir       (DIR*) directory object for device archive directory
+  * @param path         (const char*) active path to device directory (or device)
+  * @param uid          (uint64_t) 64 bit device id (Unique ID)
+  * @param export_tmp   (bool) true/false to export aggregate data to tmp directory
+  *
+  * dth, dst, and dstmax arguments are mainly for synchronization with target.
+  * If sync_target == false, dst can be NULL and dstmax is ignored.
+  */
+int cmdsub_datafile(dterm_handle_t* dth, uint8_t* dst, size_t dstmax,
+                        cJSON* fstmpl, DIR* devdir, const char* path, uint64_t uid,
+                        bool export_tmp);
 
 
 

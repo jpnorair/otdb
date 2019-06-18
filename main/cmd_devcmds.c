@@ -19,6 +19,7 @@
 #include "dterm.h"
 #include "cliopt.h"
 #include "otdb_cfg.h"
+#include "debug.h"
 
 // HB Headers/Libraries
 #include <bintex.h>
@@ -35,6 +36,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 
 
@@ -80,6 +82,11 @@ extern struct arg_end*  end_man;
 
 
 
+static void sub_tfree(void* ctx) {
+    talloc_free(ctx);
+}
+
+
 
 /** OTDB DB Manipulation Commands
   * -------------------------------------------------------------------------
@@ -87,37 +94,60 @@ extern struct arg_end*  end_man;
 
 int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    otfs_t newfs;
     cmd_arglist_t arglist = {
         .fields = ARGFIELD_DEVICEID | ARGFIELD_JSONOUT | ARGFIELD_ARCHIVE,
     };
     void* args[] = {help_man, jsonout_opt, devid_man, archive_man, end_man};
     
+    /// Only works with an open database
+    if (dth->ext->tmpl_fs == NULL) {
+        rc = -1;
+        goto cmd_devnew_END;
+    }
+    
     /// Extract arguments into arglist struct
-    rc = cmd_extract_args(&arglist, args, "dev-new", (const char*)src, inbytes);
-    
     /// On successful extraction, create a new device in the database
-    if (rc == 0) {
-        DEBUGPRINT("cmd_devnew():\n  archive=%s\n", arglist.archive_path);
-        
-        if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
-            if (rc != 0) {
-                rc = -256 + rc;
-                goto cmd_devnew_END;
-            }
-        }
-        
-        ///@todo implementation
-        ///
-        /// Only works with an open database
-        
-        /// 1. Load FS template and defaults (JSON).  
-        /// 2. Generate the binary from the JSON.
-        /// 3. Create a new filesystem instance with this binary.
+    rc = cmd_extract_args(&arglist, args, "dev-new", (const char*)src, inbytes);
+    if (rc != 0) {
+        goto cmd_devnew_END;
+    }
+    DEBUGPRINT("cmd_devnew():\n  archive=%s\n", arglist.archive_path);
     
-        /// If no files are provided, use libotfs defaults
-        //int otfs_load_defaults(void* handle, otfs_t* fs, size_t maxalloc);
-        //int otfs_new(void* handle, const otfs_t* fs);
+    /// Make sure the device doesn't already exist
+    if (arglist.devid != 0) {
+        rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
+        if (rc == 0) {
+            rc = ERRCODE(otfs, otfs_setfs, rc);
+            goto cmd_devnew_END;
+        }
+    }
+    
+    /// Create the new device FS in the DB
+    
+    /// Check if pathbuf is set to "NULL" which uses default data
+    if (strcmp(arglist.archive_path, "NULL") == 0) {
+        newfs.alloc     = ((otfs_t*)dth->ext->tmpl_fs)->alloc;
+        newfs.base      = ((otfs_t*)dth->ext->tmpl_fs)->base;
+        newfs.uid.u64   = arglist.devid;
+        rc = otfs_new(dth->ext->db, &newfs);
+        if (rc != 0) {
+            rc = ERRCODE(otfs, otfs_new, rc);
+            goto cmd_devnew_END;
+        }
+    }
+    else {
+        struct stat st;
+        rc = stat(arglist.archive_path, &st);
+        if (rc != 0) {
+            rc = -3;
+            goto cmd_devnew_END;
+        }
+        if (!S_ISDIR(st.st_mode)) {
+            rc = -4;
+            goto cmd_devnew_END;
+        }
+        rc = cmdsub_datafile(dth, dst, dstmax, dth->ext->tmpl, NULL, arglist.archive_path, arglist.devid, false);
     }
 
     cmd_devnew_END:
@@ -128,6 +158,7 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
 
 int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size_t dstmax) {
     int rc;
+    otfs_t delfs;
     cmd_arglist_t arglist = {
         .fields =  ARGFIELD_JSONOUT | ARGFIELD_DEVICEID,
     };
@@ -141,14 +172,19 @@ int cmd_devdel(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
         DEBUGPRINT("cmd_devdel():\n  device_id=%016"PRIx64"\n", arglist.devid);
         
         if (arglist.devid != 0) {
-            rc = otfs_setfs(dth->ext->db, NULL, (uint8_t*)&arglist.devid);
+            rc = otfs_setfs(dth->ext->db, &delfs, (uint8_t*)&arglist.devid);
             if (rc != 0) {
-                rc = -256 + rc;
+                rc = ERRCODE(otfs, otfs_setfs, rc);
+                goto cmd_devdel_END;
+            }
+            
+            ///@todo delete the file!
+            rc = otfs_del(dth->ext->db, &delfs, &sub_tfree);
+            if (rc != 0) {
+                rc = ERRCODE(otfs, otfs_del, rc);
                 goto cmd_devdel_END;
             }
         }
-        
-        ///@todo delete the file!
     }
 
     cmd_devdel_END:

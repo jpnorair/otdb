@@ -3,11 +3,11 @@
         "_meta":{"block":"isf", "id":22, "mod":52, "size":24, "stock":true, "pos":0, "type":"struct"},
         "_content": {
             "incurve":{"pos":0, "type":"uint32_t", "def":0},
-            "modena":{"pos":4, "type":"float", "def":0},
-            "modtype":{"pos":8, "type":"float", "def":0},
-            "wintm":{"pos":12, "type":"float", "def":0},
-            "rvrttms":{"pos":16, "type":"float", "def":0},
-            "rmptms":{"pos":20, "type":"float", "def":0}
+            "modena":{"pos":4, "type":"uint32_t", "def":0},
+            "modtype":{"pos":8, "type":"uint32_t", "def":0},
+            "wintm":{"pos":12, "type":"uint32_t", "def":0},
+            "rvrttms":{"pos":16, "type":"uint32_t", "def":0},
+            "rmptms":{"pos":20, "type":"uint32_t", "def":0}
         }
     }
 }

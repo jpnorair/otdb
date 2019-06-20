@@ -583,8 +583,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
   
     // 3a. Check template metadata.  Make sure it is valid.  Optional 
     // elements get filled with defaults if not present.
-    obj = tmpl->child;
-    while (obj != NULL) {
+    for (obj=tmpl->child; obj!=NULL; obj=obj->next) {
         cJSON* meta;
         cJSON* elem;
         int filesize = 0;
@@ -639,6 +638,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                default: fshdr.isf.alloc += filesize;
                         fshdr.isf.used  += is_stock;
                         fshdr.isf.files++;
+                        break;
             }
             
             // Type: optional, default="array"
@@ -663,7 +663,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 cJSON_AddItemToObject(meta, "modtime", elem);
             }
         }
-        obj = obj->next;
     }
  
     // 3b. Template is valid.
@@ -700,8 +699,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     
     // 4. Prepare the file table, except for base and length fields, which
     //    are done in 4b and 4c respectively.
-    obj = tmpl->child;
-    while (obj != NULL) {
+    for (obj=tmpl->child; obj!=NULL; obj=obj->next) {
         cJSON*  meta;
         vl_header_t* hdr;
         ot_uni16    idmod;
@@ -754,7 +752,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
         //hdr->length  = ... ;
 
         DEBUGPRINT("File ID:%d, MOD:0%02o, Alloc:%d, Time=%d\n", idmod.ubyte[0], idmod.ubyte[1], hdr->alloc, hdr->modtime);
-        obj = obj->next;
     }
   
     // 4b. Derive Base values from file allocations and write them to table
@@ -779,8 +776,7 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
    
     // 4c. Derive Length values from template and write default values to
     // the filesystem.
-    obj = tmpl->child;
-    while (obj != NULL) {
+    for (obj=tmpl->child; obj!=NULL; obj=obj->next) {
         cJSON*  meta;
         cJSON*  content;
         vl_header_t* hdr;
@@ -895,8 +891,6 @@ int cmd_open(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
                 }
             }
         }
-
-        obj = obj->next;
     }
 
     // TEST PRINT THE HEADER

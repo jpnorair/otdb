@@ -1,0 +1,14 @@
+{
+    "location_demo": {
+        "_meta":{"block":"isf", "id":25, "mod":52, "size":20, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "flags":0,
+            "accscore":0,
+            "rssi":0,
+            "linkloss":0,
+            "lat":0,
+            "lon":0,
+            "id":"0000000000000000"
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "location_demo": {
+        "_meta":{"block":"isf", "id":25, "mod":52, "size":20, "stock":true, "pos":0, "type":"struct"},
+        "_content": {
+            "flags":{"pos":0, "type":"uint8_t", "def":0},
+            "accscore":{"pos":1, "type":"uint8_t", "def":0},
+            "rssi":{"pos":2, "type":"uint8_t", "def":0},
+            "linkloss":{"pos":3, "type":"uint8_t", "def":0},
+            "lat":{"pos":4, "type":"int32_t", "def":0},
+            "lon":{"pos":8, "type":"int32_t", "def":0},
+            "id":{"pos":12, "type":"hex[8]", "def":"0000000000000000"}
+        }
+    }
+}

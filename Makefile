@@ -1,7 +1,8 @@
-CC=gcc
+CC := gcc
+LD := ld
 
-THISMACHINE := $(shell uname -srm | sed -e 's/ /-/g')
-THISSYSTEM	:= $(shell uname -s)
+THISMACHINE ?= $(shell uname -srm | sed -e 's/ /-/g')
+THISSYSTEM	?= $(shell uname -s)
 
 
 APP         ?= otdb
@@ -64,8 +65,8 @@ SUBMODULES  := main client
 #DEPEXT      := d
 #OBJEXT      := o
 
-CFLAGS_DEBUG:= -std=gnu99 -O -g -Wall -pthread
-CFLAGS      := -std=gnu99 -O3 -pthread
+CFLAGS_DEBUG?= -std=gnu99 -O -g -Wall -pthread
+CFLAGS      ?= -std=gnu99 -O3 -pthread
 INC         := -I. -I./include -I./$(SYSDIR)/include
 INCDEP      := -I.
 LIBINC      := -L./$(SYSDIR)/lib

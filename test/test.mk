@@ -1,10 +1,10 @@
-CC=gcc
+CC := gcc
+LD := ld
 
 TARGET      := test
 OTTER_DEF   ?= 
 
-#CFLAGS      := -std=gnu99 -O -g -Wall
-CFLAGS      := -std=gnu99 -O3
+CFLAGS      ?= -std=gnu99 -O3
 
 BUILDDIR    := ../build/$(TARGET)
 TARGETDIR   := ./

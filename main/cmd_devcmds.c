@@ -127,11 +127,19 @@ int cmd_devnew(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, si
     
     /// Check if pathbuf is set to "NULL" which uses default data
     if (strcmp(arglist.archive_path, "NULL") == 0) {
-        newfs.alloc     = ((otfs_t*)dth->ext->tmpl_fs)->alloc;
-        newfs.base      = ((otfs_t*)dth->ext->tmpl_fs)->base;
         newfs.uid.u64   = arglist.devid;
+        newfs.alloc     = ((otfs_t*)dth->ext->tmpl_fs)->alloc;
+        newfs.base      = talloc_size(dth->pctx, newfs.alloc);
+        if (newfs.base == NULL) {
+            ///@todo error casting
+            rc = -2;
+            goto cmd_devnew_END;
+        }
+        
+        memcpy(newfs.base, ((otfs_t*)dth->ext->tmpl_fs)->base, newfs.alloc);
         rc = otfs_new(dth->ext->db, &newfs);
         if (rc != 0) {
+            talloc_free(newfs.base);
             rc = ERRCODE(otfs, otfs_new, rc);
             goto cmd_devnew_END;
         }

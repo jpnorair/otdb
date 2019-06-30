@@ -47,8 +47,12 @@ ifeq ($(THISSYSTEM),Darwin)
 else ifeq ($(THISSYSTEM),Linux)
 #	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
     PRODUCTS := otdb.POSIX.a
-	LIBBSD := -lbsd
-	
+    ifneq (,($findstring,LEDE,$(THISMACHINE)))
+        LIBBSD := -lfts
+    else
+        LIBBSD := 
+    endif
+        
 else ifeq ($(THISSYSTEM),CYGWIN_NT-10.0)
 	PRODUCTS := otdb.POSIX.a
 	LIBBSD :=

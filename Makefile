@@ -10,7 +10,8 @@ PKGDIR      := ../_hbpkg/$(THISMACHINE)
 SYSDIR      := ../_hbsys/$(THISMACHINE)
 EXT_DEF     ?= 
 EXT_INC     ?= 
-EXT_LIBFLAGS ?= 
+EXT_LIB     ?=
+EXT_LIBFLAGS ?=
 EXT_LIBS    ?= 
 VERSION     ?= 1.0.a
 
@@ -71,7 +72,7 @@ SUBMODULES  := main client
 
 CFLAGS_DEBUG?= -std=gnu99 -O -g -Wall -pthread
 CFLAGS      ?= -std=gnu99 -O3 -pthread
-INC         := -I. -I./include -I./$(SYSDIR)/include
+INC         := -I. -I./include -I./$(SYSDIR)/include 
 INCDEP      := -I.
 LIBINC      := -L./$(SYSDIR)/lib
 LIB         := -largtable -lbintex -lcJSON -lclithread -lcmdtab -lhbuilder -lotfs -loteax -ljudy -ltalloc -lm -lc $(LIBBSD)
@@ -83,7 +84,7 @@ OTDB_PKG   := $(PKGDIR)
 OTDB_DEF   := $(DEFAULT_DEF) $(EXT_DEF)
 OTDB_INC   := $(INC) $(EXT_INC)
 OTDB_LIB   := $(LIB) $(EXT_LIBFLAGS)
-OTDB_LIBINC:= $(LIBINC)
+OTDB_LIBINC:= $(LIBINC) $(EXT_LIB)
 OTDB_BLD   := $(BUILDDIR)
 OTDB_APP   := $(APPDIR)
 export OTDB_PKG

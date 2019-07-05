@@ -76,7 +76,7 @@
             "ramprtepct":{"pos":160, "type":"float", "def":0},
             "pfcons":{"pos":164, "type":"float", "def":0},
             "varcons":{"pos":168, "type":"float", "def":0},
-            "conndly":{"pos":172, "type":"float", "def":0}
+            "conndly":{"pos":172, "type":"uint32_t", "def":0}
         }
     }
 }

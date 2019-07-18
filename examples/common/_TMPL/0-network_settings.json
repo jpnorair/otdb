@@ -5,7 +5,7 @@
             "vid":{"pos":0, "type":"hex[2]", "def":"0000"},
             "subnet":{"pos":2, "type":"uint8_t", "def":17},
             "bsubnet":{"pos":3, "type":"uint8_t", "def":17},
-            "settings":{"pos":4, "type":"uint16_t", "def":0}, #OT_ACTIVE_SETTINGS
+            "settings":{"pos":4, "type":"hex[2]", "def":"0437"},
             "defflags":{"pos":6, "type":"uint8_t", "def":0},
             "battempts":{"pos":7, "type":"uint8_t", "def":1},
             "hold":{"pos":8, "type":"uint16_t", "def":2}

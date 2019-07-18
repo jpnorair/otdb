@@ -3,7 +3,7 @@
         "_meta":{"block":"isf", "id":1, "mod":36, "size":48, "stock":true, "pos":0, "type":"struct"},
         "_content": {
             "uid":{"pos":0, "type":"hex[8]", "def":"DA54700101010101"},
-            "settings":{"pos":8, "type":"uint16_t", "def":0}, #OT_SUPPORTED_SETTINGS
+            "settings":{"pos":8, "type":"hex[2]", "def":"0737"},
             "maxframe":{"pos":10, "type":"uint8_t", "def":255},
             "maxpacket":{"pos":11, "type":"uint8_t", "def":1},
             "macmodes":{"pos":12, "type":"uint16_t", "def":1},

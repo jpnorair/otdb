@@ -3,7 +3,7 @@
     	"_meta":{"block":"isf", "id":1, "mod":36, "size":48, "pos":0, "type":"struct", "modtime":0},
     	"_content":{
 			"uid":"00000000DEADBEEF",
-			"settings":0,
+			"settings":"0737",
 			"maxframe":255,
 			"maxpacket":1,
 			"macmodes":"0001",

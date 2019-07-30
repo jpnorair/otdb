@@ -26,6 +26,7 @@ ifeq ($(MAKECMDGOALS),debug)
 	APPDIR      := bin/$(THISMACHINE)
 	BUILDDIR    := build/$(THISMACHINE)_debug
 	DEBUG_MODE  := 1
+	
 else
 	APPDIR      := bin/$(THISMACHINE)
 	BUILDDIR    := build/$(THISMACHINE)
@@ -37,8 +38,6 @@ endif
 ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
 	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
 endif
-
-
 
 ifeq ($(THISSYSTEM),Darwin)
 # Mac can't do conditional selection of static and dynamic libs at link time.
@@ -62,7 +61,7 @@ else
 endif
 
 DEFAULT_DEF := -D__HBUILDER__ -DOTDB_PARAM_GITHEAD=\"$(GITHEAD)\"
-LIBMODULES  := argtable cJSON cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIBS)
+LIBMODULES  := argtable cJSON clithread cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIBS)
 #SUBMODULES  := main client test
 SUBMODULES  := main client
 

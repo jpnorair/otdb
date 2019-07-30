@@ -26,11 +26,12 @@ ifeq ($(MAKECMDGOALS),debug)
 	APPDIR      := bin/$(THISMACHINE)
 	BUILDDIR    := build/$(THISMACHINE)_debug
 	DEBUG_MODE  := 1
-	
+	CFLAGS      ?= -std=gnu99 -O0 -g -Wall -pthread -D__DEBUG__
 else
 	APPDIR      := bin/$(THISMACHINE)
 	BUILDDIR    := build/$(THISMACHINE)
 	DEBUG_MODE  := 0
+	CFLAGS      ?= -std=gnu99 -O3 -pthread
 endif
 
 
@@ -69,8 +70,6 @@ SUBMODULES  := main client
 #DEPEXT      := d
 #OBJEXT      := o
 
-CFLAGS_DEBUG?= -std=gnu99 -O -g -Wall -pthread
-CFLAGS      ?= -std=gnu99 -O3 -pthread
 INC         := -I. -I./include -I./$(SYSDIR)/include 
 INCDEP      := -I.
 LIBINC      := -L./$(SYSDIR)/lib
@@ -160,7 +159,7 @@ $(APP): $(SUBMODULES)
 $(APP).debug: $(SUBMODULES)
 #	$(eval OBJECTS_D := $(shell find $(BUILDDIR) -type f -name "*.d$(OBJEXT)"))
 	$(eval OBJECTS_D := $(shell find $(BUILDDIR) -type f -name "*.do"))
-	$(CC) $(CFLAGS_DEBUG) $(OTDB_DEF) -D__DEBUG__ $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS_D) $(OTDB_LIB)
+	$(CC) $(CFLAGS) $(OTDB_DEF) -D__DEBUG__ $(OTDB_INC) $(OTDB_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS_D) $(OTDB_LIB)
 
 
 

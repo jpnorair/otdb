@@ -9,11 +9,7 @@ OTDB_LIB   ?=
 EXT_DEBUG  ?= 0
 
 ifneq ($(EXT_DEBUG),0)
-	ifeq ($(EXT_DEBUG),1)
-		CFLAGS  ?= -std=gnu99 -O2 -Wall -pthread -D__DEBUG__
-	else
-		CFLAGS  ?= -std=gnu99 -O -g -Wall -pthread -D__DEBUG__
-	endif
+	CFLAGS  ?= -std=gnu99 -O0 -g -Wall -pthread -D__DEBUG__
 	SRCEXT      := c
 	DEPEXT      := dd
 	OBJEXT      := do

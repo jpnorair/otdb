@@ -598,8 +598,8 @@ void* dterm_socketer(void* args) {
         else {
             size_t poolsize = cliopt_getpoolsize();
             size_t est_obj  = 4; //(poolsize / 128) + 1;
-            clithread_add(dth->clithread, NULL, est_obj, poolsize,
-                                &dterm_socket_clithread, (void*)&clithread);
+            clithread.tctx  = talloc_pooled_object(dth->pctx, void*, (unsigned int)est_obj, poolsize);
+            clithread_add(dth->clithread, NULL, est_obj, poolsize, &dterm_socket_clithread, &clithread);
         }
     }
     

@@ -598,9 +598,11 @@ void* dterm_socketer(void* args) {
         else {
             size_t poolsize = cliopt_getpoolsize();
             size_t est_obj  = 4; //(poolsize / 128) + 1;
+            
+            ///@todo with new clithread impl, might be fine to skip this and
+            /// let clithread do this internally on the NULL context
             clithread.tctx = talloc_pooled_object(dth->pctx, void*, (unsigned int)est_obj, poolsize);
-            clithread_add(dth->clithread, NULL, est_obj, poolsize,
-                                &dterm_socket_clithread, (void*)&clithread);
+            clithread_add(dth->clithread, NULL, est_obj, poolsize, &dterm_socket_clithread, (void*)&clithread);
         }
     }
     

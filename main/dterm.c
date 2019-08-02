@@ -601,7 +601,6 @@ void* dterm_socketer(void* args) {
             
             ///@todo with new clithread impl, might be fine to skip this and
             /// let clithread do this internally on the NULL context
-            
             clithread.tctx = talloc_pooled_object(dth->pctx, void*, (unsigned int)est_obj, poolsize);
             
             ///@todo there are some problems with clithread that appear to be

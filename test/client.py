@@ -128,7 +128,7 @@ if __name__ == '__main__':
     otdb_outthread.join()
     otdb_errthread.join()
     
-    otdb_pipe.send_signal(signal.SIGINT)
+    otdb_pipe.send_signal(signal.SIGTERM)
     otdb_pipe.wait()
 
     sys.exit(0)

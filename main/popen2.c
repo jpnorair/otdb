@@ -122,7 +122,7 @@ void sub_popen2_kill(pid_t pid, int fd_tochild, int fd_fromchild) {
     close(fd_tochild);
     close(fd_fromchild);               // Is this needed?
     
-    kill(pid, SIGINT);
+    kill(pid, SIGTERM);
     waitpid(pid, NULL, 0);
     kill(pid, 0);           // returns status, this is technically unnecessary
 }

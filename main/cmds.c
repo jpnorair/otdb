@@ -611,7 +611,7 @@ int cmd_quit(dterm_handle_t* dth, uint8_t* dst, int* inbytes, uint8_t* src, size
     }
     INPUT_SANITIZE();
     
-    raise(SIGINT);
+    raise(SIGTERM);
     return 0;
 }
 

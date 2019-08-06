@@ -664,7 +664,7 @@ void* dterm_piper(void* args) {
     /// This code should never occur, given the while(1) loop.
     /// If it does (possibly a stack fuck-up), we print this "chaotic error."
     fprintf(stderr, "\n--> Chaotic error: dterm_piper() thread broke loop.\n");
-    raise(SIGINT);
+    raise(SIGTERM);
     return NULL;
 }
 
@@ -911,7 +911,7 @@ void* dterm_prompter(void* args) {
                                     break;
                                     
                 case ct_sigint:     killstring  = str_ct_sigint;
-                                    sigcode     = SIGINT; 
+                                    sigcode     = SIGTERM; 
                                     break;
                                     
                 case ct_sigquit:    killstring  = str_ct_sigquit;
@@ -1072,7 +1072,7 @@ void* dterm_prompter(void* args) {
     /// This code should never occur, given the while(1) loop.
     /// If it does (possibly a stack fuck-up), we print this "chaotic error."
     fprintf(stderr, "\n--> Chaotic error: dterm_prompter() thread broke loop.\n");
-    raise(SIGINT);
+    raise(SIGTERM);
     return NULL;
 }
 

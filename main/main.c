@@ -127,31 +127,26 @@ static int otdb_main(   INTF_Type intf_val,
   * ========================================================================<BR>
   */
 
-static void sub_assign_signal(int sigcode, void (*sighandler)(int)) {
+static void sub_assign_signal(int sigcode, void (*sighandler)(int), bool is_critical) {
     if (signal(sigcode, sighandler) != 0) {
-        fprintf(stderr, "--> Error assigning signal (%d), exiting\n", sigcode);
-        exit(EXIT_FAILURE);
+        perror("");
+        if (is_critical) {
+            fprintf(stderr, "--> Error assigning signal (%d): Fatal, exiting\n", sigcode);
+            exit(EXIT_FAILURE);
+        }
+        else {
+            fprintf(stderr, "--> Error assigning signal (%d): Ignoring\n", sigcode);
+        }
     }
 }
 
-static void sigint_handler(int sigcode) {
+static void sig_handler(int sigcode) {
     cli.exitcode = EXIT_SUCCESS;
     //pthread_mutex_lock(&cli.kill_mutex);
     //cli.kill_inactive = false;
     pthread_cond_signal(&cli.kill_cond);
     //pthread_mutex_unlock(&cli.kill_mutex);
 }
-
-static void sigquit_handler(int sigcode) {
-    cli.exitcode = EXIT_SUCCESS;
-    //pthread_mutex_lock(&cli.kill_mutex);
-    //cli.kill_inactive = false;
-    pthread_cond_signal(&cli.kill_cond);
-    //pthread_mutex_unlock(&cli.kill_mutex);
-}
-
-///@todo sigchild?
-
 
 
 
@@ -523,8 +518,8 @@ int otdb_main(  INTF_Type intf_val,
     /// typical in POSIX apps.  When activated, the threads are halted and
     /// Otter is shutdown.
     cli.exitcode = EXIT_SUCCESS;
-    sub_assign_signal(SIGINT, &sigint_handler);
-    //sub_assign_signal(SIGQUIT, &sigquit_handler);
+    sub_assign_signal(SIGTERM, &sig_handler, true);
+    sub_assign_signal(SIGINT, &sig_handler, false);
     
     if (initfile != NULL) {
         int init_rc;
@@ -553,7 +548,7 @@ int otdb_main(  INTF_Type intf_val,
     /// indefinitely until an error occurs or until the user quits.  Quit can 
     /// be via Ctl+C or Ctl+\, or potentially also through a dterm command.  
     /// Each thread must be be implemented to raise SIGQUIT or SIGINT on exit
-    /// i.e. raise(SIGINT).
+    /// i.e. raise(SIGTERM).
     pthread_create(&thr_dterm, NULL, dterm_fn, (void*)&dterm_handle);
     DEBUG_PRINTF("Finished Initializing OTDB\n");
    

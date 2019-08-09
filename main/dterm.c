@@ -39,6 +39,8 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -379,7 +381,7 @@ int dterm_close(dterm_handle_t* dth) {
   */
 
 
-static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, int linelen) {
+static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, int linelen, const char* termstring) {
     uint8_t     protocol_buf[1024];
     char        cmdname[32];
     int         cmdlen;
@@ -387,6 +389,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     uint8_t*    cursor  = protocol_buf;
     int         bufmax  = sizeof(protocol_buf);
     int         bytesout = 0;
+    int         termlen;
     const cmdtab_item_t* cmdptr;
     
     DEBUG_PRINTF("raw input (%i bytes) %.*s\n", linelen, linelen, loadbuf);
@@ -423,6 +426,9 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
         }
     }
 
+    // Terminator prep
+    termlen = (int)strlen(termstring);
+
     // determine length until newline, or null.
     // then search/get command in list.
     cmdlen  = cmd_getname(cmdname, loadbuf, sizeof(cmdname));
@@ -431,10 +437,10 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
         ///@todo build a nicer way to show where the error is,
         ///      possibly by using pi or ci (sign reversing)
         if (linelen > 0) {
-            bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
-                        "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}", 
-                        cmdname);
-            dterm_puts(&dth->fd, (char*)protocol_buf);
+            bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1,
+                        "{\"cmd\":\"%s\", \"err\":1, \"desc\":\"command not found\"}%s",
+                        cmdname, termstring);
+            //dterm_puts(&dth->fd, (char*)protocol_buf);
         }
     }
     else {
@@ -452,25 +458,39 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
         ///      a cursor showing where the first error was found.
         if (bytesout < 0) {
             bytesout = snprintf((char*)protocol_buf, sizeof(protocol_buf)-1, 
-                        "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}", 
-                        cmdname, bytesout);
-            dterm_puts(&dth->fd, (char*)protocol_buf);
+                        "{\"cmd\":\"%s\", \"err\":%d, \"desc\":\"command execution error\"}%s",
+                        cmdname, bytesout, termstring);
+            //dterm_puts(&dth->fd, (char*)protocol_buf);
         }
 
-        // If there are bytes to send to MPipe, do that.
-        // If bytesout == 0, there is no error, but also nothing
-        // to send to MPipe.
+        // If there are bytes to send to interface, do that.
+        // If bytesout == 0, there is no error, but also nothing to send.
         else if (bytesout > 0) {
+            cursor += bytesout;
+            bufmax -= bytesout;
             if (cJSON_IsObject(cmdobj)) {
                 VCLIENT_PRINTF("JSON Response (%i bytes): %.*s\n", bytesout, bytesout, (char*)cursor);
-                cursor += bytesout;
-                bufmax -= bytesout;
-                cursor  = (uint8_t*)stpncpy((char*)cursor, "}\0", bufmax);
-                bytesout= (int)(cursor - protocol_buf);
+                cursor += snprintf((char*)cursor, bufmax, "}%s", termstring);
             }
+            else {
+                cursor += snprintf((char*)cursor, bufmax, "%s", termstring);
+            }
+            bytesout = (int)(cursor - protocol_buf);
             
             DEBUG_PRINTF("raw output (%i bytes) %.*s\n", bytesout, bytesout, protocol_buf);
+        }
+    }
+    
+    /// If there are bytes to send back to the client, we can be extra safe
+    /// by checking that the fd is still available (that client didn't die)
+    /// If the file is down, we send an error to the caller so it can drop
+    /// the client.
+    if (bytesout > 0) {
+        if ((fcntl(dth->fd.out, F_GETFD) != -1) || (errno != EBADF)) {
             write(dth->fd.out, (char*)protocol_buf, bytesout);
+        }
+        else {
+            bytesout = -1;
         }
     }
 
@@ -537,17 +557,15 @@ void* dterm_socket_clithread(void* args) {
             dts.intf->state = prompt_off;
             
             do {
-                int dataout;
-
                 // Burn whitespace ahead of command.
                 while (isspace(*loadbuf)) { loadbuf++; loadlen--; }
                 linelen = (int)sub_str_mark(loadbuf, (size_t)loadlen);
 
                 // Process the line-input command
-                dataout = sub_proc_lineinput(&dts, NULL, loadbuf, linelen);
-                // If there's meaningful output, add a linebreak
-                if (dataout > 0) {
-                    dterm_puts(&dts.fd, "\n");
+                // If there's a fatal error in the processing, we kill this thread
+                if (sub_proc_lineinput(&dts, NULL, loadbuf, linelen, "\n") < 0) {
+                    pthread_mutex_unlock(dts.iso_mutex);
+                    goto dterm_socket_clithread_EXIT;
                 }
 
                 // +1 eats the terminator
@@ -565,6 +583,8 @@ void* dterm_socket_clithread(void* args) {
             break;
         }
     }
+
+    dterm_socket_clithread_EXIT:
 
     VERBOSE_PRINTF("Client Thread on socket:fd=%i is exiting\n", dts.fd.out);
     
@@ -625,12 +645,13 @@ void* dterm_piper(void* args) {
     dterm_handle_t* dth     = (dterm_handle_t*)args;
     int             loadlen = 0;
     char*           loadbuf = dth->intf->linebuf;
+    int             pipe_stat = 0;
     
     // Initial state = off
     dth->intf->state = prompt_off;
     
     /// Get each line from the pipe.
-    while (1) {
+    while (pipe_stat >= 0) {
         int linelen;
         size_t est_objs;
         size_t poolsize;
@@ -651,7 +672,7 @@ void* dterm_piper(void* args) {
         dth->tctx   = talloc_pooled_object(NULL, void*, est_objs, poolsize);
 
         // Process the line-input command
-        sub_proc_lineinput(dth, NULL, loadbuf, linelen);
+        pipe_stat   = sub_proc_lineinput(dth, NULL, loadbuf, linelen, "");
         
         // Free temporary memory pool context
         talloc_free(dth->tctx);
@@ -725,7 +746,6 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
     while (filebuf_sz > 0) {
         int linelen;
         int cmdrc;
-        int byteswritten;
         size_t est_objs;
         size_t poolsize;
         
@@ -741,10 +761,9 @@ int dterm_cmdfile(dterm_handle_t* dth, const char* filename) {
         // Echo input line to dterm
         dprintf(dth->fd.out, _E_MAG"%s"_E_NRM"%s\n", prompt_root, filecursor);
         
-        // Process the line-input command
-        byteswritten = sub_proc_lineinput(dth, &cmdrc, filecursor, linelen);
-        if (byteswritten > 0) {
-            dterm_puts(&dth->fd, "\n");
+        // Process the line-input command.  Exit on proc error
+        if (sub_proc_lineinput(dth, &cmdrc, filecursor, linelen, "\n") < 0) {
+            filebuf_sz = 0;
         }
         
         // Free temporary memory pool context
@@ -987,16 +1006,17 @@ void* dterm_prompter(void* args) {
                     // Run command(s) from line input
                     bytesout = sub_proc_lineinput( dth, NULL,
                                         (char*)dth->intf->linebuf,
-                                        (int)sub_str_mark((char*)dth->intf->linebuf, 1024)
+                                        (int)sub_str_mark((char*)dth->intf->linebuf, 1024),
+                                        "\n"
                                     );
                     
                     // Free temporary memory pool context
                     talloc_free(dth->tctx);
                     
                     // If there's meaningful output, add a linebreak
-                    if (bytesout > 0) {
-                        dterm_puts(&dth->fd, "\n");
-                    }
+                    //if (bytesout > 0) {
+                    //    dterm_puts(&dth->fd, "\n");
+                    //}
 
                     dterm_reset(dth->intf);
                     dth->intf->state = prompt_close;

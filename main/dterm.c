@@ -205,6 +205,12 @@ int dterm_init(dterm_handle_t* dth, dterm_ext_t* ext_data, INTF_Type intf) {
         goto dterm_init_TERM;
     }
     
+    /// If sockets are being used, SIGPIPE can cause trouble that we don't
+    /// want, and it is safe to ignore.
+    if (dth->intf->type == INTF_socket) {
+        signal(SIGPIPE, SIG_IGN);
+    }
+    
     return 0;
     
     dterm_init_TERM:
@@ -389,7 +395,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
     uint8_t*    cursor  = protocol_buf;
     int         bufmax  = sizeof(protocol_buf);
     int         bytesout = 0;
-    int         termlen;
     const cmdtab_item_t* cmdptr;
     
     DEBUG_PRINTF("raw input (%i bytes) %.*s\n", linelen, linelen, loadbuf);
@@ -425,9 +430,6 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
             goto sub_proc_lineinput_FREE;
         }
     }
-
-    // Terminator prep
-    termlen = (int)strlen(termstring);
 
     // determine length until newline, or null.
     // then search/get command in list.
@@ -490,6 +492,7 @@ static int sub_proc_lineinput(dterm_handle_t* dth, int* cmdrc, char* loadbuf, in
             write(dth->fd.out, (char*)protocol_buf, bytesout);
         }
         else {
+            perror("could not write back to client");
             bytesout = -1;
         }
     }
@@ -525,6 +528,8 @@ void* dterm_socket_clithread(void* args) {
         return NULL;
     if ((ct_args->app_handle == NULL) || (ct_args->tctx == NULL))
         return NULL;
+
+    talloc_disable_null_tracking();
 
     // Thread-local memory elements
     dth = ((clithread_args_t*)args)->app_handle;
@@ -643,9 +648,11 @@ void* dterm_piper(void* args) {
 /// <LI> Listens to stdin via read() pipe </LI>
 /// <LI> Processes each LINE and takes action accordingly. </LI>
     dterm_handle_t* dth     = (dterm_handle_t*)args;
-    int             loadlen = 0;
     char*           loadbuf = dth->intf->linebuf;
+    int             loadlen = 0;
     int             pipe_stat = 0;
+    
+    talloc_disable_null_tracking();
     
     // Initial state = off
     dth->intf->state = prompt_off;
@@ -682,9 +689,8 @@ void* dterm_piper(void* args) {
         loadbuf += (linelen + 1);
     }
     
-    /// This code should never occur, given the while(1) loop.
-    /// If it does (possibly a stack fuck-up), we print this "chaotic error."
-    fprintf(stderr, "\n--> Chaotic error: dterm_piper() thread broke loop.\n");
+    /// This code will run only if the pipe goes down
+    ERR_PRINTF("dterm_piper() closing due to unexpected closure of client pipe\n");
     raise(SIGTERM);
     return NULL;
 }
@@ -855,6 +861,8 @@ void* dterm_prompter(void* args) {
     
     // Local pointer for command history is just for making code look nicer
     ch = ((dterm_handle_t*)args)->ch;
+    
+    talloc_disable_null_tracking();
     
     // Initial state = off
     dth->intf->state = prompt_off;

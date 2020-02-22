@@ -48,7 +48,7 @@ ifeq ($(THISSYSTEM),Darwin)
 else ifeq ($(THISSYSTEM),Linux)
 #	PRODUCTS := otdb.$(THISSYSTEM).so otdb.$(THISSYSTEM).a
     PRODUCTS := otdb.POSIX.a
-    ifneq ($(findstring LEDE,$(THISMACHINE)),)
+    ifneq ($(findstring OpenWRT,$(THISMACHINE)),)
         LIBBSD := -lfts
     else
         LIBBSD :=

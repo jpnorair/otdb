@@ -217,7 +217,7 @@ int sp_open(sp_handle_t* handle, const char* socket_path, unsigned int flags) {
 
     // Open the socket
     new_sp->fd_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (new_sp < 0) {
+    if (new_sp->fd_sock < 0) {
         rc = -4;
         goto sp_open_ERR;
     }

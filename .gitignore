@@ -15,6 +15,9 @@
 *.gch
 *.o
 
+#Ignore IDE files
+*.idea*
+
 
 # XCode project, and archives
 /xcode_proj

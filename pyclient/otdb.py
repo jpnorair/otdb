@@ -1,14 +1,11 @@
 #! python3
 
 import sys
-#import os
-import time
+import os
 import signal
-import threading
 import argparse
 import socket
 import json
-import struct
 
 #-------------------------------------------------------------------------------------
 # PROGRAM DEFAULTS
@@ -21,6 +18,8 @@ import struct
 def printf(fmt, *params):
     sys.stdout.write(fmt % params)
 
+
+# TODO put static functions here
 
 
 class otdb:
@@ -78,18 +77,64 @@ class otdb:
         return otdb_resp
 
 
-    def newdevice(self, new_uid):
+    # ------------------------------------------------------------
+    # These functions may be static
+
+    def _print_uid(self, uid):
+        if isinstance(uid, bytes) or isinstance(uid, bytearray):
+            return uid[:8].hex()
+        elif isinstance(uid, int):
+            return (uid.to_bytes(8, byteorder='big', signed=False)).hex()
+        else:
+            return "0000000000000000"
+
+    def _print_range(self, offset, length):
+        rangestr = str(max(offset, 0)) + ":"
+        if length >= 0:
+            rangestr = rangestr + str(length)
+        return rangestr
+
+    def _validate_jsonresp(self, jsonresp):
+        try:
+            msg = json.loads(jsonresp)
+        except ValueError:
+            return False, None
+
+        if "err" in msg:
+            if msg["err"] == 0
+                return True, msg
+
+        return False, msg
+
+    # End of static functions
+    # ------------------------------------------------------------
+
+
+    def newdevice(self, new_uid, new_data=None):
         """
         Create a new device, given a supplied UID, according to the DB template.
+        returns True or False, if command has succeeded or failed
         new_uid : a 64bit bytes object or an unsigned integer
         """
+        cmdstr = "dev-new -j " + self._print_uid(self, new_uid)
+        if os.path.isdir(new_data):
+            cmdstr = cmdstr + " " + str(new_data)
+
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
 
     def deldevice(self, del_uid):
         """
         Delete a device from the OTDB, given a supplied UID.
+        returns True or False, if command has succeeded or failed
         del_uid : a 64bit bytes object or an unsigned integer
         """
+        cmdstr = "dev-del -j " + self._print_uid(self, del_uid)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
 
     def setdevice(self, set_uid):
@@ -97,8 +142,13 @@ class otdb:
         Set the default UID of the OTDB.
         Don't use this method unless you really know what you're doing.
         It can cause problems if OTDB is handling multiple clients.
+        returns True or False, if command has succeeded or failed
         set_uid : a 64bit bytes object or an unsigned integer
         """
+        cmdstr = "dev-set -j " + self._print_uid(self, set_uid)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
 
     def load(self, dbpath=""):
@@ -106,52 +156,125 @@ class otdb:
         Load a new database template (and device list) into the OTDB context.
         Don't use this method unless you really know what you're doing.
         The OTDB context is typically set when the OTDB daemon is started.
+        returns True or False, if command has succeeded or failed
         dbpath : path to the DB archive to load.
         """
+        if os.path.isdir(dbpath):
+            cmdstr = "open -j " + str(dbpath)
+            resp = self._sendcmd(self, cmdstr)
+            test, _ = self._validate_jsonresp(self, resp)
+            return test
+        else:
+            return False
 
 
-    def save(self, savepath):
+    def save(self, compress=False, uidlist=None, arcpath="./"):
         """
         Save the current OTDB context into a archive at a supplied path.
-        savepath : path to save the DB archive
+        returns True or False, if command has succeeded or failed.
+        compress : true or false (default false) to compress archive
+        uidlist : a list containing UIDs to save.  Default is None, which
+            will save all the UIDs in the OTDB
+        arcpath : path to save the DB archive.  Default is "./".
         """
+        if not os.path.isdir(arcpath):
+            return False
+
+        cmdstr = "save -j "
+
+        if compress:
+            cmdstr = cmdstr + "-c "
+
+        if isinstance(uidlist, list):
+            for uid in uidlist:
+                cmdstr = cmdstr + self._print_uid(self, uid) + " "
+
+        cmdstr = cmdstr + str(arcpath)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
 
-    def delfile(self, uid=0, block=3, file=0):
+    def f_del(self, uid=0, block=3, file=0):
         """
         Delete a file from a device.
+        returns True or False, if command has succeeded or failed.
         uid : ID of device on which to delete file.
         block : block where file resides (default ISF)
         file : ID of file
         """
+        cmdstr = "del -j -i " \
+                 + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " " + str(file)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
-    def newfile(self, uid=0, block=3, file_id=0):
+
+    def f_new(self, uid=0, block=3, file=0, perms=0, alloc=0):
         """
         Add a new file to a device.  If the file ID is not in the DB template,
         newfile() will fail, and no file will be created.
+        returns True or False, if command has succeeded or failed.
         uid : ID of device on which to delete file.
         block : block where file resides (default ISF)
         file : ID of file to create.
         """
+        cmdstr = "del -j -i " \
+                 + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " " + str(file) + \
+                 " " + oct(perms) + \
+                 " " + str(alloc)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
-    def restore(self, uid=0, block=3, file_id=0):
+
+    def f_restore(self, uid=0, block=3, file=0):
         """
         Restore a file on a device to the default value specified in the DB template.
         uid : ID of device on which to restore file.
         block : block where file resides (default ISF)
         file : ID of file to restore.
         """
+        cmdstr = "z -j -i " \
+                 + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " " + str(file)
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
-    def readperms(self, uid=0, block=3, file_id=0):
+
+    def f_readperms(self, age=-1, uid=0, block=3, file=0):
         """
         Read file permissions from a specified file.
-        Permissions are returned as a bitfield (unsigned 8bit integer)
+        Permissions are returned as an integer which corresponds to octal
+        formatted perm bits.  If -1 is returned, there was an error.
         uid : ID of device on which to read permissions.
         block : block where file resides (default ISF)
         file : ID of file to read.
         """
+        cmdstr = "rp -j -i "
+        if age >= 0:
+            cmdstr = cmdstr + "-a " + str(age)
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " " + str(file)
 
-    def readheader(self, uid=0, block=3, file_id=0):
+        # Send the command and then return the permissions if no error
+        resp = self._sendcmd(self, cmdstr)
+        test, jsonresp = self._validate_jsonresp(self, resp)
+        if test:
+            if "mod" in jsonresp:
+                return int(jsonresp["mod"])
+
+        return -1
+
+
+    def f_readheader(self, age=-1, uid=0, block=3, file=0):
         """
         Read file header from a specified file.
         Header is returned as a dictionary -- see data definitions for more information.
@@ -159,8 +282,28 @@ class otdb:
         block : block where file resides (default ISF)
         file : ID of file to read.
         """
+        cmdstr = "rh -j -i "
+        if age >= 0:
+            cmdstr = cmdstr + "-a " + str(age)
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " " + str(file)
 
-    def read(self, uid=0, block=3, file_id=0, offset=0, length=-1):
+        # Send the command and then return the part of the dictionary
+        # with header components, if successful
+        resp = self._sendcmd(self, cmdstr)
+        test, jsonresp = self._validate_jsonresp(self, resp)
+        if test:
+            try:
+                del jsonresp["cmd"]
+            except KeyError:
+                return None
+            return jsonresp
+
+        return None
+
+
+    def f_read(self, age=-1, uid=0, block=3, file=0, offset=0, length=-1):
         """
         Read file data from a specified file.
         Data is returned as a dictionary -- see data definitions for more information.
@@ -170,8 +313,27 @@ class otdb:
         offset: byte offset into file, to begin reading.  Default 0.
         length: number of bytes to return (max).  -1 means read all remaining bytes.  Default -1.
         """
+        cmdstr = "r -j -i "
+        if age >= 0:
+            cmdstr = cmdstr + "-a " + str(age)
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " -r " + self._print_range(self, offset, length) + \
+                 " " + str(file)
 
-    def readall(self, uid=0, block=3, file_id=0, offset=0, length=-1):
+        # Send the command and then return the part of the dictionary
+        # with header components, if successful
+        resp = self._sendcmd(self, cmdstr)
+        test, jsonresp = self._validate_jsonresp(self, resp)
+        if test:
+            try:
+                del jsonresp["cmd"]
+            except KeyError:
+                return None
+            return jsonresp
+
+
+    def f_readall(self, age=-1, uid=0, block=3, file=0, offset=0, length=-1):
         """
         Read file header and data from a specified file.
         Data is returned as a dictionary -- see data definitions for more information.
@@ -181,8 +343,27 @@ class otdb:
         offset: byte offset into file, to begin reading.  Default 0.
         length: number of bytes to return (max).  -1 means read all remaining bytes.  Default -1.
         """
+        cmdstr = "r* -j -i "
+        if age >= 0:
+            cmdstr = cmdstr + "-a " + str(age)
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " -r " + self._print_range(self, offset, length) + \
+                 " " + str(file)
 
-    def writeperms(self, uid=0, block=3, file_id=0, file_perms=0):
+        # Send the command and then return the part of the dictionary
+        # with header components, if successful
+        resp = self._sendcmd(self, cmdstr)
+        test, jsonresp = self._validate_jsonresp(self, resp)
+        if test:
+            try:
+                del jsonresp["cmd"]
+            except KeyError:
+                return None
+            return jsonresp
+
+
+    def f_writeperms(self, uid=0, block=3, file=0, file_perms=0):
         """
         Write file permissions to a specified file.
         uid : ID of device on which to read permissions.
@@ -190,8 +371,18 @@ class otdb:
         file : ID of file to read.
         file_perms : a bitfield (unsigned 8bit integer) -- see data definitions
         """
+        cmdstr = "wp -j -i "
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " -r " + self._print_range(self, offset, length) + \
+                 " " + str(file)
 
-    def write(self, uid=0, block=3, file_id=0, offset=0, data=None):
+        # Send the command and then return true/false
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
+
+    def f_write(self, uid=0, block=3, file=0, offset=0, data=None):
         """
         Write data to a specified file.
         uid : ID of device on which to read permissions.
@@ -200,204 +391,24 @@ class otdb:
         offset : byte offset into file, to begin writing.  Default 0.
         data : bytes object for data to write
         """
+        #Right now, data must be bytes, but in the future it could be JSON optionally
+        if isinstance(data, bytes) or isinstance(data, bytearray):
+            datalen = len(data)
+        else:
+            return False
 
+        cmdstr = "w -j -i "
+        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+                 " -b " + str(block) + \
+                 " -r " + self._print_range(self, offset, datalen) + \
+                 " " + str(file) + \
+                 " " + data.hex()
 
+        # Send the command and then return true/false
+        resp = self._sendcmd(self, cmdstr)
+        test, _ = self._validate_jsonresp(self, resp)
+        return test
 
-
-
-#-------------------------------------------------------------------------------------
-# AppHandler: class for reading otter outputs and doing something with them
-class AppHandler:
-
-# Internal Functions --------------------------------
-
-    def _appLoop(self):
-
-        
-        # Main Run Loop: wait for message to come over socket.  
-        # It will be JSON.  We care about 'type':'rxstat' messages.
-        sock_err = 0
-        while getattr(self.appthread, "do_run", True):
-            try:
-                msg = sock_file.readline()
-            except (socket.error, socket.timeout):
-                sock_err = -5
-                break
-            try:
-                msg = json.loads(msg)
-            except ValueError:
-                continue
-            
-            # Only accept rxstat messages with data objects, and pass app parser
-            if 'type' in msg.keys():
-                if msg['type'] == 'rxstat':
-                    if 'data' in msg.keys():
-                        msg = msg['data']
-                        try:
-                            qual = msg['qual']
-                            alp = msg['alp']
-                        except ValueError:
-                            continue
-                        if (qual == 0) and isinstance(alp, dict):
-                            otdbmsg = self._parsealp(alp)
-                            errcode = self._updateDB(otdbmsg)
-                            if errcode == -1:
-                                printf("APP: Data could not be parsed\n")
-                            elif errcode == -2:
-                                printf("APP: Parsed data lacks 'msg' field\n")
-                            elif errcode == -3:
-                                printf("APP: Error connecting to socket %s\n", self.dbsock)
-                            elif errcode == -4:
-                                printf("APP: Error opening socket as file\n")
-                            elif errcode == -5:
-                                printf("APP: Error in sending data to socket\n")
-                            elif errcode == -6:
-                                printf("APP: Error parsing data read from socket\n")
-                            elif errcode != 0:
-                                printf("APP: Command error on OTDB\n")
-        
-        sock_file.close()
-        self.devsockobj.close()
-        return sock_err
-
-
-    def _parsealp(self, alp=None):
-        """
-        This function could be greatly expanded, or perhaps fed a list of application
-        callbacks, but right now it just looks for something along the lines of: 
-        "alp":{
-            "id":4, "cmd":2, "len":102, "fmt":"text", 
-            "dat":{
-                "tgloc":{
-                    "token":"00000101", "acc":104, "rssi":-75, "link":75, 
-                    "elat":377769216, "elon":-1223957248
-                }
-            }
-        }
-        """
-        if isinstance(alp, dict):
-            if ("id" in alp.keys()) and \
-                ("cmd" in alp.keys()) and \
-                ("len" in alp.keys()) and \
-                ("fmt" in alp.keys()) and \
-                ("dat" in alp.keys()):
-                # This is where application callbacks could come into play.
-                # Right now we care only about id=4, cmd=2, fmt=text, dat={tgloc:...}
-                if (alp['id'] == 4) and (alp['cmd'] == 2) and isinstance(alp['dat'], dict):
-                    return self._parsetgloc(alp['dat'])
-    
-        return None
-
-
-    def _parsetgloc(self, tgloc=None):
-        """ 
-        Application handler for tgloc data
-        """
-        try:
-            if "tgloc" in tgloc.keys():
-                tgloc = tgloc['tgloc']
-                istgloc = True
-            else:
-                istgloc = False
-        except ValueError:
-            return []
-            
-        if not istgloc:
-            return []
-            
-        param = dict()
-        param['msg'] = "tgloc"
-        param['token'] = 0
-        param['acc'] = 0
-        param['rssi'] = 0
-        param['link'] = 0
-        param['elat'] = 0
-        param['elon'] = 0
-
-        if 'token' in tgloc:
-            param['token'] = int(tgloc['token'], 16)
-        if 'acc' in tgloc:
-            param['acc'] = int(tgloc['acc'])
-        if 'rssi' in tgloc:
-            param['rssi'] = int(tgloc['rssi'])
-        if 'link' in tgloc:
-            param['link'] = int(tgloc['link'])
-        if 'elat' in tgloc:
-            param['elat'] = float(tgloc['elat'])
-        if 'elon' in tgloc:
-            param['elon'] = float(tgloc['elon'])
-            
-        # This list will store commands to send to OTDB
-        DBcmd = list()
-        serbytes = bytearray(20)
-        struct.pack_into("s", serbytes, 0, b'\x00')  # flags
-        struct.pack_into("<B", serbytes, 1, abs(int(param['acc'])))
-        struct.pack_into("<B", serbytes, 2, abs(int(param['rssi'])))
-        struct.pack_into("<B", serbytes, 3, abs(int(param['link'])))
-        struct.pack_into("<i", serbytes, 4, int(param['elat']))
-        struct.pack_into("<i", serbytes, 8, int(param['elon']))
-        struct.pack_into("4s", serbytes, 12, b'\x00\x00\x00\x00')  # TODO convert token into UID
-        struct.pack_into("<i", serbytes, 16, int(param['token']))
-        hextoken = format(param['token'], 'x')
-        DBcmd.append("dev-new -j " + hextoken + " NULL\n")
-        otdbcmd = "w -j -i " + hextoken + " 25 [" + serbytes.hex() + "]\n"
-        DBcmd.append(otdbcmd)
-        
-        return DBcmd
-
-
-    def _updateDB(self, DBcmd=None):
-        """
-        :param DBcmd: list of commands to send to OTDB.
-        :return: 0 on success, else a negative integer
-
-        This function contains the main application logic, as far as what to do with the DB depending on data received
-        from the log message.
-        """
-        # TODO other msg expanders could go here
-        sock_err = 0
-
-        if len(DBcmd) > 0:
-            # connect to the socket
-            try:
-                self.dbsockobj = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                self.dbsockobj.connect(self.dbsock)
-            except socket.error as exc:
-                printf("LOG: Socket connection error : %s\n", exc)
-                return -3
-            try:
-                sock_file = self.dbsockobj.makefile()
-            except OSError:
-                self.dbsockobj.close()
-                return -4
-
-            while len(DBcmd) > 0:
-                otdbcmd = DBcmd.pop(0)
-                print("LOG: Sending to OTDB: " + str(otdbcmd))
-                try:
-                    self.dbsockobj.sendall(otdbcmd.encode('utf-8'))
-                    otdb_resp = sock_file.readline()
-                except (socket.error, socket.timeout):
-                    sock_err = -5
-                    break
-                print(otdb_resp)
-                try:
-                    otdb_resp = json.loads(otdb_resp)
-                except ValueError:
-                    sock_err = -6
-                    break
-                if 'err' in otdb_resp:
-                    errcode = int(otdb_resp['err'])
-                    if errcode != 0:
-                        printf("LOG: Error %d on command: %s\n", errcode, otdbcmd)
-
-            sock_file.close()
-            self.dbsockobj.close()
-
-        return sock_err
-
-# END OF LogHandler
-#-------------------------------------------------------------------------------------
 
 
 

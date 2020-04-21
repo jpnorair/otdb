@@ -1,26 +1,40 @@
-#! python3
 
-import sys
 import os
-import signal
-import argparse
 import socket
 import json
 
-#-------------------------------------------------------------------------------------
-# PROGRAM DEFAULTS
+
+def _print_uid(uid):
+    if isinstance(uid, bytes) or isinstance(uid, bytearray):
+        return uid[:8].hex()
+    elif isinstance(uid, int):
+        return (uid.to_bytes(8, byteorder='big', signed=False)).hex()
+    else:
+        return "0000000000000000"
 
 
+def _print_range(offset, length):
+    rangestr = str(max(offset, 0)) + ":"
+    if length >= 0:
+        rangestr = rangestr + str(length)
+    return rangestr
 
-#-------------------------------------------------------------------------------------
-# GENERIC STATIC FUNCTIONS
 
-def printf(fmt, *params):
-    sys.stdout.write(fmt % params)
+def _validate_jsonresp(jsonresp):
+    try:
+        msg = json.loads(jsonresp)
+    except ValueError:
+        return False, None
+
+    if "err" in msg:
+        if msg["err"] == 0:
+            return True, msg
+
+    return False, msg
 
 
-# TODO put static functions here
-
+# End of static functions
+# ------------------------------------------------------------
 
 class otdb:
     def __init__(self, sockpath="/opt/otdb/otdb.sock"):
@@ -41,7 +55,7 @@ class otdb:
                 self.sockobj = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 self.sockobj.connect(self.sockpath)
             except socket.error as exc:
-                printf("OTDB: Socket connection error : %s\n", exc)
+                print("OTDB: Socket connection error : " + exc)
                 return False
             try:
                 self.sockfile = self.sockobj.makefile()
@@ -68,46 +82,19 @@ class otdb:
         otdb_resp = None
         if self.isconnected:
             try:
-                self.sockfile.sendall(cmd)
-                otdb_resp = self.sockfile.readline()
+                self.sockobj.sendall(cmd.encode('utf-8'))
             except socket.error:
-                print("OTDB: socket command failure")
+                print("OTDB: socket sendall failure")
                 return None
 
+            try:
+                otdb_resp = self.sockfile.readline()
+            except socket.error:
+                print("OTDB: socket read failure")
+                return None
+
+
         return otdb_resp
-
-
-    # ------------------------------------------------------------
-    # These functions may be static
-
-    def _print_uid(self, uid):
-        if isinstance(uid, bytes) or isinstance(uid, bytearray):
-            return uid[:8].hex()
-        elif isinstance(uid, int):
-            return (uid.to_bytes(8, byteorder='big', signed=False)).hex()
-        else:
-            return "0000000000000000"
-
-    def _print_range(self, offset, length):
-        rangestr = str(max(offset, 0)) + ":"
-        if length >= 0:
-            rangestr = rangestr + str(length)
-        return rangestr
-
-    def _validate_jsonresp(self, jsonresp):
-        try:
-            msg = json.loads(jsonresp)
-        except ValueError:
-            return False, None
-
-        if "err" in msg:
-            if msg["err"] == 0
-                return True, msg
-
-        return False, msg
-
-    # End of static functions
-    # ------------------------------------------------------------
 
 
     def newdevice(self, new_uid, new_data=None):
@@ -116,12 +103,12 @@ class otdb:
         returns True or False, if command has succeeded or failed
         new_uid : a 64bit bytes object or an unsigned integer
         """
-        cmdstr = "dev-new -j " + self._print_uid(self, new_uid)
+        cmdstr = "dev-new -j " + _print_uid(new_uid)
         if os.path.isdir(new_data):
             cmdstr = cmdstr + " " + str(new_data)
 
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
@@ -131,9 +118,9 @@ class otdb:
         returns True or False, if command has succeeded or failed
         del_uid : a 64bit bytes object or an unsigned integer
         """
-        cmdstr = "dev-del -j " + self._print_uid(self, del_uid)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        cmdstr = "dev-del -j " + _print_uid(del_uid)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
@@ -145,10 +132,30 @@ class otdb:
         returns True or False, if command has succeeded or failed
         set_uid : a 64bit bytes object or an unsigned integer
         """
-        cmdstr = "dev-set -j " + self._print_uid(self, set_uid)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        cmdstr = "dev-set -j " + _print_uid(set_uid)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
+
+
+    def listdevices(self):
+        """
+        List the devices in the database
+        Returns a list of devices, or None on command error
+        """
+        cmdstr = "dev-ls -j"
+        resp = self._sendcmd(cmdstr)
+        test, jsonresp = _validate_jsonresp(resp)
+        if 'idlist' in jsonresp.keys():
+            if isinstance(jsonresp["idlist"], list):
+                output = list()
+                for devid in jsonresp["idlist"]:
+                    #TODO make sure that endian conversion is not needed
+                    output.append(int(devid, 16))
+
+                return output
+
+        return None
 
 
     def load(self, dbpath=""):
@@ -161,8 +168,8 @@ class otdb:
         """
         if os.path.isdir(dbpath):
             cmdstr = "open -j " + str(dbpath)
-            resp = self._sendcmd(self, cmdstr)
-            test, _ = self._validate_jsonresp(self, resp)
+            resp = self._sendcmd(cmdstr)
+            test, _ = _validate_jsonresp(resp)
             return test
         else:
             return False
@@ -187,15 +194,15 @@ class otdb:
 
         if isinstance(uidlist, list):
             for uid in uidlist:
-                cmdstr = cmdstr + self._print_uid(self, uid) + " "
+                cmdstr = cmdstr + _print_uid(uid) + " "
 
         cmdstr = cmdstr + str(arcpath)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
-    def f_del(self, uid=0, block=3, file=0):
+    def f_del(self, uid=0, file=0, block="isf"):
         """
         Delete a file from a device.
         returns True or False, if command has succeeded or failed.
@@ -203,16 +210,16 @@ class otdb:
         block : block where file resides (default ISF)
         file : ID of file
         """
-        cmdstr = "del -j -i " \
-                 + self._print_uid(self, uid) + \
+        cmdstr = "del -j " \
+                 + _print_uid(uid) + \
                  " -b " + str(block) + \
                  " " + str(file)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
-    def f_new(self, uid=0, block=3, file=0, perms=0, alloc=0):
+    def f_new(self, uid=0, file=0, perms=0, alloc=0, block="isf"):
         """
         Add a new file to a device.  If the file ID is not in the DB template,
         newfile() will fail, and no file will be created.
@@ -221,34 +228,34 @@ class otdb:
         block : block where file resides (default ISF)
         file : ID of file to create.
         """
-        cmdstr = "del -j -i " \
-                 + self._print_uid(self, uid) + \
+        cmdstr = "del -j " \
+                 + _print_uid(uid) + \
                  " -b " + str(block) + \
                  " " + str(file) + \
                  " " + oct(perms) + \
                  " " + str(alloc)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
-    def f_restore(self, uid=0, block=3, file=0):
+    def f_restore(self, uid=0, file=0, block="isf"):
         """
         Restore a file on a device to the default value specified in the DB template.
         uid : ID of device on which to restore file.
         block : block where file resides (default ISF)
         file : ID of file to restore.
         """
-        cmdstr = "z -j -i " \
-                 + self._print_uid(self, uid) + \
+        cmdstr = "z -j " \
+                 + _print_uid(uid) + \
                  " -b " + str(block) + \
                  " " + str(file)
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
-    def f_readperms(self, age=-1, uid=0, block=3, file=0):
+    def f_readperms(self, uid=0, file=0, block="isf", age=-1):
         """
         Read file permissions from a specified file.
         Permissions are returned as an integer which corresponds to octal
@@ -257,24 +264,24 @@ class otdb:
         block : block where file resides (default ISF)
         file : ID of file to read.
         """
-        cmdstr = "rp -j -i "
+        cmdstr = "rp -j "
         if age >= 0:
             cmdstr = cmdstr + "-a " + str(age)
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
                  " " + str(file)
 
         # Send the command and then return the permissions if no error
-        resp = self._sendcmd(self, cmdstr)
-        test, jsonresp = self._validate_jsonresp(self, resp)
-        if test:
+        resp = self._sendcmd(cmdstr)
+        test, jsonresp = _validate_jsonresp(resp)
+        if jsonresp is not None:
             if "mod" in jsonresp:
                 return int(jsonresp["mod"])
 
         return -1
 
 
-    def f_readheader(self, age=-1, uid=0, block=3, file=0):
+    def f_readheader(self, uid=0, file=0, block="isf", age=-1):
         """
         Read file header from a specified file.
         Header is returned as a dictionary -- see data definitions for more information.
@@ -282,28 +289,26 @@ class otdb:
         block : block where file resides (default ISF)
         file : ID of file to read.
         """
-        cmdstr = "rh -j -i "
+        cmdstr = "rh -j "
         if age >= 0:
             cmdstr = cmdstr + "-a " + str(age)
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
                  " " + str(file)
 
         # Send the command and then return the part of the dictionary
         # with header components, if successful
-        resp = self._sendcmd(self, cmdstr)
-        test, jsonresp = self._validate_jsonresp(self, resp)
-        if test:
+        resp = self._sendcmd(cmdstr)
+        test, jsonresp = _validate_jsonresp(resp)
+        if jsonresp is not None:
             try:
                 del jsonresp["cmd"]
             except KeyError:
                 return None
-            return jsonresp
-
-        return None
+        return jsonresp
 
 
-    def f_read(self, age=-1, uid=0, block=3, file=0, offset=0, length=-1):
+    def f_read(self, uid=0, file=0, offset=0, length=-1, block="isf", age=-1):
         """
         Read file data from a specified file.
         Data is returned as a dictionary -- see data definitions for more information.
@@ -313,27 +318,28 @@ class otdb:
         offset: byte offset into file, to begin reading.  Default 0.
         length: number of bytes to return (max).  -1 means read all remaining bytes.  Default -1.
         """
-        cmdstr = "r -j -i "
+        cmdstr = "r -j "
         if age >= 0:
             cmdstr = cmdstr + "-a " + str(age)
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
-                 " -r " + self._print_range(self, offset, length) + \
+                 " -r " + _print_range(offset, length) + \
                  " " + str(file)
 
         # Send the command and then return the part of the dictionary
         # with header components, if successful
-        resp = self._sendcmd(self, cmdstr)
-        test, jsonresp = self._validate_jsonresp(self, resp)
-        if test:
+        resp = self._sendcmd(cmdstr)
+        test, jsonresp = _validate_jsonresp(resp)
+        if jsonresp is not None:
             try:
                 del jsonresp["cmd"]
             except KeyError:
                 return None
-            return jsonresp
+
+        return jsonresp
 
 
-    def f_readall(self, age=-1, uid=0, block=3, file=0, offset=0, length=-1):
+    def f_readall(self, uid=0, file=0, offset=0, length=-1, block="isf", age=-1):
         """
         Read file header and data from a specified file.
         Data is returned as a dictionary -- see data definitions for more information.
@@ -343,27 +349,28 @@ class otdb:
         offset: byte offset into file, to begin reading.  Default 0.
         length: number of bytes to return (max).  -1 means read all remaining bytes.  Default -1.
         """
-        cmdstr = "r* -j -i "
+        cmdstr = "r* -j "
         if age >= 0:
             cmdstr = cmdstr + "-a " + str(age)
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
-                 " -r " + self._print_range(self, offset, length) + \
+                 " -r " + _print_range(offset, length) + \
                  " " + str(file)
 
         # Send the command and then return the part of the dictionary
         # with header components, if successful
-        resp = self._sendcmd(self, cmdstr)
-        test, jsonresp = self._validate_jsonresp(self, resp)
-        if test:
+        resp = self._sendcmd(cmdstr)
+        test, jsonresp = _validate_jsonresp(resp)
+        if jsonresp is not None:
             try:
                 del jsonresp["cmd"]
             except KeyError:
                 return None
-            return jsonresp
+
+        return jsonresp
 
 
-    def f_writeperms(self, uid=0, block=3, file=0, file_perms=0):
+    def f_writeperms(self, uid=0, file=0, file_perms=0, block="isf"):
         """
         Write file permissions to a specified file.
         uid : ID of device on which to read permissions.
@@ -371,18 +378,19 @@ class otdb:
         file : ID of file to read.
         file_perms : a bitfield (unsigned 8bit integer) -- see data definitions
         """
-        cmdstr = "wp -j -i "
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = "wp -j "
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
-                 " -r " + self._print_range(self, offset, length) + \
-                 " " + str(file)
+                 " " + str(file) + \
+                 " " + oct(file_perms)
 
         # Send the command and then return true/false
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
-    def f_write(self, uid=0, block=3, file=0, offset=0, data=None):
+
+    def f_write(self, uid=0, file=0, data=None, offset=0, block="isf"):
         """
         Write data to a specified file.
         uid : ID of device on which to read permissions.
@@ -397,50 +405,17 @@ class otdb:
         else:
             return False
 
-        cmdstr = "w -j -i "
-        cmdstr = cmdstr + " -i " + self._print_uid(self, uid) + \
+        cmdstr = "w -j "
+        cmdstr = cmdstr + " -i " + _print_uid(uid) + \
                  " -b " + str(block) + \
-                 " -r " + self._print_range(self, offset, datalen) + \
+                 " -r " + _print_range(offset, datalen) + \
                  " " + str(file) + \
                  " " + data.hex()
 
         # Send the command and then return true/false
-        resp = self._sendcmd(self, cmdstr)
-        test, _ = self._validate_jsonresp(self, resp)
+        resp = self._sendcmd(cmdstr)
+        test, _ = _validate_jsonresp(resp)
         return test
 
 
-
-
-
-#-------------------------------------------------------------------------------------
-# PROGRAM FRONTEND
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Terminal Wrapper for Application")
-    parser.add_argument('--otdb', default='/opt/otdb/otdb.sock', help="OTDB Socket")
-    parser.add_argument('--otter', default='/opt/otdb/otter.sock', help="OTTER Socket")
-    parser.add_argument('--local', action='store_true', help="Run webserver as localhost")
-
-    args = parser.parse_args()
-
-    assetList = list()
-
-    otdb_sockfile="/opt/otdb/otdb.sock"
-    otter_sockfile="/opt/otdb/otter.sock"
-
-    # Need to do this ahead of process startup
-    log_app = AppHandler(otter_sockfile, otdb_sockfile)
-
-    # Start Application Thread
-    if log_app.start() != 0:
-        print("Log Application could not be started: Exiting.")
-    else:
-        # This is a semaphore that waits for Ctrl-C
-        print("-------- Application Logic is started --------")
-        signal.sigwait([signal.SIGINT])
-        print("\n-------- SIGINT received, terminating app --------")
-        log_app.stop()
-
-    sys.exit(0)
 

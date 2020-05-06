@@ -15,6 +15,9 @@
 *.gch
 *.o
 
+#Python package files
+*.egg*
+
 #Ignore IDE files
 *.idea*
 

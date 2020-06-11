@@ -1,7 +1,0 @@
-{
-    "iss_list": {
-        "_meta":{"block":"isf", "id":8, "mod":36, "size":16, "stock":true, "pos":0, "type":"array"},
-        "_content":[0,  1,  2,  3, 16, 17, 18, 24, 
-                    128,129,130,131,0,  0,  0,  0]
-    }
-}

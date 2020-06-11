@@ -29,9 +29,6 @@
 
 /// Default feature configurations
 #define OTDB_FEATURE(VAL)           OTDB_FEATURE_##VAL
-#ifndef OTDB_FEATURE_HBUILDER
-#   define OTDB_FEATURE_HBUILDER    defined(__HBUILDER__)
-#endif
 #ifndef OTDB_FEATURE_CLIENT
 #   define OTDB_FEATURE_CLIENT      DISABLED
 #endif

@@ -1,8 +1,8 @@
 # OTDB
 
-"OTDB" is a program that utilizes libotfs and libhbuilder to represent a database of OpenTag Filesystems.  
+`otdb` is a program that utilizes libotfs to represent a database of OpenTag Filesystems.  
 
-OTDB has a command-line style interface that can work interactively, over a pipe, or via a socket.  The protocol is described in the OTDB API & Socket Protocol document that should be in the same directory as this ReadMe.
+`otdb` has a command-line style interface that can work interactively or over a socket.  The protocol is described in the OTDB API & Socket Protocol document that should be in the same directory as this ReadMe.
 
 ## Building OTDB
 
@@ -44,7 +44,7 @@ Local Dependencies are libraries that are curated and distributed together with 
 * cJSON
 * cmdtab
 * _hbsys
-* hbuilder-lib
+* hbutils
 * libjudy
 * libotfs
 * m2def
@@ -52,7 +52,13 @@ Local Dependencies are libraries that are curated and distributed together with 
 
 ### Build Commands
 
-The build process uses GNU build tools, namely `make`.  OTDB implements the HBuilder package management model.  The method for building and install OTDB into the HBuilder package manager is:
+The build process uses GNU build tools, namely `make`.  OTDB implements the HB package management model.  The method for building and install OTDB into the HB package manager is:
+
+```
+$ make pkg
+```
+
+If you are doing lots of building, pkg does the same thing as the snippet below.  You can make the dependencies, and then build OTDB independently (using all) if you are looking to optimize seconds.
 
 ```
 $ make deps

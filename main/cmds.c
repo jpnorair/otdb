@@ -23,10 +23,10 @@
 // HB Headers/Libraries
 #include <bintex.h>
 #include <cmdtab.h>
+#include <hbutils.h>
 #include <argtable3.h>
 #include <cJSON.h>
 #include <otfs.h>
-#include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
 #include <math.h>
@@ -300,8 +300,8 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     int     nerrors;
     
     /// First, create an argument vector from the input string.
-    /// hb_tools_parsestring will treat all bintex containers as whitespace-safe.
-    argc = hb_tools_parsestring(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
+    /// hbutils_parseargv() will treat all bintex containers as whitespace-safe.
+    argc = hbutils_parseargv(&argv, cmdname, (char*)src, (char*)src, (size_t)*src_bytes);  
     nerrors = arg_parse(argc, argv, args);
 
     /// Print command specific help
@@ -480,7 +480,7 @@ int cmd_extract_args(cmd_arglist_t* data, void* args, const char* cmdname, const
     out_val = 0;
 
     sub_extract_args_END:
-    hb_tools_freeargv(argv);
+    hbutils_freeargv(argv);
     return out_val;
 }
 

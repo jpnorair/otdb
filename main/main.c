@@ -44,7 +44,7 @@
 #include "popen2.h"
 #include "sockpush.h"
 
-// HBuilder Package Libraries
+// Local Package Libraries
 #include <argtable3.h>
 #include <cJSON.h>
 #include <cmdtab.h>

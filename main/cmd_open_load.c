@@ -30,7 +30,6 @@
 #include <cJSON.h>
 #include <cJSON_blockdup.h>
 #include <otfs.h>
-#include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
 #include <ctype.h>

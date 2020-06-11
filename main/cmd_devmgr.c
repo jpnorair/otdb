@@ -48,7 +48,6 @@
 #include <argtable3.h>
 #include <cJSON.h>
 #include <otfs.h>
-#include <hbdp/hb_cmdtools.h>       ///@note is this needed?
 
 // Standard C & POSIX Libraries
 #include <math.h>

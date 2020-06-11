@@ -34,7 +34,7 @@
 // Top Level Configuration Header
 #include <otdb_cfg.h>
 
-// HBuilder Package Libraries
+// Local Package Libraries
 #include <argtable3.h>
 
 

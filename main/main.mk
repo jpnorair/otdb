@@ -3,7 +3,7 @@ LD := ld
 
 SUBAPP     := main
 OTDB_PKG   ?=
-OTDB_DEF   ?= -D__HBUILDER__
+OTDB_DEF   ?= 
 OTDB_INC   ?=
 OTDB_LIB   ?= 
 

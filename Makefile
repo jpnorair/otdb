@@ -61,8 +61,8 @@ else
 	error "THISSYSTEM set to unknown value: $(THISSYSTEM)"
 endif
 
-DEFAULT_DEF := -D__HBUILDER__ -DOTDB_PARAM_GITHEAD=\"$(GITHEAD)\"
-LIBMODULES  := argtable cJSON clithread cmdtab bintex m2def libotfs hbuilder-lib $(EXT_LIBS)
+DEFAULT_DEF := -DOTDB_PARAM_GITHEAD=\"$(GITHEAD)\"
+LIBMODULES  := argtable cJSON clithread cmdtab bintex m2def libotfs hbutils $(EXT_LIBS)
 #SUBMODULES  := main client test
 SUBMODULES  := main client
 
@@ -73,7 +73,7 @@ SUBMODULES  := main client
 INC         := -I. -I./include -I./$(SYSDIR)/include 
 INCDEP      := -I.
 LIBINC      := -L./$(SYSDIR)/lib
-LIB         := -largtable -lbintex -lcJSON -lclithread -lcmdtab -lhbuilder -lotfs -loteax -ljudy -ltalloc -lm -lc $(LIBBSD)
+LIB         := -largtable -lbintex -lcJSON -lclithread -lcmdtab -lhbutils -lotfs -loteax -ljudy -ltalloc -lm -lc $(LIBBSD)
 
 
 # Makesystem variables

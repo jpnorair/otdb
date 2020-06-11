@@ -1,11 +1,11 @@
 
 # Garbage
 .DS_Store
-/legacy_code
+
+# Old stuff, better to ignore
+/_legacy
 
 # Runtime
-/pipes
-/parsers
 /~*
 
 #Don't add Build Files
@@ -20,7 +20,6 @@
 
 #Ignore IDE files
 *.idea*
-
 
 # XCode project, and archives
 /xcode_proj

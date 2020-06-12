@@ -62,7 +62,7 @@ else
 endif
 
 DEFAULT_DEF := -DOTDB_PARAM_GITHEAD=\"$(GITHEAD)\"
-LIBMODULES  := argtable cJSON clithread cmdtab bintex m2def libotfs hbutils $(EXT_LIBS)
+LIBMODULES  := argtable cJSON clithread cmdtab bintex libotfs hbutils $(EXT_LIBS)
 #SUBMODULES  := main client test
 SUBMODULES  := main client
 

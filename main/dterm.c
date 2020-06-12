@@ -25,7 +25,7 @@
 // Local Libraries/Headers
 #include <bintex.h>
 #include <clithread.h>
-#include <m2def.h>
+//#include <m2def.h>
 //#include <otfs.h>
 
 // Standard C & POSIX Libraries

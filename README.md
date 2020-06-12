@@ -47,7 +47,6 @@ Local Dependencies are libraries that are curated and distributed together with 
 * hbutils
 * libjudy
 * libotfs
-* m2def
 * OTEAX
 
 ### Build Commands
